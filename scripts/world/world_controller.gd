@@ -12,7 +12,7 @@ class_name WorldController
 const WEATHER_CLEAR: int = 0
 const WEATHER_CLOUDY: int = 1
 const WEATHER_OVERCAST: int = 2
-const SKY_NOISE_ADDON: Texture2D = preload("res://addons/sky_3d/assets/textures/noiseClouds.png")
+const SKY_NOISE_CLOUDY: Texture2D = preload("res://assets/sky/noiseClouds.png")
 const SKY_NOISE_CLEAR: Texture2D = preload("res://assets/sky/cloud_noise_sparse.png")
 
 const TIME_DAWN: int = 0
@@ -332,9 +332,9 @@ func _apply_weather(mode: int, animate: bool) -> void:
             day_tint = Color(0.53, 0.60, 0.68, 1.0)
             horizon_tint = Color(0.48, 0.54, 0.61, 1.0)
 
-    # The add-on's own noise is retained for normal and overcast weather. Clear weather
+    # The bundled cloud noise is retained for normal and overcast weather. Clear weather
     # uses a code-generated, lower-frequency seamless texture to create wider cloud gaps.
-    sky_dome.set("cumulus_texture", SKY_NOISE_CLEAR if mode == WEATHER_CLEAR else SKY_NOISE_ADDON)
+    sky_dome.set("cumulus_texture", SKY_NOISE_CLEAR if mode == WEATHER_CLEAR else SKY_NOISE_CLOUDY)
 
     var targets: Dictionary = {
         "cumulus_coverage": cumulus_coverage,
