@@ -85,6 +85,7 @@ vec3 grass_palette(float pick) {
 vec3 rock_palette(float pick) {
     // The pixel choice is still stochastic, but each sample maps through smooth gradients
     // rather than hard palette cutoffs. Macro strata are blended separately below.
+    // Darken only the base stone palette; fixed crack, pit and chip colors are applied later.
     float p = clamp(pick, 0.0, 1.0);
     vec3 c0 = palette_color(vec3(0.205, 0.215, 0.220));
     vec3 c1 = palette_color(vec3(0.315, 0.325, 0.330));
@@ -94,13 +95,23 @@ vec3 rock_palette(float pick) {
     vec3 c5 = palette_color(vec3(0.595, 0.585, 0.560));
     vec3 c6 = palette_color(vec3(0.655, 0.645, 0.610));
     vec3 c7 = palette_color(vec3(0.730, 0.710, 0.665));
-    if (p < 0.16) return mix(c0, c1, smoothstep(0.0, 0.16, p));
-    if (p < 0.32) return mix(c1, c2, smoothstep(0.16, 0.32, p));
-    if (p < 0.49) return mix(c2, c3, smoothstep(0.32, 0.49, p));
-    if (p < 0.66) return mix(c3, c4, smoothstep(0.49, 0.66, p));
-    if (p < 0.82) return mix(c4, c5, smoothstep(0.66, 0.82, p));
-    if (p < 0.94) return mix(c5, c6, smoothstep(0.82, 0.94, p));
-    return mix(c6, c7, smoothstep(0.94, 1.0, p));
+    vec3 color;
+    if (p < 0.16) {
+        color = mix(c0, c1, smoothstep(0.0, 0.16, p));
+    } else if (p < 0.32) {
+        color = mix(c1, c2, smoothstep(0.16, 0.32, p));
+    } else if (p < 0.49) {
+        color = mix(c2, c3, smoothstep(0.32, 0.49, p));
+    } else if (p < 0.66) {
+        color = mix(c3, c4, smoothstep(0.49, 0.66, p));
+    } else if (p < 0.82) {
+        color = mix(c4, c5, smoothstep(0.66, 0.82, p));
+    } else if (p < 0.94) {
+        color = mix(c5, c6, smoothstep(0.82, 0.94, p));
+    } else {
+        color = mix(c6, c7, smoothstep(0.94, 1.0, p));
+    }
+    return color * 0.86;
 }
 
 vec3 grass_pixel(vec2 pixel_cell, vec2 pixel_world) {
@@ -152,10 +163,38 @@ vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world) {
     vec3 smooth_tint = mix(cool_tint, warm_tint, smoothstep(0.18, 0.82, stone_warmth) * 0.62);
     color *= smooth_tint * stone_brightness;
 
-    // Blocky pits, raised lips and chipped facets are snapped to the same pixel grid.
-    float pitting = value_noise(warped * 0.105 + vec2(7.0, seed_offset * 0.0007));
-    float pit_mask = step(0.835, pitting);
-    float rim_mask = step(0.675, pitting) * (1.0 - pit_mask);
+    // Short, stepped vertical grooves replace the old rounded noise pits.
+    // One groove occupies a narrow part of a coarse cell; per-row jitter keeps it irregular.
+    vec2 pit_grid = warped * vec2(0.16, 0.11);
+    vec2 pit_cell_id = floor(pit_grid);
+    vec2 pit_local = fract(pit_grid);
+    float pit_seed = hash21(pit_cell_id + vec2(41.7, seed_offset * 0.0003));
+    float pit_center = mix(0.32, 0.68,
+        hash21(pit_cell_id + vec2(3.2, 17.4)));
+    float pit_half_width = mix(0.10, 0.18,
+        hash21(pit_cell_id + vec2(12.6, 5.3)));
+    float pit_start = mix(0.06, 0.22,
+        hash21(pit_cell_id + vec2(22.1, 9.7)));
+    float pit_length = mix(0.34, 0.68,
+        hash21(pit_cell_id + vec2(7.4, 31.8)));
+    float pit_row = floor(warped.y * 0.29);
+    float pit_jitter = (hash21(vec2(
+        pit_cell_id.x + 8.1,
+        pit_row + seed_offset * 0.0004
+    )) - 0.5) * 0.22;
+    float pit_distance = abs(pit_local.x - (pit_center + pit_jitter));
+    float pit_selected = step(0.57, pit_seed);
+    float pit_vertical = step(pit_start, pit_local.y)
+        * (1.0 - step(pit_start + pit_length, pit_local.y));
+    float pit_outer_vertical = step(max(pit_start - 0.035, 0.0), pit_local.y)
+        * (1.0 - step(min(pit_start + pit_length + 0.035, 1.0), pit_local.y));
+    float pit_mask = pit_selected * pit_vertical
+        * step(pit_distance, pit_half_width);
+    float pit_outer_mask = pit_selected * pit_outer_vertical
+        * step(pit_distance, pit_half_width + 0.09);
+    float rim_mask = pit_outer_mask * (1.0 - pit_mask);
+
+    // Keep the original chip frequency, palette and contrast.
     float chip_noise = value_noise(warped * 0.062 + vec2(27.0, 4.0));
     float chip_mask = step(0.79, chip_noise) * (1.0 - pit_mask);
     color = mix(color, palette_color(vec3(0.105, 0.112, 0.112)), pit_mask * 0.60);
