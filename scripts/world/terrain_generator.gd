@@ -104,7 +104,7 @@ func generate(new_seed: int = 1337) -> void:
     var shader_seed: int = abs(world_seed % 2147483647)
     terrain_material.set_shader_parameter("seed_offset", float(shader_seed % 65536))
     terrain_material.set_shader_parameter("seed_offset_high", float(int(floor(float(shader_seed) / 65536.0))))
-    terrain_material.set_shader_parameter("pixel_size", 1.15)
+    terrain_material.set_shader_parameter("pixel_size", 0.2875)
     terrain_material.set_shader_parameter("rock_transition_start", 0.30)
     terrain_material.set_shader_parameter("rock_transition_end", 0.48)
 
