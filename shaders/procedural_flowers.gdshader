@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode skip_vertex_transform, cull_disabled, depth_draw_opaque, diffuse_burley, specular_schlick_ggx;
+render_mode skip_vertex_transform, unshaded, cull_disabled, depth_draw_opaque;
 
 uniform vec2 wind_direction = vec2(0.86, 0.51);
 uniform float wind_strength : hint_range(0.0, 1.0, 0.01) = 0.68;
@@ -36,7 +36,6 @@ void vertex() {
     world_vertex.xz -= (direction + side_direction * lateral_wobble) * force;
     world_vertex.y -= custom_data.b * force * 0.12;
     VERTEX = (VIEW_MATRIX * vec4(world_vertex, 1.0)).xyz;
-    NORMAL = MODELVIEW_NORMAL_MATRIX * NORMAL;
 }
 
 void fragment() {
@@ -68,8 +67,5 @@ void fragment() {
     petals *= mix(0.88, 1.12, flower_data.g);
     centre *= mix(0.90, 1.08, flower_data.a);
     ALBEDO = flower_is_petal > 0.5 ? petals : centre;
-    // Flowers have no emission/unshaded pass: they follow actual scene lighting at night.
-    ROUGHNESS = 0.94;
-    METALLIC = 0.0;
-    SPECULAR = 0.06;
+    ROUGHNESS = 0.92;
 }
