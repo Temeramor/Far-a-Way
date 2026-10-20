@@ -246,7 +246,7 @@ func _create_mountain_ranges(seed_value: int) -> void:
     var range_count: int = 3
     var peak_height_scale: float = 1.0
     var ridge_width_scale: float = pow(size_scale, 0.65)
-    var ridge_length_scale: float = size_scale
+    var ridge_length_scale: float = 1.0
     var lateral_offset_scale: float = size_scale
     if world_size <= 1500.0:
         range_count = 1
@@ -334,7 +334,14 @@ func _height_at(world_x: float, world_z: float) -> float:
         var mountain_mask: float = clampf(mountain_height / 900.0, 0.0, 1.0)
         height += mountain_mask * (micro_ridge * 34.0 + detail * 22.0)
 
-    var spawn_fade: float = 1.0 - _smoothstep(420.0, 1420.0, point.length())
+    var spawn_fade_start: float = 420.0 * size_scale
+    var spawn_fade_end: float = 1420.0 * size_scale
+    if world_size <= 1500.0:
+        # Keep only a small safe starting patch on the tiny island, otherwise the
+        # spawn-valley blend would flatten most of its single hill.
+        spawn_fade_start = 25.0
+        spawn_fade_end = 80.0
+    var spawn_fade: float = 1.0 - _smoothstep(spawn_fade_start, spawn_fade_end, point.length())
     var spawn_height: float = 25.0 + macro * 3.0 + detail * 0.8
     height = lerpf(height, spawn_height, spawn_fade)
     return clampf(height, MIN_TERRAIN_HEIGHT, MAX_TERRAIN_HEIGHT)
