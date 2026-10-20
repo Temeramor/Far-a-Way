@@ -513,10 +513,17 @@ func _refresh_patch(force: bool) -> void:
                 + lerpf(0.12, 0.88, _random01(far_world_cell_x, far_world_cell_z, 32))
             ) * far_cell_size
 
+            var far_edge_distance: float = minf(
+                FAR_PATCH_SIZE * 0.5 - absf(far_px - far_center.x),
+                FAR_PATCH_SIZE * 0.5 - absf(far_pz - far_center.y)
+            )
+            var far_edge_t: float = clampf(far_edge_distance / 110.0, 0.0, 1.0)
+            var far_edge_fade: float = far_edge_t * far_edge_t * (3.0 - 2.0 * far_edge_t)
             var far_surface: Vector3 = terrain_generator.surface_sample_at_world(far_px, far_pz)
             var far_slope: float = sqrt(far_surface.y * far_surface.y + far_surface.z * far_surface.z)
             if (
-                far_surface.x <= MAX_GRASS_HEIGHT
+                far_edge_fade > _random01(far_world_cell_x, far_world_cell_z, 48)
+                and far_surface.x <= MAX_GRASS_HEIGHT
                 and far_slope <= MAX_SURFACE_SLOPE
                 and _random01(far_world_cell_x, far_world_cell_z, 33) >= clampf(far_slope * 0.30, 0.0, 0.16)
             ):
