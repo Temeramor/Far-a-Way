@@ -7,12 +7,12 @@ render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 uniform float pixel_size : hint_range(0.1, 3.0, 0.025) = 0.2875;
 uniform float seed_offset = 0.0;
 uniform float seed_offset_high = 0.0;
-uniform float rock_transition_start : hint_range(0.05, 0.8, 0.01) = 0.30;
-uniform float rock_transition_end : hint_range(0.1, 0.95, 0.01) = 0.48;
+uniform float rock_transition_start : hint_range(0.05, 0.8, 0.01) = 0.22;
+uniform float rock_transition_end : hint_range(0.1, 0.95, 0.01) = 0.62;
 
 // Stylized PBR response derived from each generated rock pixel's linear luminance.
-uniform float rock_luminance_dark : hint_range(0.0, 0.5, 0.005) = 0.045;
-uniform float rock_luminance_bright : hint_range(0.05, 0.8, 0.005) = 0.24;
+uniform float material_luminance_dark : hint_range(0.0, 0.5, 0.005) = 0.045;
+uniform float material_luminance_bright : hint_range(0.05, 0.8, 0.005) = 0.24;
 uniform float rock_roughness_dark : hint_range(0.0, 1.0, 0.01) = 0.92;
 uniform float rock_roughness_bright : hint_range(0.0, 1.0, 0.01) = 0.74;
 uniform float rock_specular_dark : hint_range(0.0, 1.0, 0.01) = 0.08;
@@ -178,13 +178,13 @@ vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world) {
 }
 
 
-float rock_luminance(vec3 color) {
+float material_luminance(vec3 color) {
     return dot(max(color, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722));
 }
 
 // Rock PBR follows broad tonal changes instead of amplifying each dark speckle.
 vec2 rock_pbr(vec3 color) {
-    float brightness = smoothstep(rock_luminance_dark, rock_luminance_bright, rock_luminance(color));
+    float brightness = smoothstep(material_luminance_dark, material_luminance_bright, material_luminance(color));
     return vec2(
         mix(rock_roughness_dark, rock_roughness_bright, brightness),
         mix(rock_specular_dark, rock_specular_bright, brightness)
@@ -193,7 +193,7 @@ vec2 rock_pbr(vec3 color) {
 
 // Grass has a weaker sheen: mostly diffuse with only a subtle response on brighter blades.
 vec2 grass_pbr(vec3 color) {
-    float brightness = smoothstep(grass_luminance_dark, grass_luminance_bright, rock_luminance(color));
+    float brightness = smoothstep(grass_luminance_dark, grass_luminance_bright, material_luminance(color));
     return vec2(
         mix(grass_roughness_dark, grass_roughness_bright, brightness),
         mix(grass_specular_dark, grass_specular_bright, brightness)
