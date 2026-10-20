@@ -90,11 +90,12 @@ vec3 rock_palette(float pick) {
     vec3 c0 = palette_color(vec3(0.205, 0.215, 0.220));
     vec3 c1 = palette_color(vec3(0.315, 0.325, 0.330));
     vec3 c2 = palette_color(vec3(0.395, 0.400, 0.400));
-    vec3 c3 = palette_color(vec3(0.465, 0.465, 0.455));
-    vec3 c4 = palette_color(vec3(0.530, 0.520, 0.505));
-    vec3 c5 = palette_color(vec3(0.595, 0.585, 0.560));
-    vec3 c6 = palette_color(vec3(0.655, 0.645, 0.610));
-    vec3 c7 = palette_color(vec3(0.730, 0.710, 0.665));
+    // Keep distinct stone hues, but compress the pale end of the palette into darker mid-grays.
+    vec3 c3 = palette_color(vec3(0.425, 0.430, 0.425));
+    vec3 c4 = palette_color(vec3(0.465, 0.460, 0.445));
+    vec3 c5 = palette_color(vec3(0.510, 0.500, 0.480));
+    vec3 c6 = palette_color(vec3(0.555, 0.545, 0.515));
+    vec3 c7 = palette_color(vec3(0.610, 0.590, 0.550));
     vec3 color;
     if (p < 0.16) {
         color = mix(c0, c1, smoothstep(0.0, 0.16, p));
@@ -163,50 +164,56 @@ vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world) {
     vec3 smooth_tint = mix(cool_tint, warm_tint, smoothstep(0.18, 0.82, stone_warmth) * 0.62);
     color *= smooth_tint * stone_brightness;
 
-    // Short, stepped vertical grooves replace the old rounded noise pits.
-    // One groove occupies a narrow part of a coarse cell; per-row jitter keeps it irregular.
-    vec2 pit_grid = warped * vec2(0.16, 0.11);
-    vec2 pit_cell_id = floor(pit_grid);
-    vec2 pit_local = fract(pit_grid);
-    float pit_seed = hash21(pit_cell_id + vec2(41.7, seed_offset * 0.0003));
-    float pit_center = mix(0.32, 0.68,
-        hash21(pit_cell_id + vec2(3.2, 17.4)));
-    float pit_half_width = mix(0.10, 0.18,
-        hash21(pit_cell_id + vec2(12.6, 5.3)));
-    float pit_start = mix(0.06, 0.22,
-        hash21(pit_cell_id + vec2(22.1, 9.7)));
-    float pit_length = mix(0.34, 0.68,
-        hash21(pit_cell_id + vec2(7.4, 31.8)));
-    float pit_row = floor(warped.y * 0.29);
-    float pit_jitter = (hash21(vec2(
-        pit_cell_id.x + 8.1,
-        pit_row + seed_offset * 0.0004
-    )) - 0.5) * 0.22;
-    float pit_distance = abs(pit_local.x - (pit_center + pit_jitter));
-    float pit_selected = step(0.57, pit_seed);
-    float pit_vertical = step(pit_start, pit_local.y)
-        * (1.0 - step(pit_start + pit_length, pit_local.y));
-    float pit_outer_vertical = step(max(pit_start - 0.035, 0.0), pit_local.y)
-        * (1.0 - step(min(pit_start + pit_length + 0.035, 1.0), pit_local.y));
-    float pit_mask = pit_selected * pit_vertical
-        * step(pit_distance, pit_half_width);
-    float pit_outer_mask = pit_selected * pit_outer_vertical
-        * step(pit_distance, pit_half_width + 0.09);
-    float rim_mask = pit_outer_mask * (1.0 - pit_mask);
+    // Short, broken vertical fissures: lines stay aligned to the height axis,
+    // while small horizontal offsets and variable widths give them chipped, jagged edges.
+    // The subtle warp distorts the line shape without turning it into rounded noise spots.
+    vec2 fissure_world = pixel_world + warp * vec2(0.25, 0.08);
+    vec2 fissure_grid = fissure_world * vec2(0.22, 0.22);
+    vec2 fissure_cell = floor(fissure_grid);
+    vec2 fissure_local = fract(fissure_grid);
 
-    // Keep the original chip frequency, palette and contrast.
+    // A sparse set of columns, with independently missing segments, creates broken seams.
+    float fissure_column = step(0.30, hash21(vec2(
+        fissure_cell.x + 42.3, 11.7 + seed_offset * 0.0003
+    )));
+    float fissure_segment = step(0.31, hash21(
+        fissure_cell + vec2(21.4, 35.8 + seed_offset * 0.0004)
+    ));
+    float fissure_start = mix(0.04, 0.20,
+        hash21(fissure_cell + vec2(22.1, 9.7)));
+    float fissure_length = mix(0.48, 0.76,
+        hash21(fissure_cell + vec2(7.4, 31.8)));
+    float fissure_vertical = step(fissure_start, fissure_local.y)
+        * (1.0 - step(fissure_start + fissure_length, fissure_local.y));
+
+    // Shift the groove slightly every couple of meters, producing a jagged rather than straight edge.
+    float fissure_micro_row = floor(fissure_world.y * 0.42);
+    float fissure_center = mix(0.40, 0.60,
+        hash21(vec2(fissure_cell.x + 3.2, 17.4)));
+    float fissure_jitter = (hash21(vec2(
+        fissure_cell.x + 8.1,
+        fissure_micro_row + seed_offset * 0.0004
+    )) - 0.5) * 0.17;
+    float fissure_half_width = mix(0.05, 0.12, hash21(vec2(
+        fissure_cell.x + 16.7,
+        fissure_micro_row + 5.3
+    )));
+    float fissure_distance = abs(fissure_local.x - (fissure_center + fissure_jitter));
+    float fissure_mask = fissure_column * fissure_segment * fissure_vertical
+        * step(fissure_distance, fissure_half_width);
+
+    // Preserve the small chips and their original color; only skip chips directly under a fissure.
     float chip_noise = value_noise(warped * 0.062 + vec2(27.0, 4.0));
-    float chip_mask = step(0.79, chip_noise) * (1.0 - pit_mask);
-    color = mix(color, palette_color(vec3(0.105, 0.112, 0.112)), pit_mask * 0.60);
-    color = mix(color, color * vec3(1.16, 1.13, 1.08), rim_mask * 0.22);
+    float chip_mask = step(0.79, chip_noise) * (1.0 - fissure_mask);
+    color = mix(color, palette_color(vec3(0.075, 0.080, 0.078)), fissure_mask * 0.88);
     color = mix(color, palette_color(vec3(0.655, 0.642, 0.608)), chip_mask * 0.18);
 
-    // Selective Voronoi fractures produce rare, irregular, stepped cracks rather than a grid.
-    float edge = voronoi_edge(warped / 34.0 + vec2(seed_offset * 0.0008, 6.7));
-    float crack_line = 1.0 - smoothstep(0.010, 0.043, edge);
-    float crack_region = step(0.735, value_noise(warped * 0.012 + vec2(9.0, 12.7)));
-    float crack_breakup = step(0.33, value_noise(warped * 0.041 + vec2(12.6, seed_offset * 0.0004)));
-    float crack_mask = crack_line * crack_region * crack_breakup * (1.0 - pit_mask * 0.35);
+    // Make Voronoi fractures less frequent and finer so vertical seams remain the dominant detail.
+    float edge = voronoi_edge(warped / 48.0 + vec2(seed_offset * 0.0008, 6.7));
+    float crack_line = 1.0 - smoothstep(0.008, 0.029, edge);
+    float crack_region = step(0.84, value_noise(warped * 0.012 + vec2(9.0, 12.7)));
+    float crack_breakup = step(0.40, value_noise(warped * 0.041 + vec2(12.6, seed_offset * 0.0004)));
+    float crack_mask = crack_line * crack_region * crack_breakup * (1.0 - fissure_mask * 0.35);
     color = mix(color, palette_color(vec3(0.075, 0.080, 0.078)), crack_mask * 0.91);
 
     // Tiny mineral flecks remain rare, so the stone keeps large readable planes.
