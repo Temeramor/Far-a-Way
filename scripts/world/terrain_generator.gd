@@ -291,6 +291,7 @@ func _create_mountain_ranges(seed_value: int) -> void:
             _mountain_phases.append(phase + float(segment_index) * 1.7)
 
 func _height_at(world_x: float, world_z: float) -> float:
+    var size_scale: float = world_size / 10000.0
     var macro: float = _macro_noise.get_noise_2d(world_x, world_z)
     var hills: float = _hill_noise.get_noise_2d(world_x, world_z)
     var detail: float = _detail_noise.get_noise_2d(world_x, world_z)
