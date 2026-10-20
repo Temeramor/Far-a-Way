@@ -489,8 +489,11 @@ func _refresh_patch(force: bool) -> void:
 
             var far_surface: Vector3 = terrain_generator.surface_sample_at_world(far_px, far_pz)
             var far_slope: float = sqrt(far_surface.y * far_surface.y + far_surface.z * far_surface.z)
-            if far_surface.x <= MAX_GRASS_HEIGHT and far_slope <= MAX_SURFACE_SLOPE \
-                    and _random01(far_world_cell_x, far_world_cell_z, 33) >= clampf(far_slope * 0.30, 0.0, 0.16):
+            if (
+                far_surface.x <= MAX_GRASS_HEIGHT
+                and far_slope <= MAX_SURFACE_SLOPE
+                and _random01(far_world_cell_x, far_world_cell_z, 33) >= clampf(far_slope * 0.30, 0.0, 0.16)
+            ):
                 var far_height: float = lerpf(0.62, 0.95, _random01(far_world_cell_x, far_world_cell_z, 34))
                 var far_width: float = lerpf(0.86, 1.22, _random01(far_world_cell_x, far_world_cell_z, 35))
                 var far_yaw: float = _random01(far_world_cell_x, far_world_cell_z, 36) * TAU
