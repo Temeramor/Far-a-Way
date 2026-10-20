@@ -1,0 +1,30 @@
+; Engine configuration file.
+; SeedTerrain project layout for Godot 4.7.2.
+config_version=5
+
+[application]
+config/name="Neverland"
+config/description="Neverland — a procedural 3D island exploration prototype."
+config/icon="res://icon.svg"
+run/main_scene="res://scenes/menu.tscn"
+config/features=PackedStringArray("4.7", "Mobile")
+
+[autoload]
+GameSettings="*res://scripts/systems/game_settings.gd"
+
+[display]
+window/handheld/orientation=0
+window/energy_saving/keep_screen_on=true
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="canvas_items"
+
+[rendering]
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
+textures/default_filters/use_nearest_mipmap_filter=false
+
+[input_devices]
+pointing/emulate_mouse_from_touch=true
