@@ -11,12 +11,19 @@ uniform float rock_transition_start : hint_range(0.05, 0.8, 0.01) = 0.30;
 uniform float rock_transition_end : hint_range(0.1, 0.95, 0.01) = 0.48;
 
 // Stylized PBR response derived from each generated rock pixel's linear luminance.
-uniform float rock_luminance_dark : hint_range(0.0, 0.5, 0.005) = 0.025;
-uniform float rock_luminance_bright : hint_range(0.05, 0.8, 0.005) = 0.30;
-uniform float rock_roughness_dark : hint_range(0.0, 1.0, 0.01) = 0.94;
-uniform float rock_roughness_bright : hint_range(0.0, 1.0, 0.01) = 0.43;
+uniform float rock_luminance_dark : hint_range(0.0, 0.5, 0.005) = 0.045;
+uniform float rock_luminance_bright : hint_range(0.05, 0.8, 0.005) = 0.24;
+uniform float rock_roughness_dark : hint_range(0.0, 1.0, 0.01) = 0.92;
+uniform float rock_roughness_bright : hint_range(0.0, 1.0, 0.01) = 0.74;
 uniform float rock_specular_dark : hint_range(0.0, 1.0, 0.01) = 0.08;
-uniform float rock_specular_bright : hint_range(0.0, 1.0, 0.01) = 0.72;
+uniform float rock_specular_bright : hint_range(0.0, 1.0, 0.01) = 0.27;
+
+uniform float grass_luminance_dark : hint_range(0.0, 0.2, 0.005) = 0.025;
+uniform float grass_luminance_bright : hint_range(0.01, 0.3, 0.005) = 0.10;
+uniform float grass_roughness_dark : hint_range(0.0, 1.0, 0.01) = 0.96;
+uniform float grass_roughness_bright : hint_range(0.0, 1.0, 0.01) = 0.86;
+uniform float grass_specular_dark : hint_range(0.0, 1.0, 0.01) = 0.035;
+uniform float grass_specular_bright : hint_range(0.0, 1.0, 0.01) = 0.13;
 
 varying vec3 world_position;
 varying vec3 world_normal;
@@ -95,14 +102,14 @@ vec3 rock_palette(float pick) {
     // The pixel choice is still stochastic, but each sample maps through smooth gradients
     // rather than hard palette cutoffs. Macro strata are blended separately below.
     float p = clamp(pick, 0.0, 1.0);
-    vec3 c0 = palette_color(vec3(0.205, 0.215, 0.220));
-    vec3 c1 = palette_color(vec3(0.315, 0.325, 0.330));
-    vec3 c2 = palette_color(vec3(0.395, 0.400, 0.400));
-    vec3 c3 = palette_color(vec3(0.465, 0.465, 0.455));
-    vec3 c4 = palette_color(vec3(0.530, 0.520, 0.505));
-    vec3 c5 = palette_color(vec3(0.595, 0.585, 0.560));
-    vec3 c6 = palette_color(vec3(0.655, 0.645, 0.610));
-    vec3 c7 = palette_color(vec3(0.730, 0.710, 0.665));
+    vec3 c0 = palette_color(vec3(0.265, 0.265, 0.260));
+    vec3 c1 = palette_color(vec3(0.335, 0.335, 0.325));
+    vec3 c2 = palette_color(vec3(0.405, 0.400, 0.385));
+    vec3 c3 = palette_color(vec3(0.470, 0.465, 0.445));
+    vec3 c4 = palette_color(vec3(0.535, 0.525, 0.495));
+    vec3 c5 = palette_color(vec3(0.595, 0.580, 0.545));
+    vec3 c6 = palette_color(vec3(0.655, 0.635, 0.590));
+    vec3 c7 = palette_color(vec3(0.715, 0.690, 0.635));
     if (p < 0.16) return mix(c0, c1, smoothstep(0.0, 0.16, p));
     if (p < 0.32) return mix(c1, c2, smoothstep(0.16, 0.32, p));
     if (p < 0.49) return mix(c2, c3, smoothstep(0.32, 0.49, p));
@@ -129,63 +136,70 @@ vec3 grass_pixel(vec2 pixel_cell, vec2 pixel_world) {
 }
 
 vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world) {
-    float broad_tone = value_noise(pixel_world * 0.021 + vec2(13.8, seed_offset * 0.0006));
+    // Broad, organically warped color masses replace hard dark pits and polygon cracks.
+    // The per-cell seed still adds a tiny amount of color variation, never a tiled bitmap.
+    vec2 broad_warp = (vec2(
+        value_noise(pixel_world * 0.0031 + vec2(3.3, 8.1)),
+        value_noise(pixel_world * 0.0037 + vec2(19.7, 2.4))
+    ) - 0.5) * 76.0;
+    vec2 warped = pixel_world + broad_warp;
+
+    float broad_tone = value_noise(
+        warped * vec2(0.0032, 0.0047) + vec2(17.2, seed_offset_high * 0.00015)
+    );
+    float mineral_flow = value_noise(
+        warped * vec2(0.0085, 0.0180) + vec2(seed_offset * 0.0002, 6.1)
+    );
+    float fine_tone = value_noise(
+        warped * 0.032 + vec2(12.6, seed_offset * 0.0004)
+    );
     float random_cell = hash21(pixel_cell + vec2(0.0, 21.8));
-    float pick = clamp(random_cell + (broad_tone - 0.5) * 0.19, 0.001, 0.999);
+
+    // Tonal variation is mostly continuous noise; the pixel hash is deliberately subtle.
+    float pick = clamp(
+        0.47
+        + (broad_tone - 0.5) * 0.43
+        + (mineral_flow - 0.5) * 0.28
+        + (fine_tone - 0.5) * 0.075
+        + (random_cell - 0.5) * 0.055,
+        0.025, 0.975
+    );
     vec3 color = rock_palette(pick);
 
-    // Warped mineral strata create irregular, non-repeating color bands across the stone.
-    vec2 warp = (vec2(
-        value_noise(pixel_world * 0.017 + vec2(3.3, 8.1)),
-        value_noise(pixel_world * 0.019 + vec2(19.7, 2.4))
-    ) - 0.5) * 9.0;
-    vec2 warped = pixel_world + warp;
-    float mineral_layers = value_noise(warped * vec2(0.012, 0.039) + vec2(seed_offset * 0.0002, 6.1));
-    float layer_tone = smoothstep(0.05, 0.95, mineral_layers);
-    float broad_stone_tone = value_noise(warped * 0.0019 + vec2(17.2, seed_offset_high * 0.00015));
-    float mountain_macro_tone = value_noise(warped * 0.00082 + vec2(
-        17.2 + seed_offset * 0.00011,
-        8.4 + seed_offset_high * 0.00019
-    ));
-    // Slightly darker stone with very broad, smooth tonal drift across entire faces.
-    // The low-frequency term changes over hundreds of world units, never in sharp bands.
-    float stone_brightness = clamp(
-        0.68 + layer_tone * 0.19
-        + (broad_stone_tone - 0.5) * 0.25
-        + (mountain_macro_tone - 0.5) * 0.14,
-        0.58, 0.98
+    float layer_tone = smoothstep(
+        0.16, 0.86,
+        value_noise(warped * vec2(0.0044, 0.0155) + vec2(6.1, seed_offset * 0.00013))
     );
-    float stone_warmth = value_noise(warped * vec2(0.0025, 0.0060) + vec2(31.3, 8.4));
-    vec3 cool_tint = mix(vec3(0.78, 0.84, 0.94), vec3(1.02, 1.02, 0.99), layer_tone);
-    vec3 warm_tint = mix(vec3(0.88, 0.84, 0.77), vec3(1.08, 1.045, 0.98), layer_tone);
-    vec3 smooth_tint = mix(cool_tint, warm_tint, smoothstep(0.18, 0.82, stone_warmth) * 0.62);
+    float stone_brightness = clamp(
+        0.91
+        + (broad_tone - 0.5) * 0.22
+        + (mineral_flow - 0.5) * 0.13
+        + (fine_tone - 0.5) * 0.035,
+        0.73, 1.0
+    );
+    float stone_warmth = value_noise(
+        warped * vec2(0.0020, 0.0034) + vec2(31.3, 8.4)
+    );
+    vec3 cool_tint = vec3(0.91, 0.94, 0.98);
+    vec3 warm_tint = vec3(1.045, 1.015, 0.965);
+    vec3 smooth_tint = mix(
+        cool_tint, warm_tint,
+        smoothstep(0.25, 0.78, stone_warmth) * 0.68
+    );
     color *= smooth_tint * stone_brightness;
 
-    // Blocky pits, raised lips and chipped facets are snapped to the same pixel grid.
-    float pitting = value_noise(warped * 0.105 + vec2(7.0, seed_offset * 0.0007));
-    float pit_mask = step(0.835, pitting);
-    float rim_mask = step(0.675, pitting) * (1.0 - pit_mask);
-    float chip_noise = value_noise(warped * 0.062 + vec2(27.0, 4.0));
-    float chip_mask = step(0.79, chip_noise) * (1.0 - pit_mask);
-    color = mix(color, palette_color(vec3(0.105, 0.112, 0.112)), pit_mask * 0.60);
-    color = mix(color, color * vec3(1.16, 1.13, 1.08), rim_mask * 0.22);
-    color = mix(color, palette_color(vec3(0.655, 0.642, 0.608)), chip_mask * 0.18);
-
-    // Selective Voronoi fractures produce rare, irregular, stepped cracks rather than a grid.
-    float edge = voronoi_edge(warped / 34.0 + vec2(seed_offset * 0.0008, 6.7));
-    float crack_line = 1.0 - smoothstep(0.010, 0.043, edge);
-    float crack_region = step(0.735, value_noise(warped * 0.012 + vec2(9.0, 12.7)));
-    float crack_breakup = step(0.33, value_noise(warped * 0.041 + vec2(12.6, seed_offset * 0.0004)));
-    float crack_mask = crack_line * crack_region * crack_breakup * (1.0 - pit_mask * 0.35);
-    color = mix(color, palette_color(vec3(0.075, 0.080, 0.078)), crack_mask * 0.91);
-
-    // Tiny mineral flecks remain rare, so the stone keeps large readable planes.
-    float fleck = hash21(pixel_cell + vec2(34.8, 92.1));
-    if (fleck > 0.989) {
-        color = mix(color, palette_color(vec3(0.710, 0.690, 0.640)), 0.58);
-    } else if (fleck < 0.014) {
-        color = mix(color, palette_color(vec3(0.105, 0.110, 0.108)), 0.67);
-    }
+    // Small, soft erosion marks: no hard-edged Voronoi cells or large black blotches.
+    float erosion = smoothstep(
+        0.78, 0.96,
+        value_noise(warped * 0.055 + vec2(7.0, seed_offset * 0.0007))
+    );
+    color = mix(color, color * vec3(0.77, 0.78, 0.77), erosion * 0.12);
+    float mineral_lift = smoothstep(
+        0.74, 0.94,
+        value_noise(warped * 0.041 + vec2(27.0, 4.0))
+    );
+    color = mix(color, color * vec3(1.05, 1.04, 1.02), mineral_lift * 0.12);
+    color *= mix(vec3(0.985, 0.99, 1.0), vec3(1.012, 1.006, 0.99), layer_tone * 0.75);
     return color;
 }
 
@@ -194,20 +208,25 @@ float rock_luminance(vec3 color) {
     return dot(max(color, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722));
 }
 
-// Bright mineral grains receive a sharper, stronger sun highlight; dark pits and
-// cracks stay rough and subdued. Rock remains a dielectric (METALLIC = 0).
+// Rock PBR follows broad tonal changes instead of amplifying each dark speckle.
 vec2 rock_pbr(vec3 color) {
-    float brightness = smoothstep(
-        rock_luminance_dark,
-        rock_luminance_bright,
-        rock_luminance(color)
+    float brightness = smoothstep(rock_luminance_dark, rock_luminance_bright, rock_luminance(color));
+    return vec2(
+        mix(rock_roughness_dark, rock_roughness_bright, brightness),
+        mix(rock_specular_dark, rock_specular_bright, brightness)
     );
-    float roughness = mix(rock_roughness_dark, rock_roughness_bright, brightness);
-    float specular = mix(rock_specular_dark, rock_specular_bright, brightness);
-    return vec2(roughness, specular);
 }
 
-// Distance LOD for procedural materials: broad continuous colors replace tiny pixel cells,
+// Grass has a weaker sheen: mostly diffuse with only a subtle response on brighter blades.
+vec2 grass_pbr(vec3 color) {
+    float brightness = smoothstep(grass_luminance_dark, grass_luminance_bright, rock_luminance(color));
+    return vec2(
+        mix(grass_roughness_dark, grass_roughness_bright, brightness),
+        mix(grass_specular_dark, grass_specular_bright, brightness)
+    );
+}
+
+// Distance LOD for procedural materials:// Distance LOD for procedural materials: broad continuous colors replace tiny pixel cells,
 // cracks and pitting beyond the mid-distance. This reduces distant shimmer without
 // changing any generated heights or the close-up material.
 vec3 distant_grass_color(vec2 world_xz) {
@@ -238,7 +257,6 @@ void fragment() {
     float slope = 1.0 - clamp(normal.y, 0.0, 1.0);
     float camera_distance = distance(CAMERA_POSITION_WORLD.xz, world_position.xz);
 
-    // Select the same tri-planar rock projection used by the detailed material.
     vec2 rock_world;
     if (abs(normal.x) > abs(normal.y) && abs(normal.x) > abs(normal.z)) {
         rock_world = world_position.zy;
@@ -248,28 +266,26 @@ void fragment() {
         rock_world = world_position.xz;
     }
 
-    // Fragment processor functions cannot use an early return in Godot shading
-    // language. Route the coarse far-distance material and detailed material through
-    // mutually exclusive branches so the far LOD is not overwritten afterwards.
-    if (camera_distance >= 1780.0) {
-        float far_transition_noise = (value_noise(world_position.xz * 0.0038 + vec2(5.4)) - 0.5) * 0.055;
+    // Broaden the grass-to-rock blend. Only a gentle, low-frequency perturbation
+    // remains, so the transition doesn't break into sharp islands or polygon-like edges.
+    if (camera_distance >= 650.0) {
+        float far_transition_noise =
+            (value_noise(world_position.xz * 0.0019 + vec2(5.4)) - 0.5) * 0.028;
         float far_rock_amount = smoothstep(
-            rock_transition_start,
-            rock_transition_end,
-            slope + far_transition_noise
+            rock_transition_start, rock_transition_end, slope + far_transition_noise
         );
         vec3 far_grass = distant_grass_color(world_position.xz);
         vec3 far_rock = distant_rock_color(rock_world);
+        vec2 grass_material = grass_pbr(far_grass);
+        vec2 rock_material = rock_pbr(far_rock);
         ALBEDO = mix(far_grass, far_rock, far_rock_amount);
-        vec2 far_rock_pbr = rock_pbr(far_rock);
-        ROUGHNESS = mix(0.96, far_rock_pbr.x, far_rock_amount);
-        SPECULAR = mix(0.08, far_rock_pbr.y, far_rock_amount);
+        ROUGHNESS = mix(grass_material.x, rock_material.x, far_rock_amount);
+        SPECULAR = mix(grass_material.y, rock_material.y, far_rock_amount);
     } else {
-        float transition_noise = (value_noise(world_position.xz * 0.008 + vec2(5.4)) - 0.5) * 0.10;
+        float transition_noise =
+            (value_noise(world_position.xz * 0.0036 + vec2(5.4)) - 0.5) * 0.045;
         float rock_amount = smoothstep(
-            rock_transition_start,
-            rock_transition_end,
-            slope + transition_noise
+            rock_transition_start, rock_transition_end, slope + transition_noise
         );
 
         vec2 grass_cell = floor(world_position.xz / pixel_size);
@@ -279,39 +295,31 @@ void fragment() {
         vec2 rock_pixel_world = rock_cell * pixel_size;
         vec3 rock_color = rock_pixel(rock_cell, rock_pixel_world);
         vec3 detailed_color = mix(grass_color, rock_color, rock_amount);
+        vec2 detailed_grass_pbr = grass_pbr(grass_color);
+        vec2 detailed_rock_pbr = rock_pbr(rock_color);
+        vec2 detailed_pbr = mix(detailed_grass_pbr, detailed_rock_pbr, rock_amount);
 
-        // Only calculate and blend the macro-color material within the LOD transition.
-        float far_blend = smoothstep(920.0, 1780.0, camera_distance);
-        if (camera_distance > 920.0) {
-            float far_transition_noise = (value_noise(world_position.xz * 0.0038 + vec2(5.4)) - 0.5) * 0.055;
+        // Small procedural pixels merge into broad color masses as the camera moves away.
+        float far_blend = smoothstep(160.0, 650.0, camera_distance);
+        if (camera_distance > 160.0) {
+            float far_transition_noise =
+                (value_noise(world_position.xz * 0.0019 + vec2(5.4)) - 0.5) * 0.028;
             float far_rock_amount = smoothstep(
-                rock_transition_start,
-                rock_transition_end,
-                slope + far_transition_noise
+                rock_transition_start, rock_transition_end, slope + far_transition_noise
             );
             vec3 distant_grass = distant_grass_color(world_position.xz);
             vec3 distant_rock = distant_rock_color(rock_world);
             vec3 distant_color = mix(distant_grass, distant_rock, far_rock_amount);
-
-            vec2 detailed_rock_pbr = rock_pbr(rock_color);
+            vec2 distant_grass_pbr = grass_pbr(distant_grass);
             vec2 distant_rock_pbr = rock_pbr(distant_rock);
-            vec2 detailed_pbr = vec2(
-                mix(0.96, detailed_rock_pbr.x, rock_amount),
-                mix(0.08, detailed_rock_pbr.y, rock_amount)
-            );
-            vec2 distant_pbr = vec2(
-                mix(0.96, distant_rock_pbr.x, far_rock_amount),
-                mix(0.08, distant_rock_pbr.y, far_rock_amount)
-            );
-
+            vec2 distant_pbr = mix(distant_grass_pbr, distant_rock_pbr, far_rock_amount);
             ALBEDO = mix(detailed_color, distant_color, far_blend);
             ROUGHNESS = mix(detailed_pbr.x, distant_pbr.x, far_blend);
             SPECULAR = mix(detailed_pbr.y, distant_pbr.y, far_blend);
         } else {
             ALBEDO = detailed_color;
-            vec2 detailed_rock_pbr = rock_pbr(rock_color);
-            ROUGHNESS = mix(0.96, detailed_rock_pbr.x, rock_amount);
-            SPECULAR = mix(0.08, detailed_rock_pbr.y, rock_amount);
+            ROUGHNESS = detailed_pbr.x;
+            SPECULAR = detailed_pbr.y;
         }
     }
     METALLIC = 0.0;
