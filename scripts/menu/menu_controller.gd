@@ -13,6 +13,7 @@ const COLOR_GREEN: Color = Color("#6D8B45")
 @onready var new_game_view: VBoxContainer = $Center/Panel/Margin/Stack/NewGameView
 @onready var settings_view: VBoxContainer = $Center/Panel/Margin/Stack/SettingsView
 @onready var seed_edit: LineEdit = $Center/Panel/Margin/Stack/NewGameView/SeedEdit
+@onready var map_size_selector: OptionButton = $Center/Panel/Margin/Stack/NewGameView/MapSizeRow/MapSizeSelector
 @onready var start_button: Button = $Center/Panel/Margin/Stack/NewGameView/StartButton
 @onready var status_label: Label = $Center/Panel/Margin/Stack/StatusLabel
 @onready var speed_slider: HSlider = $Center/Panel/Margin/Stack/SettingsView/SpeedRow/SpeedSlider
@@ -52,6 +53,10 @@ func _ready() -> void:
 
     seed_edit.max_length = 0
     seed_edit.text = "1337"
+    map_size_selector.add_item("Маленькая · 1×1 км", GameSettings.MAP_SIZE_SMALL)
+    map_size_selector.add_item("Средняя · 5×5 км", GameSettings.MAP_SIZE_MEDIUM)
+    map_size_selector.add_item("Большая · 15×15 км", GameSettings.MAP_SIZE_LARGE)
+    map_size_selector.select(1)
     _sync_settings_to_ui()
     _show_main()
 
@@ -157,6 +162,7 @@ func _apply_visual_theme() -> void:
         ^"Center/Panel/Margin/Stack/MainView/SettingsButton",
         ^"Center/Panel/Margin/Stack/MainView/ExitButton",
         ^"Center/Panel/Margin/Stack/NewGameView/StartButton",
+        ^"Center/Panel/Margin/Stack/NewGameView/MapSizeRow/MapSizeSelector",
         ^"Center/Panel/Margin/Stack/NewGameView/BackButton",
         ^"Center/Panel/Margin/Stack/SettingsView/SettingsButtons/SaveButton",
         ^"Center/Panel/Margin/Stack/SettingsView/SettingsButtons/CancelButton",
@@ -210,6 +216,7 @@ func _apply_visual_theme() -> void:
 
     for label_path in [
         "Center/Panel/Margin/Stack/NewGameView/SeedCaption",
+        "Center/Panel/Margin/Stack/NewGameView/MapSizeRow/MapSizeCaption",
         "Center/Panel/Margin/Stack/SettingsView/SpeedCaption",
         "Center/Panel/Margin/Stack/SettingsView/FovCaption"
     ]:
@@ -217,6 +224,8 @@ func _apply_visual_theme() -> void:
         caption.add_theme_font_size_override("font_size", 16)
         caption.add_theme_color_override("font_color", COLOR_PARCHMENT)
 
+    map_size_selector.custom_minimum_size = Vector2(0.0, 48.0)
+    map_size_selector.add_theme_font_size_override("font_size", 15)
     seed_edit.custom_minimum_size = Vector2(0.0, 44.0)
     seed_edit.add_theme_font_size_override("font_size", 14)
     seed_edit.add_theme_stylebox_override("normal", _style_texture("res://assets/ui/input_frame.png", 5.0, 12.0, 6.0, 12.0, 6.0))
@@ -331,7 +340,10 @@ func _start_game() -> void:
 
     # Preserve arbitrary input as a deterministic integer key for noise.
     var seed_value: int = _seed_from_text(seed_edit.text)
-    GameSettings.request_new_game(seed_value)
+    var selected_map_size: int = GameSettings.MAP_SIZE_MEDIUM
+    if map_size_selector.selected >= 0:
+        selected_map_size = map_size_selector.get_item_id(map_size_selector.selected)
+    GameSettings.request_new_game(seed_value, selected_map_size)
     var change_error: Error = get_tree().change_scene_to_file(WORLD_SCENE_PATH)
     if change_error != OK:
         GameSettings.has_requested_seed = false
