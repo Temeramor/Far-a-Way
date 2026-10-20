@@ -109,6 +109,18 @@ text = "Выход"
 visible = false
 layout_mode = 2
 
+[node name="MapSizeRow" type="HBoxContainer" parent="Center/Panel/Margin/Stack/NewGameView"]
+layout_mode = 2
+
+[node name="MapSizeCaption" type="Label" parent="Center/Panel/Margin/Stack/NewGameView/MapSizeRow"]
+layout_mode = 2
+text = "Размер карты"
+vertical_alignment = 1
+
+[node name="MapSizeSelector" type="OptionButton" parent="Center/Panel/Margin/Stack/NewGameView/MapSizeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
 [node name="SeedCaption" type="Label" parent="Center/Panel/Margin/Stack/NewGameView"]
 layout_mode = 2
 text = "Сид нового мира"
