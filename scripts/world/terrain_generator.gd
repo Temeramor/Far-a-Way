@@ -15,7 +15,7 @@ const MAX_TERRAIN_HEIGHT: float = 1600.0
 
 @export_group("World")
 @export var world_size: float = 10000.0
-@export_range(1024, 2048, 1024) var resolution: int = 2048
+@export_range(256, 2048, 256) var resolution: int = 2048
 @export var world_seed: int = 1337
 
 var heights: PackedFloat32Array = PackedFloat32Array()
@@ -239,6 +239,7 @@ func _create_mountain_ranges(seed_value: int) -> void:
     _mountain_phases.clear()
     var rng := RandomNumberGenerator.new()
     rng.seed = int(seed_value) + 17011
+    var size_scale: float = world_size / 10000.0
 
     for _range_index in range(3):
         var angle: float = rng.randf_range(0.0, PI)
@@ -250,8 +251,8 @@ func _create_mountain_ranges(seed_value: int) -> void:
         )
         var half_length: float = world_size * rng.randf_range(0.23, 0.34)
         var points: Array[Vector2] = [
-            center - direction * half_length + side * rng.randf_range(-600.0, 600.0),
-            center - direction * half_length * 0.34 + side * rng.randf_range(-1050.0, 1050.0),
+            center - direction * half_length + side * rng.randf_range(-600.0, 600.0) * size_scale,
+            center - direction * half_length * 0.34 + side * rng.randf_range(-1050.0, 1050.0) * size_scale,
             center + direction * half_length * 0.30 + side * rng.randf_range(-1050.0, 1050.0),
             center + direction * half_length + side * rng.randf_range(-600.0, 600.0)
         ]
@@ -265,7 +266,7 @@ func _create_mountain_ranges(seed_value: int) -> void:
             _mountain_starts.append(a)
             _mountain_deltas.append(delta)
             _mountain_lengths_squared.append(maxf(delta.length_squared(), 0.001))
-            _mountain_widths.append(range_width * rng.randf_range(0.88, 1.12))
+            _mountain_widths.append(range_width * rng.randf_range(0.88, 1.12) * size_scale)
             _mountain_heights.append(range_height * rng.randf_range(0.94, 1.06))
             _mountain_phases.append(phase + float(segment_index) * 1.7)
 
@@ -312,7 +313,8 @@ func _height_at(world_x: float, world_z: float) -> float:
         var mountain_mask: float = clampf(mountain_height / 900.0, 0.0, 1.0)
         height += mountain_mask * (micro_ridge * 34.0 + detail * 22.0)
 
-    var spawn_fade: float = 1.0 - _smoothstep(420.0, 1420.0, point.length())
+    var size_scale: float = world_size / 10000.0
+    var spawn_fade: float = 1.0 - _smoothstep(420.0 * size_scale, 1420.0 * size_scale, point.length())
     var spawn_height: float = 25.0 + macro * 3.0 + detail * 0.8
     height = lerpf(height, spawn_height, spawn_fade)
     return clampf(height, MIN_TERRAIN_HEIGHT, MAX_TERRAIN_HEIGHT)
