@@ -53,32 +53,6 @@ float value_noise(vec2 p) {
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
-float voronoi_edge(vec2 p) {
-    vec2 base_cell = floor(p);
-    vec2 local = fract(p);
-    float nearest = 10.0;
-    float second_nearest = 10.0;
-    for (int y = -1; y <= 1; y++) {
-        for (int x = -1; x <= 1; x++) {
-            vec2 offset_cell = vec2(float(x), float(y));
-            vec2 cell = base_cell + offset_cell;
-            vec2 random_point = vec2(
-                hash21(cell + vec2(3.1, 8.7)),
-                hash21(cell + vec2(19.4, 2.6))
-            ) * 0.72 + 0.14;
-            vec2 delta = offset_cell + random_point - local;
-            float distance_squared = dot(delta, delta);
-            if (distance_squared < nearest) {
-                second_nearest = nearest;
-                nearest = distance_squared;
-            } else if (distance_squared < second_nearest) {
-                second_nearest = distance_squared;
-            }
-        }
-    }
-    return sqrt(second_nearest) - sqrt(nearest);
-}
-
 // Palette swatches are deliberately stored as color values, not copied texture assets.
 // Convert their sRGB values to linear light before returning them as material albedo.
 vec3 palette_color(vec3 srgb_color) {
