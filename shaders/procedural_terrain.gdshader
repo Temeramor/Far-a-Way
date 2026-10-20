@@ -226,7 +226,7 @@ vec2 grass_pbr(vec3 color) {
     );
 }
 
-// Distance LOD for procedural materials:// Distance LOD for procedural materials: broad continuous colors replace tiny pixel cells,
+// Distance LOD for procedural materials: broad continuous colors replace tiny pixel cells,
 // cracks and pitting beyond the mid-distance. This reduces distant shimmer without
 // changing any generated heights or the close-up material.
 vec3 distant_grass_color(vec2 world_xz) {
