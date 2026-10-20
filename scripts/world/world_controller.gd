@@ -25,8 +25,11 @@ const TIME_LABELS: Array[String] = ["Рассвет", "День", "Закат", 
 var flight_status_label: Label
 var flight_status_backdrop: Panel
 var weather_panel: PanelContainer
-var weather_buttons: Array[Button] = []
-var time_buttons: Array[Button] = []
+var weather_menu_button: Button
+var weather_selector: OptionButton
+var time_selector: OptionButton
+var _weather_menu_open: bool = false
+var _mouse_mode_before_weather_menu: int = Input.MOUSE_MODE_VISIBLE
 var _weather_mode: int = WEATHER_CLOUDY
 var _time_mode: int = TIME_DAY
 var _last_styled_time_mode: int = -1
@@ -94,6 +97,12 @@ func begin_generation(seed_value: int) -> void:
     _world_ready = false
     if weather_panel != null:
         weather_panel.visible = false
+    if weather_menu_button != null:
+        weather_menu_button.visible = false
+        weather_menu_button.disabled = true
+    _weather_menu_open = false
+    player.mouse_capture_paused = false
+    touch_controls.set_process_input(true)
 
     player.flight_speed_multiplier = GameSettings.flight_speed_multiplier
     player.flight_fov = GameSettings.flight_fov
@@ -128,8 +137,14 @@ func _on_generation_finished(_seed_value: int) -> void:
     loading_screen.set_progress(1.0, "Мир готов. Приятного исследования!")
     loading_screen.visible = false
     _world_ready = true
+    if weather_menu_button != null:
+        weather_menu_button.visible = OS.has_feature("android")
+        weather_menu_button.disabled = false
     if weather_panel != null:
-        weather_panel.visible = true
+        weather_panel.visible = false
+    _weather_menu_open = false
+    player.mouse_capture_paused = false
+    touch_controls.set_process_input(true)
     _update_weather_button_styles()
     _update_time_button_styles()
     Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -178,62 +193,112 @@ func _on_flight_mode_changed(enabled: bool) -> void:
 
 func _setup_weather_controls() -> void:
     weather_panel = PanelContainer.new()
-    weather_panel.name = "WeatherAndTimeControls"
+    weather_panel.name = "WeatherAndTimeMenu"
     weather_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
-    weather_panel.offset_left = -286.0
-    weather_panel.offset_top = 12.0
-    weather_panel.offset_right = 286.0
-    weather_panel.offset_bottom = 112.0
+    weather_panel.offset_left = -205.0
+    weather_panel.offset_top = 62.0
+    weather_panel.offset_right = 205.0
+    weather_panel.offset_bottom = 250.0
     weather_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 
     var panel_style := StyleBoxFlat.new()
-    panel_style.bg_color = Color(0.035, 0.055, 0.045, 0.86)
-    panel_style.border_color = Color(0.32, 0.39, 0.27, 0.90)
+    panel_style.bg_color = Color(0.035, 0.055, 0.045, 0.96)
+    panel_style.border_color = Color(0.32, 0.39, 0.27, 0.95)
     panel_style.set_border_width_all(1)
     panel_style.set_corner_radius_all(9)
-    panel_style.content_margin_left = 8.0
-    panel_style.content_margin_right = 8.0
-    panel_style.content_margin_top = 7.0
-    panel_style.content_margin_bottom = 7.0
+    panel_style.content_margin_left = 12.0
+    panel_style.content_margin_right = 12.0
+    panel_style.content_margin_top = 10.0
+    panel_style.content_margin_bottom = 10.0
     weather_panel.add_theme_stylebox_override("panel", panel_style)
 
     var rows := VBoxContainer.new()
-    rows.name = "ControlRows"
-    rows.add_theme_constant_override("separation", 6)
+    rows.name = "MenuRows"
+    rows.add_theme_constant_override("separation", 10)
     weather_panel.add_child(rows)
 
+    var header := HBoxContainer.new()
+    header.name = "Header"
+    rows.add_child(header)
+
+    var title := Label.new()
+    title.text = "ПОГОДА И ВРЕМЯ"
+    title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    title.add_theme_font_size_override("font_size", 15)
+    title.add_theme_color_override("font_color", Color(0.94, 0.96, 0.87, 1.0))
+    header.add_child(title)
+
+    var close_button := _make_control_button("CloseWeatherMenu", "×", "Закрыть меню")
+    close_button.custom_minimum_size = Vector2(34.0, 30.0)
+    close_button.add_theme_font_size_override("font_size", 20)
+    close_button.pressed.connect(_set_weather_menu_open.bind(false))
+    header.add_child(close_button)
+
     var weather_row := HBoxContainer.new()
-    weather_row.name = "WeatherButtons"
-    weather_row.add_theme_constant_override("separation", 6)
+    weather_row.name = "WeatherSelection"
+    weather_row.add_theme_constant_override("separation", 10)
     rows.add_child(weather_row)
-    var weather_labels: Array[String] = ["ЯСНО", "ОБЛАЧНО", "ПАСМУРНО"]
-    var weather_tooltips: Array[String] = [
-        "Ясная погода: редкие кучевые облака и тонкие перистые облака",
-        "Облачная погода: переменная облачность",
-        "Пасмурная погода: плотный слой облаков и рассеянный свет"
-    ]
-    for mode in range(weather_labels.size()):
-        var weather_button := _make_control_button("Weather_%d" % mode, weather_labels[mode], weather_tooltips[mode])
-        weather_button.custom_minimum_size = Vector2(174.0, 36.0)
-        weather_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        weather_button.pressed.connect(_on_weather_button_pressed.bind(mode))
-        weather_row.add_child(weather_button)
-        weather_buttons.append(weather_button)
+
+    var weather_label := Label.new()
+    weather_label.text = "Погода"
+    weather_label.custom_minimum_size = Vector2(100.0, 0.0)
+    weather_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    weather_label.add_theme_color_override("font_color", Color(0.88, 0.91, 0.82, 1.0))
+    weather_row.add_child(weather_label)
+
+    weather_selector = OptionButton.new()
+    weather_selector.name = "WeatherSelector"
+    weather_selector.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    weather_selector.add_item("Ясно", WEATHER_CLEAR)
+    weather_selector.add_item("Облачно", WEATHER_CLOUDY)
+    weather_selector.add_item("Пасмурно", WEATHER_OVERCAST)
+    weather_selector.item_selected.connect(_on_weather_selection_changed)
+    _style_button(weather_selector, false)
+    weather_row.add_child(weather_selector)
 
     var time_row := HBoxContainer.new()
-    time_row.name = "TimeButtons"
-    time_row.add_theme_constant_override("separation", 6)
+    time_row.name = "TimeSelection"
+    time_row.add_theme_constant_override("separation", 10)
     rows.add_child(time_row)
+
+    var time_label := Label.new()
+    time_label.text = "Время суток"
+    time_label.custom_minimum_size = Vector2(100.0, 0.0)
+    time_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    time_label.add_theme_color_override("font_color", Color(0.88, 0.91, 0.82, 1.0))
+    time_row.add_child(time_label)
+
+    time_selector = OptionButton.new()
+    time_selector.name = "TimeSelector"
+    time_selector.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     for preset in range(TIME_LABELS.size()):
-        var time_button := _make_control_button("Time_%d" % preset, TIME_LABELS[preset], "Установить время: %s" % TIME_LABELS[preset].to_lower())
-        time_button.custom_minimum_size = Vector2(128.0, 34.0)
-        time_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        time_button.pressed.connect(_on_time_preset_pressed.bind(preset))
-        time_row.add_child(time_button)
-        time_buttons.append(time_button)
+        time_selector.add_item(TIME_LABELS[preset], preset)
+    time_selector.item_selected.connect(_on_time_selection_changed)
+    _style_button(time_selector, false)
+    time_row.add_child(time_selector)
+
+    var hint := Label.new()
+    hint.text = "M — открыть/закрыть · Esc — закрыть"
+    hint.visible = not OS.has_feature("android")
+    hint.add_theme_font_size_override("font_size", 11)
+    hint.add_theme_color_override("font_color", Color(0.66, 0.72, 0.63, 1.0))
+    rows.add_child(hint)
 
     $CanvasLayer.add_child(weather_panel)
     weather_panel.visible = false
+
+    weather_menu_button = _make_control_button("WeatherMenuToggle", "ПОГОДА / ВРЕМЯ", "Открыть настройки погоды и времени")
+    weather_menu_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+    weather_menu_button.offset_left = -210.0
+    weather_menu_button.offset_top = 14.0
+    weather_menu_button.offset_right = -14.0
+    weather_menu_button.offset_bottom = 54.0
+    weather_menu_button.custom_minimum_size = Vector2(196.0, 40.0)
+    weather_menu_button.visible = false
+    weather_menu_button.disabled = true
+    weather_menu_button.pressed.connect(_toggle_weather_menu)
+    $CanvasLayer.add_child(weather_menu_button)
+
     _update_weather_button_styles()
     _update_time_button_styles()
 
@@ -371,8 +436,20 @@ func _apply_weather(mode: int, animate: bool) -> void:
 
 
 func _update_weather_button_styles() -> void:
-    for button_index in range(weather_buttons.size()):
-        _style_button(weather_buttons[button_index], button_index == _weather_mode)
+    if weather_selector != null:
+        weather_selector.select(_weather_mode)
+
+
+func _on_weather_selection_changed(index: int) -> void:
+    if weather_selector == null:
+        return
+    _on_weather_button_pressed(weather_selector.get_item_id(index))
+
+
+func _on_time_selection_changed(index: int) -> void:
+    if time_selector == null:
+        return
+    _on_time_preset_pressed(time_selector.get_item_id(index))
 
 
 func _on_time_preset_pressed(preset: int) -> void:
@@ -398,9 +475,48 @@ func _on_time_changed(value: float) -> void:
 
 
 func _update_time_button_styles() -> void:
-    _last_styled_time_mode = _time_mode
-    for button_index in range(time_buttons.size()):
-        _style_button(time_buttons[button_index], button_index == _time_mode)
+    if time_selector != null:
+        time_selector.select(_time_mode)
+
+
+func _toggle_weather_menu() -> void:
+    _set_weather_menu_open(not _weather_menu_open)
+
+
+func _set_weather_menu_open(open: bool) -> void:
+    if open and (not _world_ready or weather_panel == null):
+        return
+    if open == _weather_menu_open:
+        return
+
+    if open:
+        _mouse_mode_before_weather_menu = Input.mouse_mode
+        _weather_menu_open = true
+        weather_panel.visible = true
+        player.mouse_capture_paused = true
+        touch_controls.set_process_input(false)
+        Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+    else:
+        _weather_menu_open = false
+        weather_panel.visible = false
+        player.mouse_capture_paused = false
+        touch_controls.set_process_input(true)
+        if OS.has_feature("android"):
+            Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+        else:
+            Input.mouse_mode = _mouse_mode_before_weather_menu
+
+
+func _unhandled_input(event: InputEvent) -> void:
+    if not (event is InputEventKey) or not event.pressed or event.echo:
+        return
+
+    if event.keycode == KEY_M or event.physical_keycode == KEY_M:
+        _set_weather_menu_open(not _weather_menu_open)
+        get_viewport().set_input_as_handled()
+    elif event.keycode == KEY_ESCAPE and _weather_menu_open:
+        _set_weather_menu_open(false)
+        get_viewport().set_input_as_handled()
 
 
 func _style_button(control_button: Button, selected: bool) -> void:

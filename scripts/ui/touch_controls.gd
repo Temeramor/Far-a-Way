@@ -23,9 +23,8 @@ func _input(event: InputEvent) -> void:
 
     if event is InputEventScreenTouch:
         if event.pressed:
-            # The weather bar occupies the centred strip at the top of the screen.
-            # Do not also interpret a button tap as movement or camera-look input.
-            if event.position.y <= 88.0 and absf(event.position.x - viewport_size.x * 0.5) <= 250.0:
+            # Reserve the top strip for interface buttons before touch movement or camera look.
+            if event.position.y <= 88.0:
                 return
             if event.position.x < viewport_size.x * 0.5 and _move_touch_id == -1:
                 _move_touch_id = event.index
