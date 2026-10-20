@@ -3,10 +3,6 @@ class_name ProceduralGrassField
 
 const PATCH_SIZE: float = 144.0
 const GRID_CELLS: int = 288
-# Low-detail clusters cover an area about 6.7x wider than the close-up patch.
-const FAR_PATCH_SIZE: float = 960.0
-const FAR_GRID_CELLS: int = 192
-const FAR_CENTER_SNAP: float = 128.0
 const BUILD_BATCH_CELLS: int = 4096
 const INSTANCE_UPLOAD_BATCH: int = 8192
 const MOVE_THRESHOLD: float = 24.0
@@ -18,11 +14,7 @@ var world_seed: int = 1337
 var _grass_mesh: ArrayMesh
 var _grass_material: ShaderMaterial
 var _grass_instance: MultiMeshInstance3D
-var _distant_grass_mesh: ArrayMesh
-var _distant_grass_instance: MultiMeshInstance3D
-var _distant_flower_instance: MultiMeshInstance3D
 var _flower_mesh: ArrayMesh
-var _distant_flower_mesh: ArrayMesh
 var _flower_material: ShaderMaterial
 var _flower_instance: MultiMeshInstance3D
 var _weather_mode: int = 1
@@ -31,7 +23,6 @@ var _target_wind_strength: float = 0.68
 var _wind_speed: float = 1.03
 var _target_wind_speed: float = 1.03
 var _last_center: Vector2 = Vector2(INF, INF)
-var _last_far_center: Vector2 = Vector2(INF, INF)
 var _refresh_requested: bool = false
 var _build_in_progress: bool = false
 var _refresh_pending: bool = false
@@ -45,10 +36,8 @@ func configure(generator: TerrainGenerator, seed_value: int) -> void:
 
 func _ready() -> void:
     _create_blade_mesh()
-    _distant_grass_mesh = _create_distant_grass_mesh()
     _create_blade_material()
     _create_flower_mesh()
-    _distant_flower_mesh = _create_distant_flower_mesh()
     _create_flower_material()
 
     _grass_instance = MultiMeshInstance3D.new()
@@ -57,23 +46,11 @@ func _ready() -> void:
     _grass_instance.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
     add_child(_grass_instance)
 
-    _distant_grass_instance = MultiMeshInstance3D.new()
-    _distant_grass_instance.name = "DistantGrassClusters"
-    _distant_grass_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-    _distant_grass_instance.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
-    add_child(_distant_grass_instance)
-
     _flower_instance = MultiMeshInstance3D.new()
     _flower_instance.name = "ProceduralFlowerInstances"
     _flower_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
     _flower_instance.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
     add_child(_flower_instance)
-
-    _distant_flower_instance = MultiMeshInstance3D.new()
-    _distant_flower_instance.name = "DistantFlowerClusters"
-    _distant_flower_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-    _distant_flower_instance.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
-    add_child(_distant_flower_instance)
     # configure() is called before this scene is added to the tree. The process
     # loop consumes _refresh_requested, avoiding a duplicate initial patch build.
     if not _refresh_requested:
@@ -161,59 +138,6 @@ func _create_blade_mesh() -> void:
     _grass_mesh = ArrayMesh.new()
     _grass_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 
-func _create_distant_grass_mesh() -> ArrayMesh:
-    # Three crossed, slightly curved ribbons form one low-detail grass clump.
-    # A single MultiMesh instance therefore replaces several individual distant blades.
-    const BLADE_COUNT: int = 3
-    const SEGMENTS: int = 2
-    const HALF_WIDTH: float = 0.20
-    var vertices := PackedVector3Array()
-    var normals := PackedVector3Array()
-    var uvs := PackedVector2Array()
-    var colors := PackedColorArray()
-    var indices := PackedInt32Array()
-
-    for blade in range(BLADE_COUNT):
-        var angle: float = float(blade) * PI / 3.0
-        var width_axis := Vector3(cos(angle), 0.0, sin(angle))
-        var forward_axis := Vector3(-sin(angle), 0.0, cos(angle))
-        var ribbon_normal := forward_axis.normalized()
-        var base_vertex: int = vertices.size()
-        for row in range(SEGMENTS + 1):
-            var t: float = float(row) / float(SEGMENTS)
-            var half_width: float = HALF_WIDTH * lerpf(1.0, 0.08, t)
-            var center_offset: Vector3 = forward_axis * (sin(t * PI * 0.5) * 0.11)
-            var center := Vector3(0.0, t, 0.0) + center_offset
-            vertices.append(center - width_axis * half_width)
-            vertices.append(center + width_axis * half_width)
-            normals.append(ribbon_normal)
-            normals.append(ribbon_normal)
-            uvs.append(Vector2(0.0, t))
-            uvs.append(Vector2(1.0, t))
-            colors.append(Color.WHITE)
-            colors.append(Color.WHITE)
-        for segment in range(SEGMENTS):
-            var row0: int = base_vertex + segment * 2
-            var row1: int = row0 + 2
-            indices.append(row0)
-            indices.append(row0 + 1)
-            indices.append(row1)
-            indices.append(row0 + 1)
-            indices.append(row1 + 1)
-            indices.append(row1)
-
-    var arrays: Array = []
-    arrays.resize(Mesh.ARRAY_MAX)
-    arrays[Mesh.ARRAY_VERTEX] = vertices
-    arrays[Mesh.ARRAY_NORMAL] = normals
-    arrays[Mesh.ARRAY_TEX_UV] = uvs
-    arrays[Mesh.ARRAY_COLOR] = colors
-    arrays[Mesh.ARRAY_INDEX] = indices
-    var mesh := ArrayMesh.new()
-    mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-    return mesh
-
-
 func _create_blade_material() -> void:
     var shader := load("res://shaders/procedural_grass.gdshader") as Shader
     _grass_material = ShaderMaterial.new()
@@ -285,30 +209,6 @@ func _append_flower_pixel(
     indices.append(first + 3)
 
 
-func _create_distant_flower_mesh() -> ArrayMesh:
-    # At range, a blossom becomes one colored pixel-sized quad instead of nine petal
-    # squares. This keeps distant flowers readable while cutting their vertex count.
-    const HALF_SIZE: float = 0.25
-    var arrays: Array = []
-    arrays.resize(Mesh.ARRAY_MAX)
-    arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([
-        Vector3(-HALF_SIZE, -HALF_SIZE, 0.0),
-        Vector3(HALF_SIZE, -HALF_SIZE, 0.0),
-        Vector3(HALF_SIZE, HALF_SIZE, 0.0),
-        Vector3(-HALF_SIZE, HALF_SIZE, 0.0)
-    ])
-    arrays[Mesh.ARRAY_NORMAL] = PackedVector3Array([
-        Vector3.BACK, Vector3.BACK, Vector3.BACK, Vector3.BACK
-    ])
-    arrays[Mesh.ARRAY_COLOR] = PackedColorArray([
-        Color.WHITE, Color.WHITE, Color.WHITE, Color.WHITE
-    ])
-    arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 2, 0, 2, 3])
-    var mesh := ArrayMesh.new()
-    mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-    return mesh
-
-
 func _create_flower_material() -> void:
     var shader := load("res://shaders/procedural_flowers.gdshader") as Shader
     _flower_material = ShaderMaterial.new()
@@ -333,11 +233,6 @@ func _refresh_patch(force: bool) -> void:
     var center := Vector2(round(camera_xz.x / 32.0) * 32.0, round(camera_xz.y / 32.0) * 32.0)
     if not force and center.distance_to(_last_center) < MOVE_THRESHOLD:
         return
-    var far_center := Vector2(
-        round(camera_xz.x / FAR_CENTER_SNAP) * FAR_CENTER_SNAP,
-        round(camera_xz.y / FAR_CENTER_SNAP) * FAR_CENTER_SNAP
-    )
-    var refresh_far: bool = force or _last_far_center.x == INF or _last_far_center.distance_to(far_center) > 0.1
 
     _build_in_progress = true
     _refresh_pending = false
@@ -480,153 +375,6 @@ func _refresh_patch(force: bool) -> void:
         Vector3(-PATCH_SIZE * 0.5, -100.0, -PATCH_SIZE * 0.5),
         Vector3(PATCH_SIZE, 1800.0, PATCH_SIZE)
     )
-
-    # Parent origin follows the near patch. Offset the far LOD nodes so their world
-    # positions remain anchored to the less frequently rebuilt, snapped far center.
-    _distant_grass_instance.position = Vector3(far_center.x - center.x, 0.0, far_center.y - center.y)
-    _distant_flower_instance.position = _distant_grass_instance.position
-    if refresh_far:
-        var far_grass_transforms: Array[Transform3D] = []
-        var far_grass_data: Array[Color] = []
-        var far_flower_transforms: Array[Transform3D] = []
-        var far_flower_data: Array[Color] = []
-        var far_flower_colors: Array[Color] = []
-        var far_cell_size: float = FAR_PATCH_SIZE / float(FAR_GRID_CELLS)
-        var far_start_x: int = int(floor((far_center.x - FAR_PATCH_SIZE * 0.5) / far_cell_size))
-        var far_start_z: int = int(floor((far_center.y - FAR_PATCH_SIZE * 0.5) / far_cell_size))
-        var far_total_cells: int = FAR_GRID_CELLS * FAR_GRID_CELLS
-
-        # The far field is sampled at multi-metre intervals. Each accepted point is one
-        # 3-ribbon tuft, not one instance per individual blade, so fill remains visible
-        # over several hundred metres with far fewer geometry instances than near grass.
-        for far_cell_index in range(far_total_cells):
-            var far_gz: int = int(float(far_cell_index) / float(FAR_GRID_CELLS))
-            var far_gx: int = far_cell_index - far_gz * FAR_GRID_CELLS
-            var far_world_cell_x: int = far_start_x + far_gx
-            var far_world_cell_z: int = far_start_z + far_gz
-            var far_px: float = (
-                float(far_world_cell_x)
-                + lerpf(0.12, 0.88, _random01(far_world_cell_x, far_world_cell_z, 31))
-            ) * far_cell_size
-            var far_pz: float = (
-                float(far_world_cell_z)
-                + lerpf(0.12, 0.88, _random01(far_world_cell_x, far_world_cell_z, 32))
-            ) * far_cell_size
-
-            var far_edge_distance: float = minf(
-                FAR_PATCH_SIZE * 0.5 - absf(far_px - far_center.x),
-                FAR_PATCH_SIZE * 0.5 - absf(far_pz - far_center.y)
-            )
-            var far_edge_t: float = clampf(far_edge_distance / 110.0, 0.0, 1.0)
-            var far_edge_fade: float = far_edge_t * far_edge_t * (3.0 - 2.0 * far_edge_t)
-            var far_surface: Vector3 = terrain_generator.surface_sample_at_world(far_px, far_pz)
-            var far_slope: float = sqrt(far_surface.y * far_surface.y + far_surface.z * far_surface.z)
-            if (
-                far_edge_fade > _random01(far_world_cell_x, far_world_cell_z, 48)
-                and far_surface.x <= MAX_GRASS_HEIGHT
-                and far_slope <= MAX_SURFACE_SLOPE
-                and _random01(far_world_cell_x, far_world_cell_z, 33) >= clampf(far_slope * 0.30, 0.0, 0.16)
-            ):
-                var far_height: float = lerpf(0.62, 0.95, _random01(far_world_cell_x, far_world_cell_z, 34))
-                var far_width: float = lerpf(0.86, 1.22, _random01(far_world_cell_x, far_world_cell_z, 35))
-                var far_yaw: float = _random01(far_world_cell_x, far_world_cell_z, 36) * TAU
-                var far_normal := Vector3(-far_surface.y, 1.0, -far_surface.z).normalized()
-                var far_align := Basis(Quaternion(Vector3.UP, far_normal))
-                var far_yaw_basis := Basis(far_normal, far_yaw)
-                var far_basis: Basis = (far_yaw_basis * far_align).scaled(
-                    Vector3(far_width, far_height, far_width)
-                )
-                var far_position := Vector3(far_px - far_center.x, far_surface.x + 0.01, far_pz - far_center.y)
-                far_grass_transforms.append(Transform3D(far_basis, far_position))
-                far_grass_data.append(Color(
-                    _random01(far_world_cell_x, far_world_cell_z, 37),
-                    _random01(far_world_cell_x, far_world_cell_z, 38),
-                    lerpf(0.40, 0.76, _random01(far_world_cell_x, far_world_cell_z, 39)),
-                    lerpf(0.72, 0.96, _random01(far_world_cell_x, far_world_cell_z, 40))
-                ))
-
-                # A smaller share of the far clumps carries enlarged flower dots so
-                # the flowered meadow remains legible without full-detail blossoms.
-                if _random01(far_world_cell_x, far_world_cell_z, 41) > 0.87:
-                    var far_tip := far_position + far_basis * Vector3(0.0, 0.92, 0.04)
-                    var far_flower_pick: float = _random01(far_world_cell_x, far_world_cell_z, 42)
-                    var far_flower_size: float = lerpf(
-                        0.82, 1.32, pow(_random01(far_world_cell_x, far_world_cell_z, 43), 1.1)
-                    )
-                    var far_azimuth: float = _random01(far_world_cell_x, far_world_cell_z, 44) * TAU
-                    var far_upness: float = lerpf(0.25, 1.0, _random01(far_world_cell_x, far_world_cell_z, 45))
-                    var far_horizontal: float = sqrt(maxf(0.0, 1.0 - far_upness * far_upness))
-                    var far_flower_normal := Vector3(
-                        cos(far_azimuth) * far_horizontal,
-                        far_upness,
-                        sin(far_azimuth) * far_horizontal
-                    ).normalized()
-                    var far_flower_align := Basis(Quaternion(Vector3.BACK, far_flower_normal))
-                    var far_flower_roll := Basis(
-                        far_flower_normal,
-                        _random01(far_world_cell_x, far_world_cell_z, 46) * TAU
-                    )
-                    var far_flower_basis: Basis = (far_flower_roll * far_flower_align).scaled(
-                        Vector3.ONE * far_flower_size
-                    )
-                    far_flower_transforms.append(Transform3D(far_flower_basis, far_tip))
-                    far_flower_colors.append(_flower_palette_color(far_flower_pick))
-                    far_flower_data.append(Color(
-                        far_flower_pick,
-                        _random01(far_world_cell_x, far_world_cell_z, 47),
-                        0.55,
-                        0.86
-                    ))
-
-            if far_cell_index > 0 and far_cell_index % BUILD_BATCH_CELLS == 0:
-                await get_tree().process_frame
-                if not is_instance_valid(self) or not is_instance_valid(terrain_generator):
-                    _build_in_progress = false
-                    return
-
-        var far_grass_multimesh := MultiMesh.new()
-        far_grass_multimesh.transform_format = MultiMesh.TRANSFORM_3D
-        far_grass_multimesh.use_custom_data = true
-        far_grass_multimesh.mesh = _distant_grass_mesh
-        far_grass_multimesh.instance_count = far_grass_transforms.size()
-        for i in range(far_grass_transforms.size()):
-            far_grass_multimesh.set_instance_transform(i, far_grass_transforms[i])
-            far_grass_multimesh.set_instance_custom_data(i, far_grass_data[i])
-            if i > 0 and i % INSTANCE_UPLOAD_BATCH == 0:
-                await get_tree().process_frame
-                if not is_instance_valid(self):
-                    _build_in_progress = false
-                    return
-        _distant_grass_instance.multimesh = far_grass_multimesh
-        _distant_grass_instance.material_override = _grass_material
-        _distant_grass_instance.custom_aabb = AABB(
-            Vector3(-FAR_PATCH_SIZE * 0.5, -100.0, -FAR_PATCH_SIZE * 0.5),
-            Vector3(FAR_PATCH_SIZE, 1800.0, FAR_PATCH_SIZE)
-        )
-
-        var far_flower_multimesh := MultiMesh.new()
-        far_flower_multimesh.transform_format = MultiMesh.TRANSFORM_3D
-        far_flower_multimesh.use_custom_data = true
-        far_flower_multimesh.use_colors = true
-        far_flower_multimesh.mesh = _distant_flower_mesh
-        far_flower_multimesh.instance_count = far_flower_transforms.size()
-        for i in range(far_flower_transforms.size()):
-            far_flower_multimesh.set_instance_transform(i, far_flower_transforms[i])
-            far_flower_multimesh.set_instance_custom_data(i, far_flower_data[i])
-            far_flower_multimesh.set_instance_color(i, far_flower_colors[i])
-            if i > 0 and i % INSTANCE_UPLOAD_BATCH == 0:
-                await get_tree().process_frame
-                if not is_instance_valid(self):
-                    _build_in_progress = false
-                    return
-        _distant_flower_instance.multimesh = far_flower_multimesh
-        _distant_flower_instance.material_override = _flower_material
-        _distant_flower_instance.custom_aabb = AABB(
-            Vector3(-FAR_PATCH_SIZE * 0.5, -100.0, -FAR_PATCH_SIZE * 0.5),
-            Vector3(FAR_PATCH_SIZE, 1800.0, FAR_PATCH_SIZE)
-        )
-        _last_far_center = far_center
-
     _build_in_progress = false
 
     if _refresh_pending:
