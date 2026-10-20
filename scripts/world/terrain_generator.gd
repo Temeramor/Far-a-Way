@@ -15,7 +15,7 @@ const MAX_TERRAIN_HEIGHT: float = 1600.0
 
 @export_group("World")
 @export var world_size: float = 10000.0
-@export_range(1024, 2048, 1024) var resolution: int = 2048
+@export_range(256, 2048, 256) var resolution: int = 2048
 @export var world_seed: int = 1337
 
 var heights: PackedFloat32Array = PackedFloat32Array()
@@ -240,7 +240,25 @@ func _create_mountain_ranges(seed_value: int) -> void:
     var rng := RandomNumberGenerator.new()
     rng.seed = int(seed_value) + 17011
 
-    for _range_index in range(3):
+    # Adapt the mountain profile to the selected map. On a 1 km world, a single
+    # broad, low ridge behaves like a hill instead of shrinking a 1.3 km peak into a pillar.
+    var size_scale: float = world_size / 10000.0
+    var range_count: int = 3
+    var peak_height_scale: float = 1.0
+    var ridge_width_scale: float = pow(size_scale, 0.65)
+    var ridge_length_scale: float = size_scale
+    var lateral_offset_scale: float = size_scale
+    if world_size <= 1500.0:
+        range_count = 1
+        peak_height_scale = 0.065
+        ridge_width_scale = 0.58
+        ridge_length_scale = 0.25
+        lateral_offset_scale = 0.045
+    elif world_size <= 6000.0:
+        range_count = 2
+        peak_height_scale = 0.45
+
+    for _range_index in range(range_count):
         var angle: float = rng.randf_range(0.0, PI)
         var direction := Vector2(cos(angle), sin(angle))
         var side := Vector2(-direction.y, direction.x)
@@ -248,15 +266,18 @@ func _create_mountain_ranges(seed_value: int) -> void:
             rng.randf_range(-world_size * 0.20, world_size * 0.20),
             rng.randf_range(-world_size * 0.20, world_size * 0.20)
         )
-        var half_length: float = world_size * rng.randf_range(0.23, 0.34)
+        var half_length: float = world_size * rng.randf_range(0.23, 0.34) * ridge_length_scale
+        var end_bend: float = rng.randf_range(-600.0, 600.0) * lateral_offset_scale
+        var inner_bend_a: float = rng.randf_range(-1050.0, 1050.0) * lateral_offset_scale
+        var inner_bend_b: float = rng.randf_range(-1050.0, 1050.0) * lateral_offset_scale
         var points: Array[Vector2] = [
-            center - direction * half_length + side * rng.randf_range(-600.0, 600.0),
-            center - direction * half_length * 0.34 + side * rng.randf_range(-1050.0, 1050.0),
-            center + direction * half_length * 0.30 + side * rng.randf_range(-1050.0, 1050.0),
-            center + direction * half_length + side * rng.randf_range(-600.0, 600.0)
+            center - direction * half_length + side * end_bend,
+            center - direction * half_length * 0.34 + side * inner_bend_a,
+            center + direction * half_length * 0.30 + side * inner_bend_b,
+            center + direction * half_length + side * end_bend * rng.randf_range(0.7, 1.1)
         ]
-        var range_height: float = rng.randf_range(850.0, 1320.0)
-        var range_width: float = rng.randf_range(540.0, 930.0)
+        var range_height: float = rng.randf_range(850.0, 1320.0) * peak_height_scale
+        var range_width: float = rng.randf_range(540.0, 930.0) * ridge_width_scale
         var phase: float = rng.randf_range(0.0, TAU)
         for segment_index in range(points.size() - 1):
             var a: Vector2 = points[segment_index]
@@ -303,7 +324,8 @@ func _height_at(world_x: float, world_z: float) -> float:
         var cliff_mask: float = clampf(1.0 - distance / width, 0.0, 1.0)
         var crest_profile: float = 0.77 + 0.23 * absf(sin(along * PI * 2.1 + phase))
         var rough_profile: float = 0.79 + 0.21 * ridge_detail
-        var foothills: float = pow(broad_mask, 1.28) * (peak_height * 0.39 + 75.0)
+        var foothill_base_scale: float = clampf(world_size / 10000.0, 0.25, 1.15)
+        var foothills: float = pow(broad_mask, 1.28) * (peak_height * 0.39 + 75.0 * foothill_base_scale)
         var crest: float = pow(cliff_mask, 0.94) * peak_height * crest_profile * rough_profile
         mountain_height = maxf(mountain_height, maxf(foothills, crest))
 
