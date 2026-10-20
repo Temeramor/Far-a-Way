@@ -205,7 +205,7 @@ vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world) {
     // Preserve the small chips and their original color; only skip chips directly under a fissure.
     float chip_noise = value_noise(warped * 0.062 + vec2(27.0, 4.0));
     float chip_mask = step(0.79, chip_noise) * (1.0 - fissure_mask);
-    color = mix(color, palette_color(vec3(0.075, 0.080, 0.078)), fissure_mask * 0.88);
+    color = mix(color, palette_color(vec3(0.105, 0.112, 0.112)), fissure_mask * 0.80);
     color = mix(color, palette_color(vec3(0.655, 0.642, 0.608)), chip_mask * 0.18);
 
     // Make Voronoi fractures less frequent and finer so vertical seams remain the dominant detail.
