@@ -3,7 +3,7 @@ render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 // World-locked material: every color cell is generated from coordinates and the world seed.
 // No bitmap textures, imported rocks, repeating tiles, or editor-only dependencies are used.
-uniform float pixel_size : hint_range(0.1, 3.0, 0.025) = 0.2875;
+uniform float pixel_size : hint_range(0.45, 3.0, 0.05) = 1.15;
 uniform float seed_offset = 0.0;
 uniform float seed_offset_high = 0.0;
 uniform float rock_transition_start : hint_range(0.05, 0.8, 0.01) = 0.30;
@@ -35,6 +35,32 @@ float value_noise(vec2 p) {
     float c = hash21(i + vec2(0.0, 1.0));
     float d = hash21(i + vec2(1.0, 1.0));
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+float voronoi_edge(vec2 p) {
+    vec2 base_cell = floor(p);
+    vec2 local = fract(p);
+    float nearest = 10.0;
+    float second_nearest = 10.0;
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec2 offset_cell = vec2(float(x), float(y));
+            vec2 cell = base_cell + offset_cell;
+            vec2 random_point = vec2(
+                hash21(cell + vec2(3.1, 8.7)),
+                hash21(cell + vec2(19.4, 2.6))
+            ) * 0.72 + 0.14;
+            vec2 delta = offset_cell + random_point - local;
+            float distance_squared = dot(delta, delta);
+            if (distance_squared < nearest) {
+                second_nearest = nearest;
+                nearest = distance_squared;
+            } else if (distance_squared < second_nearest) {
+                second_nearest = distance_squared;
+            }
+        }
+    }
+    return sqrt(second_nearest) - sqrt(nearest);
 }
 
 // Palette swatches are deliberately stored as color values, not copied texture assets.
@@ -94,89 +120,63 @@ vec3 grass_pixel(vec2 pixel_cell, vec2 pixel_world) {
 }
 
 vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world) {
-    // Procedural height-blending inspired by layered terrain materials:
-    // each stone tone has a color, a soft coverage mask, and a generated height.
-    // All fields are world-locked and the final result is still snapped to pixel_cell.
+    float broad_tone = value_noise(pixel_world * 0.021 + vec2(13.8, seed_offset * 0.0006));
+    float random_cell = hash21(pixel_cell + vec2(0.0, 21.8));
+    float pick = clamp(random_cell + (broad_tone - 0.5) * 0.19, 0.001, 0.999);
+    vec3 color = rock_palette(pick);
+
+    // Warped mineral strata create irregular, non-repeating color bands across the stone.
     vec2 warp = (vec2(
-        value_noise(pixel_world * 0.0037 + vec2(3.3, 8.1)),
-        value_noise(pixel_world * 0.0041 + vec2(19.7, 2.4))
-    ) - 0.5) * 24.0;
+        value_noise(pixel_world * 0.017 + vec2(3.3, 8.1)),
+        value_noise(pixel_world * 0.019 + vec2(19.7, 2.4))
+    ) - 0.5) * 9.0;
     vec2 warped = pixel_world + warp;
-
-    float broad_tone = value_noise(
-        warped * vec2(0.0032, 0.0041) + vec2(17.2, seed_offset_high * 0.00015)
+    float mineral_layers = value_noise(warped * vec2(0.012, 0.039) + vec2(seed_offset * 0.0002, 6.1));
+    float layer_tone = smoothstep(0.05, 0.95, mineral_layers);
+    float broad_stone_tone = value_noise(warped * 0.0019 + vec2(17.2, seed_offset_high * 0.00015));
+    float mountain_macro_tone = value_noise(warped * 0.00082 + vec2(
+        17.2 + seed_offset * 0.00011,
+        8.4 + seed_offset_high * 0.00019
+    ));
+    // Slightly darker stone with very broad, smooth tonal drift across entire faces.
+    // The low-frequency term changes over hundreds of world units, never in sharp bands.
+    float stone_brightness = clamp(
+        0.68 + layer_tone * 0.19
+        + (broad_stone_tone - 0.5) * 0.25
+        + (mountain_macro_tone - 0.5) * 0.14,
+        0.58, 0.98
     );
-    float mineral_tone = value_noise(
-        warped * vec2(0.0075, 0.0135) + vec2(seed_offset * 0.0002, 6.1)
-    );
-    float grain_tone = value_noise(
-        warped * vec2(0.021, 0.028) + vec2(12.6, seed_offset * 0.0004)
-    );
-    float cell_variation = hash21(pixel_cell + vec2(0.0, 21.8));
+    float stone_warmth = value_noise(warped * vec2(0.0025, 0.0060) + vec2(31.3, 8.4));
+    vec3 cool_tint = mix(vec3(0.78, 0.84, 0.94), vec3(1.02, 1.02, 0.99), layer_tone);
+    vec3 warm_tint = mix(vec3(0.88, 0.84, 0.77), vec3(1.08, 1.045, 0.98), layer_tone);
+    vec3 smooth_tint = mix(cool_tint, warm_tint, smoothstep(0.18, 0.82, stone_warmth) * 0.62);
+    color *= smooth_tint * stone_brightness;
 
-    // The base layer stays close to a natural grey stone palette. Random pixel
-    // variation is intentionally subtle so isolated dark cells cannot dominate.
-    float base_pick = clamp(
-        0.43
-        + (broad_tone - 0.5) * 0.20
-        + (mineral_tone - 0.5) * 0.16
-        + (grain_tone - 0.5) * 0.06
-        + (cell_variation - 0.5) * 0.035,
-        0.12, 0.88
-    );
-    vec3 base_color = rock_palette(base_pick);
+    // Blocky pits, raised lips and chipped facets are snapped to the same pixel grid.
+    float pitting = value_noise(warped * 0.105 + vec2(7.0, seed_offset * 0.0007));
+    float pit_mask = step(0.835, pitting);
+    float rim_mask = step(0.675, pitting) * (1.0 - pit_mask);
+    float chip_noise = value_noise(warped * 0.062 + vec2(27.0, 4.0));
+    float chip_mask = step(0.79, chip_noise) * (1.0 - pit_mask);
+    color = mix(color, palette_color(vec3(0.105, 0.112, 0.112)), pit_mask * 0.60);
+    color = mix(color, color * vec3(1.16, 1.13, 1.08), rim_mask * 0.22);
+    color = mix(color, palette_color(vec3(0.655, 0.642, 0.608)), chip_mask * 0.18);
 
-    float warmth = value_noise(
-        warped * vec2(0.0022, 0.0031) + vec2(31.3, 8.4)
-    );
-    vec3 cool_tint = vec3(0.91, 0.94, 0.98);
-    vec3 warm_tint = vec3(1.045, 1.015, 0.965);
-    base_color *= mix(cool_tint, warm_tint, smoothstep(0.24, 0.80, warmth) * 0.58);
-    base_color *= 0.94 + broad_tone * 0.11;
+    // Selective Voronoi fractures produce rare, irregular, stepped cracks rather than a grid.
+    float edge = voronoi_edge(warped / 34.0 + vec2(seed_offset * 0.0008, 6.7));
+    float crack_line = 1.0 - smoothstep(0.010, 0.043, edge);
+    float crack_region = step(0.735, value_noise(warped * 0.012 + vec2(9.0, 12.7)));
+    float crack_breakup = step(0.33, value_noise(warped * 0.041 + vec2(12.6, seed_offset * 0.0004)));
+    float crack_mask = crack_line * crack_region * crack_breakup * (1.0 - pit_mask * 0.35);
+    color = mix(color, palette_color(vec3(0.075, 0.080, 0.078)), crack_mask * 0.91);
 
-    // Generate three virtual layers: base stone, darker mineral seams, and pale
-    // worn facets. Smooth noise replaces hard masks / hand-authored tile patterns.
-    float seam_field = value_noise(
-        warped * vec2(0.0060, 0.0170) + vec2(5.4, seed_offset * 0.00031)
-    );
-    float seam_coverage = smoothstep(0.48, 0.78, seam_field) * 0.44;
-    float pale_field = value_noise(
-        warped * vec2(0.012, 0.023) + vec2(23.7, seed_offset_high * 0.0002)
-    );
-    float pale_coverage = smoothstep(0.67, 0.88, pale_field) * 0.34;
-
-    vec3 dark_color = base_color * vec3(0.78, 0.79, 0.80);
-    vec3 pale_color = mix(
-        base_color,
-        palette_color(vec3(0.635, 0.615, 0.575)),
-        0.42
-    );
-
-    // "Height blend": layer height + coverage determines which tones sit on top.
-    // A small overlap depth allows neighboring layers to mix instead of forming edges.
-    float base_height = 0.42 + broad_tone * 0.18;
-    float seam_height = 0.25 + seam_field * 0.29;
-    float pale_height = 0.31 + pale_field * 0.25;
-    float base_score = base_height + 0.39;
-    float seam_score = seam_height + seam_coverage;
-    float pale_score = pale_height + pale_coverage;
-    float blend_depth = 0.32;
-    float top_height = max(max(base_score, seam_score), pale_score) - blend_depth;
-
-    float base_weight = max(base_score - top_height, 0.0);
-    float seam_weight = max(seam_score - top_height, 0.0);
-    float pale_weight = max(pale_score - top_height, 0.0);
-    float total_weight = max(base_weight + seam_weight + pale_weight, 0.0001);
-
-    vec3 color = (
-        base_color * base_weight
-        + dark_color * seam_weight
-        + pale_color * pale_weight
-    ) / total_weight;
-
-    // Very restrained fine grain adds pixel-to-pixel character without black pits.
-    float fine_variation = (grain_tone - 0.5) * 0.055 + (cell_variation - 0.5) * 0.025;
-    color *= 1.0 + fine_variation;
+    // Tiny mineral flecks remain rare, so the stone keeps large readable planes.
+    float fleck = hash21(pixel_cell + vec2(34.8, 92.1));
+    if (fleck > 0.989) {
+        color = mix(color, palette_color(vec3(0.710, 0.690, 0.640)), 0.58);
+    } else if (fleck < 0.014) {
+        color = mix(color, palette_color(vec3(0.105, 0.110, 0.108)), 0.67);
+    }
     return color;
 }
 
