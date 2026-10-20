@@ -11,14 +11,10 @@ extends Node
 
 signal day_night_changed(value)
 
-const FOG_SHADER: String = "res://addons/sky_3d/shaders/AtmFog.gdshader"
-const MOON_TEXTURE: Texture2D = preload("res://addons/sky_3d/assets/thirdparty/textures/moon/MoonMap.png")
-const STARMAP_TEXTURE: Texture2D = preload("res://addons/sky_3d/assets/thirdparty/textures/milkyway/Milkyway.jpg")
-const STARFIELD_TEXTURE: Texture2D = preload("res://addons/sky_3d/assets/thirdparty/textures/milkyway/StarField.jpg")
-const STARFIELD_NOISE: Texture2D = preload("res://addons/sky_3d/assets/textures/noise.jpg")
-const CIRRUS_TEXTURE: Texture2D = preload("res://addons/sky_3d/assets/resources/SNoise.tres")
-const CUMULUS_TEXTURE: Texture2D = preload("res://addons/sky_3d/assets/textures/noiseClouds.png")
-const SUN_MOON_CURVE: Curve = preload("res://addons/sky_3d/assets/resources/SunMoonLightFade.tres")
+const FOG_SHADER: String = "res://shaders/sky/AtmFog.gdshader"
+const CIRRUS_TEXTURE: Texture2D = preload("res://assets/sky/resources/SNoise.tres")
+const CUMULUS_TEXTURE: Texture2D = preload("res://assets/sky/noiseClouds.png")
+const SUN_MOON_CURVE: Curve = preload("res://assets/sky/resources/SunMoonLightFade.tres")
 const DAY_NIGHT_TRANSITION_ANGLE: float = deg_to_rad(90)  # Horizon
 
 var is_scene_built: bool = false
@@ -76,7 +72,6 @@ func _build_scene() -> void:
 	# Sky Material
 	# Necessary for now until we can pull everything off the SkyDome node.
 	sky_material = environment.sky.sky_material
-	sky_material.set_shader_parameter("noise_tex", STARFIELD_NOISE)
 	
 	# Set cumulus cloud global to point to the sky material.
 	# Necessary for now until we can pull everything off the SkyDome node.
@@ -365,7 +360,7 @@ func _update_sun_light_energy() -> void:
 		update_moon_coords()
 
 
-## Color tint applied to the moon surface texture.
+## Color tint applied to the procedural moon.
 @export var moon_color := Color.WHITE :
 	set(value):
 		moon_color = value
@@ -373,7 +368,6 @@ func _update_sun_light_energy() -> void:
 			sky_material.set_shader_parameter("moon_color", moon_color)
 
 
-## Larger values create a bigger moon.
 @export_range(0., .999) var moon_size: float = 0.07 :
 	set(value):
 		moon_size = value
@@ -381,39 +375,30 @@ func _update_sun_light_energy() -> void:
 			sky_material.set_shader_parameter("moon_size", moon_size)
 
 
-## The moon's surface texture
-@export var moon_texture: Texture2D = MOON_TEXTURE :
+@export_range(0.0, 4.0, 0.01) var moon_brightness: float = 1.0 :
 	set(value):
-		moon_texture = value
-		_update_moon_texture()
+		moon_brightness = value
+		if is_scene_built:
+			sky_material.set_shader_parameter("moon_brightness", moon_brightness)
 
 
-## XYZ rotation angles for orienting the moon surface features
-@export_custom(PROPERTY_HINT_RANGE, "-180,180,0.1,radians_as_degrees") var moon_texture_alignment := Vector3(7.0, 1.4, 4.8) :
+@export_range(1.0, 10.0, 0.1) var moon_glow_radius: float = 4.0 :
 	set(value):
-		moon_texture_alignment = value
-		_update_moon_texture()
+		moon_glow_radius = value
+		if is_scene_built:
+			sky_material.set_shader_parameter("moon_glow_radius", moon_glow_radius)
 
 
-## Horizontally flips the moon texture
-@export var flip_moon_texture_u: bool = false :
+@export_range(0.0, 2.0, 0.01) var moon_glow_str: float = 0.35 :
 	set(value):
-		flip_moon_texture_u = value
-		_update_moon_texture()
-
-
-## Vertically flips the moon texture
-@export var flip_moon_texture_v: bool = false :
-	set(value):
-		flip_moon_texture_v = value
-		_update_moon_texture()
+		moon_glow_str = value
+		if is_scene_built:
+			sky_material.set_shader_parameter("moon_glow_str", moon_glow_str)
 
 
 ## The moon's Transform3D
 var _moon_transform: Transform3D
 ## Celestial North Pole direction, set by [TimeOfDay] based on observer latitude.
-## Used to derive the parallactic angle rotation for the moon texture.
-var celestial_north_pole: Vector3 = Vector3.LEFT
 ## We disable the moon DirectionalLight3D by setting [member DirectionalLight3D.shadow_enabled] 
 ## and [member DirectionalLight3D.light_energy] to false and zero respectively
 var moon_light_enabled: bool = true:
@@ -438,14 +423,7 @@ func update_moon_coords() -> void:
 	# Transform with Vector3.Left which puts the slight gimbal lock on the horizon. Up puts it at the zenith.
 	_moon_transform = _moon_transform.looking_at(Vector3.ZERO, Vector3.LEFT)
 
-	# Moon texture basis: up axis aligns with the Celestial North Pole (parallactic angle).
-	var moon_dir: Vector3 = _moon_transform.origin.normalized()
-	var cnp: Vector3 = celestial_north_pole
-	var cnp_proj: Vector3 = cnp - moon_dir * cnp.dot(moon_dir)
-	var up: Vector3 = cnp_proj.normalized()
-	var right: Vector3 = up.cross(moon_dir)
-	var moon_basis: Basis = Basis(right, up, moon_dir).inverse()
-	sky_material.set_shader_parameter("moon_matrix", moon_basis)
+	sky_material.set_shader_parameter("moon_direction", _moon_transform.origin.normalized())
 	fog_material.set_shader_parameter("moon_direction", _moon_transform.origin)
 	if _moon_light_node:
 		_moon_light_node.transform = _moon_transform
@@ -456,15 +434,6 @@ func update_moon_coords() -> void:
 	_update_moon_light_color()
 	_update_moon_light_energy()
 	_update_ambient_color()
-
-
-## Applies moon texture and alignment to shader
-func _update_moon_texture() -> void:
-	if is_scene_built:
-		sky_material.set_shader_parameter("moon_texture", moon_texture)
-		sky_material.set_shader_parameter("moon_texture_alignment", moon_texture_alignment)
-		sky_material.set_shader_parameter("moon_texture_flip_u", flip_moon_texture_u)
-		sky_material.set_shader_parameter("moon_texture_flip_v", flip_moon_texture_v)
 
 
 #####################
@@ -1095,83 +1064,32 @@ func _check_cloud_processing() -> void:
 @export_group("Stars")
 
 
-## For aligning the star map texture map to known reference points. See [annotation SkyDome.show_alignment_lasers].
-@export var starmap_alignment := Vector3(2.68288, -0.25891, 0.40101) :
+@export_range(0.0, 1.0, 0.001) var star_threshold: float = 0.28 :
 	set(value):
-		starmap_alignment = value
-		if sky_material:
-			sky_material.set_shader_parameter("starmap_alignment", value)
-
-
-## Offset value for realigning the sky's rotation if using a datetime too many years off from the "epoch" of 20 March 2025.[br][br]
-## [b]Temporary; will eventually be removed in a future update.[/b]
-@export var star_rotation_offset: float = 9.38899 :
-	set(value):
-		star_rotation_offset = value
-		if sky_material:
-			sky_material.set_shader_parameter("star_rotation_offset", value)
-
-
-## Flips the star map texture's U. Useful if the imported texture is backwards or upside down.
-@export var starmap_flip_u: bool = false :
-	set(value):
-		starmap_flip_u = value
-		sky_material.set_shader_parameter("starmap_flip_u", value)
-
-
-## Flips the star map texture's V. Useful if the imported texture is backwards or upside down.
-@export var starmap_flip_v: bool = false :
-	set(value):
-		starmap_flip_v = value
-		sky_material.set_shader_parameter("starmap_flip_v", value)
-
-
-## Color tint applied to the background starmap
-@export var starmap_color := Color(0.709804, 0.709804, 0.709804, 0.854902) :
-	set(value):
-		starmap_color = value
+		star_threshold = clampf(value, 0.0, 1.0)
 		if is_scene_built:
-			sky_material.set_shader_parameter("starmap_color", starmap_color)
+			sky_material.set_shader_parameter("star_threshold", star_threshold)
 
 
-## The panoramic texture for the stars and constellation background.
-@export var starmap_texture: Texture2D = STARMAP_TEXTURE :
+@export_range(0.0, 10.0, 0.01) var star_brightness: float = 1.2 :
 	set(value):
-		starmap_texture = value
+		star_brightness = maxf(value, 0.0)
 		if is_scene_built:
-			sky_material.set_shader_parameter("starmap_texture", starmap_texture)
+			sky_material.set_shader_parameter("star_brightness", star_brightness)
 
 
-## The color tint for scattered individual stars.
-@export var star_field_color := Color.WHITE :
+@export_range(0.0, 4.0, 0.01) var twinkle_speed: float = 0.8 :
 	set(value):
-		star_field_color = value
+		twinkle_speed = maxf(value, 0.0)
 		if is_scene_built:
-			sky_material.set_shader_parameter("star_field_color", star_field_color)
+			sky_material.set_shader_parameter("twinkle_speed", twinkle_speed)
 
 
-## The texture for rendering stars that will scintillate.
-@export var star_field_texture: Texture2D = STARFIELD_TEXTURE :
+@export_range(0.0, 1.0, 0.01) var twinkle_intensity: float = 0.55 :
 	set(value):
-		star_field_texture = value
+		twinkle_intensity = clampf(value, 0.0, 1.0)
 		if is_scene_built:
-			sky_material.set_shader_parameter("star_field_texture", star_field_texture)
-
-
-## Controls the intensity of the simulated star "twinkling".
-@export_range(0.0, 1.0, 0.001) var star_scintillation: float = 0.75 :
-	set(value):
-		star_scintillation = value
-		if is_scene_built:
-			sky_material.set_shader_parameter("star_scintillation", star_scintillation)
-
-
-## Adjusts the speed at which the texture used for star "twinkling" moves across the star map textures.
-@export var star_scintillation_speed: float = 0.01 :
-	set(value):
-		star_scintillation_speed = value
-		if is_scene_built:
-			sky_material.set_shader_parameter("star_scintillation_speed", star_scintillation_speed)
+			sky_material.set_shader_parameter("twinkle_intensity", twinkle_intensity)
 
 
 #####################

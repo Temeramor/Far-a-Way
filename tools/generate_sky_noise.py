@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate a seamless, broad-form cloud noise map used in Neverland's clear weather.
 
-The main Sky3D add-on keeps its original cumulus texture for cloudy/overcast skies.
+Cloudy and overcast weather use a separate bundled cloud-noise image.
 This map uses fewer, wider noise islands so a clear sky produces larger open gaps.
 Requires Python 3, NumPy and Pillow: python tools/generate_sky_noise.py
 """

@@ -18,6 +18,7 @@ signal flight_mode_changed(enabled: bool)
 var touch_move: Vector2 = Vector2.ZERO
 var is_flying: bool = false
 var _mouse_look_active: bool = false
+var mouse_capture_paused: bool = false
 var _camera_yaw: float = 0.0
 var _camera_pitch: float = 0.0
 var _last_space_tap_msec: int = -10000
@@ -56,6 +57,11 @@ func toggle_flight_mode() -> void:
 
 
 func _physics_process(delta: float) -> void:
+    if mouse_capture_paused:
+        velocity = Vector3.ZERO
+        move_and_slide()
+        return
+
     var input_vector := touch_move
 
     # Keyboard fallback for testing in the editor (WASD or arrows).
@@ -106,6 +112,9 @@ func _physics_process(delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
+    if mouse_capture_paused:
+        return
+
     # Double-space toggles flight on desktop; touch controls emit the same toggle
     # after a double tap on the right half of the screen.
     if event is InputEventKey and event.pressed and not event.echo:
@@ -121,7 +130,10 @@ func _input(event: InputEvent) -> void:
             _mouse_look_active = false
             Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
-    # Desktop fallback: click to capture the mouse, then move the mouse to look around.
+func _unhandled_input(event: InputEvent) -> void:
+    if mouse_capture_paused:
+        return
+
     if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
         _mouse_look_active = true
         Input.mouse_mode = Input.MOUSE_MODE_CAPTURED

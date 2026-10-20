@@ -33,44 +33,27 @@ uniform float atm_sun_mie_intensity = 1.0;
 uniform vec3 atm_sun_partial_mie_phase = vec3(0.36, 1.64, 1.6);
 
 group_uniforms moon;
+uniform vec3 moon_direction = vec3(0.0, 1.0, 0.0);
 uniform vec4 moon_color: source_color = vec4(1.0);
-uniform sampler2D moon_texture: source_color, repeat_disable;
-uniform vec3 moon_texture_alignment = vec3(7.0, 1.4, 4.8);
-uniform bool moon_texture_flip_u;
-uniform bool moon_texture_flip_v;
 uniform float moon_size = 0.07;
+uniform float moon_brightness = 1.0;
+uniform float moon_glow_radius = 4.0;
+uniform float moon_glow_str = 0.35;
 
 group_uniforms moon_mie;
 uniform vec4 atm_moon_mie_tint: source_color = vec4(0.137, 0.184, 0.292, 1.0);
 uniform float atm_moon_mie_intensity = 0.17152;
 uniform vec3 atm_moon_partial_mie_phase = vec3(0.36, 1.64, 1.6);
 
-group_uniforms star_map;
-uniform vec4 starmap_color: source_color = vec4(0.71, 0.71, 0.71, 0.855);
-uniform sampler2D starmap_texture: source_color;
-uniform bool starmap_flip_u = false;
-uniform bool starmap_flip_v = false;
-uniform vec3 starmap_alignment = vec3(2.68288, -0.25891, 0.40101);
-uniform float star_rotation_offset = 9.38899;
-uniform float star_rotation = 0.0; // For simulating Earth rotation.
-uniform float star_tilt = 0.0; // For tilting the sky according to observer latitude in radians. (90° - latitude)
-
 group_uniforms star_field;
-uniform vec4 star_field_color: source_color = vec4(1.0);
-uniform sampler2D star_field_texture: source_color;
-uniform float star_scintillation = 0.75;
-uniform float star_scintillation_speed = 0.01;
-uniform sampler2D noise_tex: source_color;
-
-/* Sky alignment values for a star map that is in galactic coordinates. Works for most star maps.
-X: 2.6555
-Y: -0.23935
-Z: 0.4505
-
-These alignment values are consistent with a sky view from the North Pole (latitude zero)
-at midnight. The positions of Polaris, Vega, Rigel, and Alpha Centauri confirmed
-through various sources and calculations.
-*/
+uniform float star_threshold = 0.28;
+uniform float star_brightness = 1.2;
+uniform float twinkle_speed = 0.8;
+uniform float twinkle_intensity = 0.55;
+uniform vec3 star_color = vec3(0.78, 0.86, 1.0);
+uniform vec3 milky_way_color = vec3(0.55, 0.65, 0.85);
+uniform float star_rotation = 0.0;
+uniform float star_tilt = 0.0;
 
 group_uniforms clouds;
 uniform vec4 clouds_night_color: source_color = vec4(0.09, 0.094, 0.129, 1.0);
@@ -110,9 +93,6 @@ uniform bool show_equatorial_grid = false;
 uniform vec4 equatorial_grid_color : source_color = vec4(0., .75, 1., 1.);
 uniform float equatorial_grid_rotation_offset = 0.03;
 
-group_uniforms transform_matrices;
-uniform mat3 moon_matrix; // Calculated externally via GDScript.
-
 #include "Common.gdshaderinc"
 
 // Provides a transformation matrix when passed a vec3.
@@ -142,23 +122,91 @@ mat3 create_rotation_matrix(vec3 r) {
 	return rotZ * rotY * rotX; // Combine rotations in ZYX order
 }
 
-vec2 calc_equirect_uv(vec3 norm) {
-	float flipu = starmap_flip_u ? -1.0 : 1.0;
-	float flipv = starmap_flip_v ? -1.0 : 1.0;
-	float u = flipu * ((atan(norm.y, norm.x) + PI) * INV_TAU); // 0 to 1 horizontally
-	float v = -flipv * (acos(norm.z) * INV_PI); // 0 (north pole) to 1 (south pole)
-	return vec2(u, v);
+float hash21(vec2 p) {
+	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
 }
 
-vec3 sample_moon_texture(vec3 dir) {
-	dir = moon_matrix * dir * create_rotation_matrix(moon_texture_alignment);
-	dir.x = -dir.x;
-	dir.z = -dir.z;
-	float flipu = moon_texture_flip_u ? 1.0 : -1.0;
-	float flipv = moon_texture_flip_v ? 1.0 : -1.0;
-	float u = 0.5 + flipu * atan(dir.z, dir.x) * INV_TAU; // Longitude
-	float v = 0.5 + flipv * asin(dir.y) * INV_PI; // Latitude
-	return texture(moon_texture, vec2(u, v)).rgb;
+float noise21(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	float a = hash21(i);
+	float b = hash21(i + vec2(1.0, 0.0));
+	float c = hash21(i + vec2(0.0, 1.0));
+	float d = hash21(i + vec2(1.0, 1.0));
+	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+float fbm(vec2 p) {
+	float value = 0.0;
+	float amplitude = 0.5;
+	for (int octave = 0; octave < 4; octave++) {
+		value += noise21(p) * amplitude;
+		p = p * 2.0 + vec2(17.1, 9.2);
+		amplitude *= 0.5;
+	}
+	return value;
+}
+
+float compute_stars(vec3 dir, float time) {
+	vec2 uv = vec2(
+		atan(dir.z, dir.x) / TAU + 0.5,
+		asin(clamp(dir.y, -1.0, 1.0)) / PI + 0.5
+	) * vec2(90.0, 45.0);
+
+	vec2 id = floor(uv);
+	vec2 gv = fract(uv) - 0.5;
+
+	float rng = hash21(id);
+	if (rng > star_threshold) return 0.0;
+
+	vec2 jitter = vec2(
+		hash21(id + vec2(31.7, 53.1)),
+		hash21(id * vec2(2.1, 1.9) + 17.3)
+	) - 0.5;
+	jitter *= 0.75;
+
+	float d = length(gv - jitter);
+	float tier = pow(rng / max(star_threshold, 0.0001), 3.0);
+
+	float size_rng = hash21(id + vec2(7.3, 2.9));
+	float radius = mix(0.004, 0.028, tier * 0.72 + size_rng * 0.28);
+
+	float phase = rng * TAU + time * twinkle_speed * (0.6 + rng * 1.4);
+	float twinkle = 1.0 - twinkle_intensity + twinkle_intensity * (0.5 + 0.5 * sin(phase));
+
+	float sigma2 = max(radius * radius * 0.20, 0.000001);
+	float star = exp(-d * d / sigma2) * tier * twinkle * star_brightness;
+
+	if (tier > 0.55) {
+		float galo_r2 = (radius * 3.8) * (radius * 3.8) * 0.20;
+		star += exp(-d * d / max(galo_r2, 0.000001)) * tier * tier * twinkle * 0.22;
+	}
+
+	return star;
+}
+
+float milky_way(vec3 dir) {
+	float lat = dir.y;
+	float lon = atan(dir.z, dir.x) / TAU;
+	float band = exp(-lat * lat * 5.5);
+	float mw = fbm(vec2(lon * 5.0 + 1.7, lat * 7.0 + 2.3));
+	return band * mw * 0.007;
+}
+
+vec3 compute_moon(vec3 dir) {
+	vec3 mn = normalize(moon_direction);
+	float angle = acos(clamp(dot(normalize(dir), mn), -1.0, 1.0));
+	float r = max(moon_size, 0.0001);
+
+	float t = clamp(1.0 - angle / r, 0.0, 1.0);
+	float limb = sqrt(t);
+	float disk = smoothstep(0.0, 0.06, t) * mix(0.70, 1.0, limb);
+
+	float halo = pow(max(0.0, 1.0 - angle / (r * moon_glow_radius)), 2.8) * moon_glow_str;
+	float inner = pow(max(0.0, 1.0 - angle / (r * moon_glow_radius * 0.35)), 5.0) * moon_glow_str * 0.4;
+
+	return moon_color.rgb * (moon_brightness * disk + 0.20 * halo + 0.12 * inner);
 }
 
 float calc_disk_mask(vec3 norm, vec3 coords, lowp float size) {
@@ -190,16 +238,6 @@ bool ray_sphere_intersect(float r, vec3 origin, vec3 dir, out float t, out vec3 
 
 // For rendering the moon. This function courtesy of Kelvin van Hoorn.
 // https://kelvinvanhoorn.com/2024/12/07/skybox-tutorial-godot/
-float simple_sphere_intersect(vec3 ray_dir, vec3 sphere_pos, float radius) {
-	vec3 oc = -sphere_pos;
-	float b = dot(oc, ray_dir);
-	float c = dot(oc, oc) - radius * radius;
-	float h = b * b - c;
-	float valid = step(0.0, h); // 1.0 if h >= 0.0, else 0.0
-	h = sqrt(max(h, 0.0)); // Ensure sqrt is non-negative
-	return mix(-1.0, -b - h, valid);
-}
-
 // Atmosphere
 //------------------------------------------------------------------------------
 
@@ -352,49 +390,17 @@ vec3 render_sky(vec3 world_pos, vec3 clouds_pos, vec3 sun_pos, vec3 moon_pos, fl
 	vec3 sun_disk = calc_disk_mask(world_pos, sun_pos, sun_disk_size) * sun_disk_color.rgb * scatter.rgb;
 	sun_disk *= sun_disk_intensity;
 
-	// Moon
-	float moon_intersect = simple_sphere_intersect(world_pos, moon_pos, moon_size);
-	float moon_mask = moon_intersect > (-1. + sqrt(moon_size)) ? 1.0 : 0.0;
-	vec3 moon_normal = normalize(world_pos * moon_intersect - moon_pos);
+	vec3 moon_output = compute_moon(world_pos);
+	float moon_angle = acos(clamp(dot(normalize(world_pos), normalize(moon_direction)), -1.0, 1.0));
+	float moon_mask = smoothstep(moon_size * 0.95, moon_size * 1.05, moon_angle);
 
-	float moon_ndotl = clamp(dot(moon_normal, sun_pos), 0.0, 1.0);
-	vec3 moon_tex = sample_moon_texture(moon_normal);
-	vec3 moon_output = moon_mask * moon_ndotl * exp2(1.0) * moon_tex * moon_color.rgb;
-	float moonMask = (1.0 - moon_mask);
-
-	// Deep space
-
-	// Tilt the sky along the X-axis.
 	mat3 tilt = create_rotation_matrix(vec3(star_tilt, 0.0, 0.0));
-
-	// Rotation around Y-axis. For simulating Earth's rotation.
-	mat3 rotation = create_rotation_matrix(vec3(0.0, star_rotation + star_rotation_offset, 0.0));
-
-	// Initial XYZ rotation for alignment.
-	mat3 alignment_xyz = create_rotation_matrix(starmap_alignment);
-
-	// Combine everything together to get the desired alignment.
-	vec3 final_alignment = normalize(alignment_xyz * rotation * tilt * world_pos);
-
-	// Now generate UV coordinates for the texture.
-	vec2 deep_space_uv = calc_equirect_uv(normalize(final_alignment));
-
-	// Star map
-	vec3 deep_space_background = textureLod(starmap_texture, deep_space_uv, 0.0).rgb;
-	deep_space_background *= starmap_color.rgb;
-	deep_space_background = adjust_contrast(deep_space_background, starmap_color.a);
-	vec3 deep_space = deep_space_background.rgb * moonMask + moon_output;
-
-	// Star Field
-	float star_scint = textureLod(noise_tex, deep_space_uv + (p_time * star_scintillation_speed), 0.0).r;
-	star_scint = mix(1.0, star_scint * 1.5, star_scintillation);
-
-	vec3 star_field = textureLod(star_field_texture, deep_space_uv, 0.0).rgb * star_field_color.rgb;
-	star_field = clamp_rgb_to_unit(mix(star_field.rgb, star_field.rgb * star_scint, star_scintillation));
-	star_field = clamp_rgb_to_unit(star_field.rgb);
-	//deep_space.rgb -= clamp_to_unit(star_field.r * 10.0);
-	deep_space.rgb += star_field.rgb * moonMask;
-	deep_space.rgb *= angle_mult.z;
+	mat3 rotation = create_rotation_matrix(vec3(0.0, star_rotation, 0.0));
+	vec3 star_dir = normalize(rotation * tilt * world_pos);
+	float star_field = compute_stars(star_dir, p_time);
+	float galaxy = milky_way(star_dir);
+	vec3 deep_space = (star_color * star_field + milky_way_color * galaxy) * moon_mask + moon_output;
+	deep_space *= angle_mult.z;
 	col.rgb += sun_disk.rgb + deep_space.rgb * horizonBlend;
 
 	// Clouds
@@ -504,7 +510,7 @@ void sky() {
 		float grid_spacing = 0.261799; // 15 degrees
 		vec3 zenith_dir = vec3(0.0, 1.0, 0.0); // Y-axis aligned azimuthal
 		vec3 north_celestial_pole = create_rotation_matrix(vec3(star_tilt, 0.0, 0.0)) * zenith_dir;
-		float rotation_angle = star_rotation + star_rotation_offset;
+		float rotation_angle = star_rotation;
 		if (show_azimuthal_grid) {
 			render_grid(EYEDIR, zenith_dir, azimuthal_grid_rotation_offset, azimuthal_grid_color, grid_spacing, grid_thickness, col);
 		}

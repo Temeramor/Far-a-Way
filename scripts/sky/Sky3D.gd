@@ -14,7 +14,7 @@ extends WorldEnvironment
 ## Emitted when the environment has changed to a new resource.
 signal environment_changed
 
-const SKY_SHADER: String = "res://addons/sky_3d/shaders/SkyMaterial.gdshader"
+const SKY_SHADER: String = "res://shaders/sky/SkyMaterial.gdshader"
 
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY) 
 var version: String = "2.1"
