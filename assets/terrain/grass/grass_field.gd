@@ -22,6 +22,7 @@ var _distant_grass_mesh: ArrayMesh
 var _distant_grass_instance: MultiMeshInstance3D
 var _distant_flower_instance: MultiMeshInstance3D
 var _flower_mesh: ArrayMesh
+var _distant_flower_mesh: ArrayMesh
 var _flower_material: ShaderMaterial
 var _flower_instance: MultiMeshInstance3D
 var _weather_mode: int = 1
@@ -47,6 +48,7 @@ func _ready() -> void:
     _distant_grass_mesh = _create_distant_grass_mesh()
     _create_blade_material()
     _create_flower_mesh()
+    _distant_flower_mesh = _create_distant_flower_mesh()
     _create_flower_material()
 
     _grass_instance = MultiMeshInstance3D.new()
@@ -281,6 +283,30 @@ func _append_flower_pixel(
     indices.append(first)
     indices.append(first + 2)
     indices.append(first + 3)
+
+
+func _create_distant_flower_mesh() -> ArrayMesh:
+    # At range, a blossom becomes one colored pixel-sized quad instead of nine petal
+    # squares. This keeps distant flowers readable while cutting their vertex count.
+    const HALF_SIZE: float = 0.25
+    var arrays: Array = []
+    arrays.resize(Mesh.ARRAY_MAX)
+    arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([
+        Vector3(-HALF_SIZE, -HALF_SIZE, 0.0),
+        Vector3(HALF_SIZE, -HALF_SIZE, 0.0),
+        Vector3(HALF_SIZE, HALF_SIZE, 0.0),
+        Vector3(-HALF_SIZE, HALF_SIZE, 0.0)
+    ])
+    arrays[Mesh.ARRAY_NORMAL] = PackedVector3Array([
+        Vector3.BACK, Vector3.BACK, Vector3.BACK, Vector3.BACK
+    ])
+    arrays[Mesh.ARRAY_COLOR] = PackedColorArray([
+        Color.WHITE, Color.WHITE, Color.WHITE, Color.WHITE
+    ])
+    arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 2, 0, 2, 3])
+    var mesh := ArrayMesh.new()
+    mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+    return mesh
 
 
 func _create_flower_material() -> void:
@@ -575,7 +601,7 @@ func _refresh_patch(force: bool) -> void:
         far_flower_multimesh.transform_format = MultiMesh.TRANSFORM_3D
         far_flower_multimesh.use_custom_data = true
         far_flower_multimesh.use_colors = true
-        far_flower_multimesh.mesh = _flower_mesh
+        far_flower_multimesh.mesh = _distant_flower_mesh
         far_flower_multimesh.instance_count = far_flower_transforms.size()
         for i in range(far_flower_transforms.size()):
             far_flower_multimesh.set_instance_transform(i, far_flower_transforms[i])
