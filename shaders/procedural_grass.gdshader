@@ -56,10 +56,11 @@ void fragment() {
     vec3 grass_color = vec3(0.20, 0.22, 0.05) * (height_weight * 0.5 + 0.5);
     grass_color.rg *= (blade_data.rg * 0.3 + 0.9);
     ALBEDO = grass_color * pow(COLOR.rgb, vec3(2.2));
-    float spec_rough = clamp(max(blade_data.b, blade_data.a), 0.0, 1.0);
-    ROUGHNESS = 1.0 - spec_rough;
+    // Leaves are dielectric and mostly matte; the tips catch only a restrained soft sheen.
+    float tip_sheen = smoothstep(0.62, 1.0, height_weight);
+    ROUGHNESS = mix(0.96, 0.84, tip_sheen);
     METALLIC = 0.0;
-    SPECULAR = clamp(spec_rough * 0.25, 0.0, 0.15);
+    SPECULAR = mix(0.045, 0.12, tip_sheen);
     BACKLIGHT = vec3(0.33);
 
     #if CURRENT_RENDERER == RENDERER_COMPATIBILITY
