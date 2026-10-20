@@ -86,11 +86,13 @@ func _configure_sky_system() -> void:
 func _begin_pending_game_if_requested() -> void:
     if GameSettings.has_requested_seed:
         var pending_seed: int = GameSettings.requested_seed
+        var pending_world_size: float = GameSettings.requested_world_size
+        var pending_resolution: int = GameSettings.requested_resolution
         GameSettings.has_requested_seed = false
-        begin_generation(pending_seed)
+        begin_generation(pending_seed, pending_world_size, pending_resolution)
 
 
-func begin_generation(seed_value: int) -> void:
+func begin_generation(seed_value: int, selected_world_size: float = 10000.0, selected_resolution: int = 2048) -> void:
     if _generation_started:
         return
     _generation_started = true
@@ -104,18 +106,21 @@ func begin_generation(seed_value: int) -> void:
     player.mouse_capture_paused = false
     touch_controls.set_process_input(true)
 
+    terrain.world_size = selected_world_size
+    terrain.resolution = selected_resolution
     player.flight_speed_multiplier = GameSettings.flight_speed_multiplier
     player.flight_fov = GameSettings.flight_fov
     var gameplay_camera: Camera3D = $Player/CameraPivot/Camera3D
     gameplay_camera.far = maxf(1400.0, terrain.world_size * 1.25)
 
     loading_screen.visible = true
-    loading_screen.set_progress(0.0, "Подготавливаем генератор ландшафта...")
+    loading_screen.set_progress(0.0, "Подготавливаем карту %.0f × %.0f м..." % [terrain.world_size, terrain.world_size])
     terrain.generate(seed_value)
 
 
 func _on_generation_started(seed_value: int) -> void:
-    loading_screen.set_progress(0.0, "Сид мира: %d — создаём рельеф" % seed_value)
+    var size_km: int = int(roundi(terrain.world_size / 1000.0))
+    loading_screen.set_progress(0.0, "Сид мира: %d · карта %d×%d км — создаём рельеф" % [seed_value, size_km, size_km])
     terrain.call("set_weather", _weather_mode)
 
 
