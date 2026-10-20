@@ -253,8 +253,8 @@ func _create_mountain_ranges(seed_value: int) -> void:
         var points: Array[Vector2] = [
             center - direction * half_length + side * rng.randf_range(-600.0, 600.0) * size_scale,
             center - direction * half_length * 0.34 + side * rng.randf_range(-1050.0, 1050.0) * size_scale,
-            center + direction * half_length * 0.30 + side * rng.randf_range(-1050.0, 1050.0),
-            center + direction * half_length + side * rng.randf_range(-600.0, 600.0)
+            center + direction * half_length * 0.30 + side * rng.randf_range(-1050.0, 1050.0) * size_scale,
+            center + direction * half_length + side * rng.randf_range(-600.0, 600.0) * size_scale
         ]
         var range_height: float = rng.randf_range(850.0, 1320.0)
         var range_width: float = rng.randf_range(540.0, 930.0)
