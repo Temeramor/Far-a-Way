@@ -3,11 +3,20 @@ render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 // World-locked material: every color cell is generated from coordinates and the world seed.
 // No bitmap textures, imported rocks, repeating tiles, or editor-only dependencies are used.
-uniform float pixel_size : hint_range(0.45, 3.0, 0.05) = 1.15;
+// Four times smaller procedural color cells (~0.2875 m instead of 1.15 m).
+uniform float pixel_size : hint_range(0.1, 3.0, 0.025) = 0.2875;
 uniform float seed_offset = 0.0;
 uniform float seed_offset_high = 0.0;
 uniform float rock_transition_start : hint_range(0.05, 0.8, 0.01) = 0.30;
 uniform float rock_transition_end : hint_range(0.1, 0.95, 0.01) = 0.48;
+
+// Stylized PBR response derived from each generated rock pixel's linear luminance.
+uniform float rock_luminance_dark : hint_range(0.0, 0.5, 0.005) = 0.025;
+uniform float rock_luminance_bright : hint_range(0.05, 0.8, 0.005) = 0.30;
+uniform float rock_roughness_dark : hint_range(0.0, 1.0, 0.01) = 0.94;
+uniform float rock_roughness_bright : hint_range(0.0, 1.0, 0.01) = 0.43;
+uniform float rock_specular_dark : hint_range(0.0, 1.0, 0.01) = 0.08;
+uniform float rock_specular_bright : hint_range(0.0, 1.0, 0.01) = 0.72;
 
 varying vec3 world_position;
 varying vec3 world_normal;
@@ -181,6 +190,23 @@ vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world) {
 }
 
 
+float rock_luminance(vec3 color) {
+    return dot(max(color, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722));
+}
+
+// Bright mineral grains receive a sharper, stronger sun highlight; dark pits and
+// cracks stay rough and subdued. Rock remains a dielectric (METALLIC = 0).
+vec2 rock_pbr(vec3 color) {
+    float brightness = smoothstep(
+        rock_luminance_dark,
+        rock_luminance_bright,
+        rock_luminance(color)
+    );
+    float roughness = mix(rock_roughness_dark, rock_roughness_bright, brightness);
+    float specular = mix(rock_specular_dark, rock_specular_bright, brightness);
+    return vec2(roughness, specular);
+}
+
 // Distance LOD for procedural materials: broad continuous colors replace tiny pixel cells,
 // cracks and pitting beyond the mid-distance. This reduces distant shimmer without
 // changing any generated heights or the close-up material.
@@ -232,12 +258,12 @@ void fragment() {
             rock_transition_end,
             slope + far_transition_noise
         );
-        ALBEDO = mix(
-            distant_grass_color(world_position.xz),
-            distant_rock_color(rock_world),
-            far_rock_amount
-        );
-        ROUGHNESS = mix(0.95, 0.86, far_rock_amount);
+        vec3 far_grass = distant_grass_color(world_position.xz);
+        vec3 far_rock = distant_rock_color(rock_world);
+        ALBEDO = mix(far_grass, far_rock, far_rock_amount);
+        vec2 far_rock_pbr = rock_pbr(far_rock);
+        ROUGHNESS = mix(0.96, far_rock_pbr.x, far_rock_amount);
+        SPECULAR = mix(0.08, far_rock_pbr.y, far_rock_amount);
     } else {
         float transition_noise = (value_noise(world_position.xz * 0.008 + vec2(5.4)) - 0.5) * 0.10;
         float rock_amount = smoothstep(
@@ -263,16 +289,29 @@ void fragment() {
                 rock_transition_end,
                 slope + far_transition_noise
             );
-            vec3 distant_color = mix(
-                distant_grass_color(world_position.xz),
-                distant_rock_color(rock_world),
-                far_rock_amount
+            vec3 distant_grass = distant_grass_color(world_position.xz);
+            vec3 distant_rock = distant_rock_color(rock_world);
+            vec3 distant_color = mix(distant_grass, distant_rock, far_rock_amount);
+
+            vec2 detailed_rock_pbr = rock_pbr(rock_color);
+            vec2 distant_rock_pbr = rock_pbr(distant_rock);
+            vec2 detailed_pbr = vec2(
+                mix(0.96, detailed_rock_pbr.x, rock_amount),
+                mix(0.08, detailed_rock_pbr.y, rock_amount)
             );
+            vec2 distant_pbr = vec2(
+                mix(0.96, distant_rock_pbr.x, far_rock_amount),
+                mix(0.08, distant_rock_pbr.y, far_rock_amount)
+            );
+
             ALBEDO = mix(detailed_color, distant_color, far_blend);
-            ROUGHNESS = mix(0.95, 0.84, mix(rock_amount, far_rock_amount, far_blend));
+            ROUGHNESS = mix(detailed_pbr.x, distant_pbr.x, far_blend);
+            SPECULAR = mix(detailed_pbr.y, distant_pbr.y, far_blend);
         } else {
             ALBEDO = detailed_color;
-            ROUGHNESS = mix(0.95, 0.84, rock_amount);
+            vec2 detailed_rock_pbr = rock_pbr(rock_color);
+            ROUGHNESS = mix(0.96, detailed_rock_pbr.x, rock_amount);
+            SPECULAR = mix(0.08, detailed_rock_pbr.y, rock_amount);
         }
     }
     METALLIC = 0.0;
