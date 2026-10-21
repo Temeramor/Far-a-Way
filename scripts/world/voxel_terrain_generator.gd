@@ -43,7 +43,7 @@ func _process(_delta: float) -> void:
     if next_center != _voxel_center_chunk:
         _voxel_center_chunk = next_center
         _voxel_stream_generation_id += 1
-        _stream_voxel_chunks.call_deferred(next_center, _voxel_stream_generation_id)
+        call_deferred("_stream_voxel_chunks", next_center, _voxel_stream_generation_id)
 
 
 func generate(new_seed: int = 1337) -> void:
@@ -364,7 +364,9 @@ func _build_voxel_chunk(chunk_x: int, chunk_z: int, stream_id: int) -> Node3D:
     collision_body.collision_layer = 1
     collision_body.collision_mask = 1
     var collision_shape := CollisionShape3D.new()
-    collision_shape.shape = voxel_mesh.create_trimesh_shape()
+    var voxel_collision := voxel_mesh.create_trimesh_shape()
+    voxel_collision.backface_collision = true
+    collision_shape.shape = voxel_collision
     collision_body.add_child(collision_shape)
     root.add_child(collision_body)
 
