@@ -12,7 +12,7 @@ const SIDE_POSITIVE_Z: int = 2
 const SIDE_NEGATIVE_Z: int = 3
 
 @export_group("Voxel Terrain")
-@export var voxel_size: float = 0.1
+@export_range(0.0625, 0.1, 0.0375, "suffix:m") var voxel_size: float = 0.1
 @export_range(1, 3, 1) var voxel_chunk_radius: int = 1
 
 var _voxel_cell_size: float = 0.1
@@ -250,7 +250,6 @@ func _build_voxel_chunk(chunk_x: int, chunk_z: int, stream_id: int) -> Node3D:
     var normals := PackedVector3Array()
     var colors := PackedColorArray()
     var indices := PackedInt32Array()
-    var vertices_per_face: int = 4
     # Reserve space for the flat top quads before adding cliff faces.
     vertices.resize(0)
     normals.resize(0)
