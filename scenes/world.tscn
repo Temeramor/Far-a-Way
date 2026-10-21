@@ -1,7 +1,7 @@
 [gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/world_controller.gd" id="1_world"]
-[ext_resource type="Script" path="res://scripts/world/terrain_generator.gd" id="2_terrain"]
+[ext_resource type="Script" path="res://scripts/world/voxel_terrain_generator.gd" id="2_terrain"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="3_player"]
 [ext_resource type="Script" path="res://scripts/ui/touch_controls.gd" id="4_touch"]
 [ext_resource type="PackedScene" path="res://scenes/loading_screen.tscn" id="5_loading"]
