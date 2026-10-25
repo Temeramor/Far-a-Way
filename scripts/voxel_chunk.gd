@@ -105,38 +105,40 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     # Rebuilt chunks can remain logically inactive while hidden in the hierarchy.
     # New VisualInstances are visible by default, so inherit the chunk state immediately.
     mesh_instance.visible = _render_active
-    # Keep voxel relief and its shadows at near/mid distances. Far render meshes are
-    # excluded from shadow maps to avoid distant shadow noise and excess shadow-map work.
-    # A separate LOD6 shadow-only proxy still supplies the broad mountain silhouette.
-    if lod <= 3:
-        mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-    else:
-        mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    # The visible colour mesh never enters the shadow map; each active LOD has a separate
+    # invisible caster, so shadow complexity can change without changing material lighting.
+    mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
     _skirt_visibility_cache = Vector4(-1.0, -1.0, -1.0, -1.0)
     add_child(mesh_instance)
 
-    if lod == 6:
-        var shadow_vertex_count: int = int(data.get("shadow_vertex_count", 0))
-        var shadow_index_count: int = int(data.get("shadow_index_count", 0))
-        if shadow_vertex_count >= 3 and shadow_index_count >= 3:
-            var source_vertices: PackedVector3Array = data["vertices"]
-            var source_normals: PackedVector3Array = data["normals"]
-            var source_colors: PackedColorArray = data["colors"]
-            var source_indices: PackedInt32Array = data["indices"]
-            var shadow_data: Dictionary = {
-                "vertices": source_vertices.slice(0, shadow_vertex_count),
-                "normals": source_normals.slice(0, shadow_vertex_count),
-                "colors": source_colors.slice(0, shadow_vertex_count),
-                "indices": source_indices.slice(0, shadow_index_count)
-            }
-            var shadow_mesh := _make_array_mesh(shadow_data, null)
-            shadow_mesh.resource_name = "TerrainShadowProxy_%d_%d" % [coord.x, coord.y]
-            var shadow_proxy := MeshInstance3D.new()
-            shadow_proxy.name = "TerrainShadowProxy"
-            shadow_proxy.mesh = shadow_mesh
-            shadow_proxy.visible = true
-            shadow_proxy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
-            add_child(shadow_proxy)
+    var shadow_top_vertex_count: int = int(data.get("shadow_top_vertex_count", 0))
+    var shadow_top_index_count: int = int(data.get("shadow_top_index_count", 0))
+    var shadow_full_vertex_count: int = int(data.get("shadow_full_vertex_count", 0))
+    var shadow_full_index_count: int = int(data.get("shadow_full_index_count", 0))
+    # LOD0–3 retain top + vertical faces (matching main's original terrain caster), but omit
+    # stitching skirts. LOD4+ casts only from the top surface, preserving broad landform shadows
+    # without the far-away side-wall shadow noise.
+    var shadow_vertex_count: int = shadow_full_vertex_count if lod <= 3 else shadow_top_vertex_count
+    var shadow_index_count: int = shadow_full_index_count if lod <= 3 else shadow_top_index_count
+    if shadow_vertex_count >= 3 and shadow_index_count >= 3:
+        var source_vertices: PackedVector3Array = data["vertices"]
+        var source_normals: PackedVector3Array = data["normals"]
+        var source_colors: PackedColorArray = data["colors"]
+        var source_indices: PackedInt32Array = data["indices"]
+        var shadow_data: Dictionary = {
+            "vertices": source_vertices.slice(0, shadow_vertex_count),
+            "normals": source_normals.slice(0, shadow_vertex_count),
+            "colors": source_colors.slice(0, shadow_vertex_count),
+            "indices": source_indices.slice(0, shadow_index_count)
+        }
+        var shadow_mesh := _make_array_mesh(shadow_data, null)
+        shadow_mesh.resource_name = "TerrainShadowProxy_%d_%d_LOD%d" % [coord.x, coord.y, lod]
+        var shadow_proxy := MeshInstance3D.new()
+        shadow_proxy.name = "TerrainShadowProxy"
+        shadow_proxy.mesh = shadow_mesh
+        shadow_proxy.visible = _render_active
+        shadow_proxy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+        add_child(shadow_proxy)
 
     mesh_ready = true
 
@@ -177,8 +179,8 @@ func set_render_active(active: bool, request_collision: bool = false) -> void:
     if render_state_changed:
         for child in get_children():
             if child is VisualInstance3D:
-                # Keep the hidden coarse caster active when this render LOD is inactive.
-                child.visible = true if child.name == "TerrainShadowProxy" else active
+                # Only the active LOD contributes its matching invisible terrain-shadow mesh.
+                child.visible = active
 
     var wants_active_collision: bool = active and request_collision and collision_enabled
     if collision_active != wants_active_collision:
