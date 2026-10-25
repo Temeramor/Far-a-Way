@@ -98,7 +98,6 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
         _mesh_shader_material = (material as ShaderMaterial).duplicate() as ShaderMaterial
         _mesh_shader_material.set_shader_parameter("skirt_visibility", Vector4(1.0, 1.0, 1.0, 1.0))
         _mesh_shader_material.set_shader_parameter("lod_shadow_strength", _shadow_receive_strength())
-        _mesh_shader_material.set_shader_parameter("smooth_lighting_enabled", lod == 1)
         mesh_material = _mesh_shader_material
 
     var mesh := _make_array_mesh(data, mesh_material)
@@ -109,16 +108,16 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     # Rebuilt chunks can remain logically inactive while hidden in the hierarchy.
     # New VisualInstances are visible by default, so inherit the chunk state immediately.
     mesh_instance.visible = _render_active
-    # Blocky LOD0/LOD1 meshes use a separate smooth shadow caster. Continuous LOD2+ meshes
-    # cast from their own geometry to avoid duplicate far terrain and its shadow-map cost.
-    mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if lod >= 2 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    # The visible colour mesh never enters the shadow map; each active LOD has a separate
+    # invisible caster, so shadow complexity can change without changing material lighting.
+    mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
     _skirt_visibility_cache = Vector4(-1.0, -1.0, -1.0, -1.0)
     add_child(mesh_instance)
 
     var shadow_vertices: PackedVector3Array = data.get("smooth_shadow_vertices", PackedVector3Array())
     var shadow_normals: PackedVector3Array = data.get("smooth_shadow_normals", PackedVector3Array())
     var shadow_indices: PackedInt32Array = data.get("smooth_shadow_indices", PackedInt32Array())
-    if lod < 2 and shadow_vertices.size() >= 3 and shadow_indices.size() >= 3:
+    if shadow_vertices.size() >= 3 and shadow_indices.size() >= 3:
         var shadow_data: Dictionary = {
             "vertices": shadow_vertices,
             "normals": shadow_normals,
@@ -196,9 +195,11 @@ func _shadow_receive_strength() -> float:
 
 
 func _should_proxy_cast_shadow() -> bool:
-    # Only blocky near/mid meshes need a separate smooth shadow proxy. LOD2+ now
-    # uses its continuous heightfield as the visible mesh and casts shadows directly.
-    return lod >= 0 and lod < 2
+    # The proxy is only an opaque terrain silhouette for the directional shadow map.
+    # Keep it at every active LOD so distant mountains always occlude the sun and
+    # cast relief shadows onto nearer chunks. The LOD mode controls how much shadow
+    # the visible surface receives; LOD4+ receives none in either mode.
+    return lod >= 0 and lod <= 6
 
 func set_mesh_shader_parameter(parameter_name: StringName, value: Variant) -> void:
     if _mesh_shader_material != null:
@@ -250,15 +251,9 @@ func _make_array_mesh(data: Dictionary, material: Material) -> ArrayMesh:
     if data.has("colors") and not data["colors"].is_empty():
         arrays[Mesh.ARRAY_COLOR] = data["colors"]
     arrays[Mesh.ARRAY_INDEX] = data["indices"]
-    var format: int = 0
-    var smooth_xz: PackedFloat32Array = data.get("smooth_normals_xz", PackedFloat32Array())
-    if not smooth_xz.is_empty() and smooth_xz.size() == data["vertices"].size() * 2:
-        arrays[Mesh.ARRAY_CUSTOM0] = smooth_xz
-        # CUSTOM_RG_FLOAT is the correct channel format for PackedFloat32Array data.
-        format = Mesh.ARRAY_CUSTOM_RG_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
     var mesh := ArrayMesh.new()
     if not data["indices"].is_empty():
-        mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, format)
+        mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
         if material != null:
             mesh.surface_set_material(0, material)
     return mesh
