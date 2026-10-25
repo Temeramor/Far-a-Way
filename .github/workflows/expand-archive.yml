@@ -1,0 +1,103 @@
+name: Expand project archive on update
+on:
+  push:
+    branches:
+      - update
+    paths:
+      - ".github/workflows/expand-archive.yml"
+permissions:
+  contents: write
+jobs:
+  expand:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out update branch
+        uses: actions/checkout@v4
+        with:
+          ref: update
+      - name: Replace branch contents with archive contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path, PurePosixPath
+          from tempfile import TemporaryDirectory
+          from zipfile import ZipFile
+          import shutil, stat
+
+          archive = Path("Far-a-Way-update.zip")
+          if not archive.is_file():
+              raise SystemExit("ERROR: Far-a-Way-update.zip was not found.")
+
+          with ZipFile(archive) as zf, TemporaryDirectory(prefix="far-away-unpack-") as temp:
+              infos = zf.infolist()
+              file_infos = [i for i in infos if not i.is_dir()]
+              if not file_infos:
+                  raise SystemExit("ERROR: archive contains no files.")
+
+              parsed = {}
+              for info in infos:
+                  raw = info.filename.replace("\\", "/")
+                  rel = PurePosixPath(raw)
+                  if rel.is_absolute() or ".." in rel.parts or not rel.parts:
+                      raise SystemExit(f"Unsafe path in archive: {info.filename}")
+                  if rel.parts[0] == ".git":
+                      raise SystemExit("Archive must not contain the Git metadata directory.")
+                  parsed[info.filename] = rel
+
+              meaningful = [
+                  parsed[i.filename] for i in file_infos
+                  if parsed[i.filename].name != ".DS_Store"
+                  and parsed[i.filename].parts[0] != "__MACOSX"
+              ]
+              roots = {p.parts[0] for p in meaningful if p.parts}
+              root_level_files = any(len(p.parts) == 1 for p in meaningful)
+              strip_root = next(iter(roots)) if len(roots) == 1 and not root_level_files else None
+
+              extracted = Path(temp) / "content"
+              extracted.mkdir()
+              for info in infos:
+                  rel = parsed[info.filename]
+                  if strip_root and rel.parts[0] == strip_root:
+                      rel = PurePosixPath(*rel.parts[1:])
+                      if not rel.parts:
+                          continue
+                  if not rel.parts:
+                      continue
+                  dest = extracted.joinpath(*rel.parts)
+                  if info.is_dir():
+                      dest.mkdir(parents=True, exist_ok=True)
+                      continue
+                  mode = info.external_attr >> 16
+                  if stat.S_ISLNK(mode):
+                      raise SystemExit(f"Symlinks are not accepted in archive: {info.filename}")
+                  dest.parent.mkdir(parents=True, exist_ok=True)
+                  with zf.open(info, "r") as src, dest.open("wb") as dst:
+                      shutil.copyfileobj(src, dst)
+                  if mode & 0o111:
+                      dest.chmod(dest.stat().st_mode | 0o111)
+
+              # Keep Git internals and the source archive until extraction completed.
+              for child in Path(".").iterdir():
+                  if child.name in {".git", archive.name}:
+                      continue
+                  if child.is_dir() and not child.is_symlink():
+                      shutil.rmtree(child)
+                  else:
+                      child.unlink()
+
+              for child in extracted.iterdir():
+                  shutil.move(str(child), str(Path(".") / child.name))
+
+          archive.unlink()
+          print("Archive unpacked; prior branch contents and archive removed.")
+          PY
+      - name: Commit the extracted project
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Replace branch with unpacked archive [skip ci]"
+          git push origin HEAD:update
