@@ -22,10 +22,9 @@ const BuilderScript = preload("res://scripts/voxel_chunk_builder.gd")
 @export_range(1, 12, 1) var max_concurrent_mesh_jobs: int = 8
 @export_range(1, 4, 1) var max_mesh_applies_per_frame: int = 4
 @export_range(1.0, 8.0, 0.5) var max_mesh_apply_time_ms: float = 4.0
-@export_range(0.01, 0.2, 0.01) var streaming_refresh_interval_s: float = 0.04
-@export_range(0.25, 4.0, 0.25) var streaming_refresh_distance_m: float = 1.5
+@export_range(0.01, 0.2, 0.01) var streaming_refresh_interval_s: float = 0.02
+@export_range(0.25, 4.0, 0.25) var streaming_refresh_distance_m: float = 0.5
 @export_range(0.5, 2.5, 0.1) var streaming_prediction_seconds: float = 1.4
-@export_range(0.0, 1.5, 0.05) var altitude_lod_weight: float = 0.85
 
 @export_category("Collision")
 @export_range(16.0, 128.0, 8.0) var collision_distance_m: float = 80.0
@@ -49,10 +48,6 @@ var _world_min_x: float
 var _world_min_z: float
 var _chunks_per_axis: int
 var _lod_state_cache: Dictionary = {}
-var _chunk_bounds_cache: Dictionary = {}
-var _visibility_changed: bool = false
-var _altitude_lod_offset_m: float = 0.0
-var _current_prediction_seconds: float = 1.4
 var _retiring_chunks: Array[VoxelTerrainChunk] = []
 var _generation_epoch: int = 0
 var _startup_load_pending: bool = true
@@ -153,7 +148,6 @@ func regenerate_with_seed(new_seed: int) -> void:
     _wanted.clear()
     _completed_jobs.clear()
     _lod_state_cache.clear()
-    _chunk_bounds_cache.clear()
 
     # Hide the old world immediately; release mesh buffers gradually over later frames.
     # In-flight tasks finish, but their old epoch will reject their results.
@@ -223,9 +217,7 @@ func get_lod_boundary_m(lod_index: int) -> float:
 func get_mesh_step_voxels(lod_index: int) -> int:
     var safe_lod: int = clampi(lod_index, 0, 6)
     if safe_lod == 0:
-        # A 20 cm near mesh cuts the LOD0 column count by 75% while keeping
-        # the existing chunk hierarchy and far-LOD workload unchanged.
-        return BASE_MESH_STEP_VOXELS << 1
+        return BASE_MESH_STEP_VOXELS
     return BASE_MESH_STEP_VOXELS << (safe_lod + lod_detail_bias)
 
 
@@ -399,10 +391,6 @@ func _refresh_streaming() -> void:
     var player_xz := Vector2(_player.global_position.x, _player.global_position.z)
     var heading: Vector2 = _get_streaming_heading()
     var planar_velocity := Vector2(_player.velocity.x, _player.velocity.z)
-    # Prediction/queue-cost estimation is expensive enough to cache once per refresh.
-    _current_prediction_seconds = _effective_prediction_seconds()
-    var height_above_ground: float = maxf(0.0, _player.global_position.y - get_surface_height(player_xz.x, player_xz.y))
-    _altitude_lod_offset_m = height_above_ground * altitude_lod_weight
     var wanted: Dictionary = {}
     # The 2048m LOD6 roots cover the complete finite world. Near roots split into
     # smaller children, but parents stay visible as fallback until every child is ready.
@@ -421,8 +409,6 @@ func _refresh_streaming() -> void:
             continue
         var old_chunk: VoxelTerrainChunk = _chunks[existing_coord] as VoxelTerrainChunk
         if _distance_to_chunk_bounds(player_xz, _chunk_bounds(existing_coord)) > cache_radius:
-            if old_chunk._render_active:
-                _visibility_changed = true
             old_chunk.set_render_active(false)
             old_chunk._retire_current_generation()
             remove_child(old_chunk)
@@ -431,8 +417,6 @@ func _refresh_streaming() -> void:
             _completed_jobs.erase(existing_coord)
             _queued.erase(existing_coord)
         else:
-            if old_chunk._render_active:
-                _visibility_changed = true
             old_chunk.set_render_active(false)
     for coord_value in wanted.keys():
         var coord: Vector2i = coord_value
@@ -457,7 +441,8 @@ func _refresh_streaming() -> void:
             _queued[coord] = request
         else:
             _queued.erase(coord)
-    _reconcile_and_refresh_skirts()
+    _reconcile_hierarchy_visibility()
+    _refresh_active_skirts()
     _record_timing(_refresh_usec_samples, Time.get_ticks_usec() - refresh_started_usec, 96)
 
 func _update_chunk_skirt_visibility(coord: Vector2i, chunk: VoxelTerrainChunk) -> void:
@@ -508,34 +493,24 @@ func _refresh_active_skirts() -> void:
             _update_chunk_skirt_visibility(key, chunk)
 
 func _chunk_bounds(coord: Vector2i) -> Dictionary:
-    if _chunk_bounds_cache.has(coord):
-        return _chunk_bounds_cache[coord]
-
     var parts: Dictionary = _decode_lod_key(coord)
     var lod_index: int = int(parts["lod"])
     var tile_x: int = int(parts["tile_x"])
     var tile_z: int = int(parts["tile_z"])
     var tile_voxels: int = _chunk_size_voxels * (1 << lod_index)
     var tiles_axis: int = ceili(float(_world_size_voxels) / float(tile_voxels))
-    var bounds: Dictionary
     if tile_x < 0 or tile_z < 0 or tile_x >= tiles_axis or tile_z >= tiles_axis:
-        bounds = {"start_x": 0, "start_z": 0, "size_x": 0, "size_z": 0, "origin": Vector2.ZERO, "center": Vector2.ZERO, "width": 0.0, "depth": 0.0, "lod": lod_index, "tile_x": tile_x, "tile_z": tile_z}
-    else:
-        var start_x: int = tile_x * tile_voxels
-        var start_z: int = tile_z * tile_voxels
-        var size_x: int = maxi(0, mini(tile_voxels, _world_size_voxels - start_x))
-        var size_z: int = maxi(0, mini(tile_voxels, _world_size_voxels - start_z))
-        var origin_x: float = _world_min_x + float(start_x) * VOXEL_SIZE
-        var origin_z: float = _world_min_z + float(start_z) * VOXEL_SIZE
-        var width: float = float(size_x) * VOXEL_SIZE
-        var depth: float = float(size_z) * VOXEL_SIZE
-        bounds = {"start_x": start_x, "start_z": start_z, "size_x": size_x, "size_z": size_z, "origin": Vector2(origin_x, origin_z), "center": Vector2(origin_x + width * 0.5, origin_z + depth * 0.5), "width": width, "depth": depth, "lod": lod_index, "tile_x": tile_x, "tile_z": tile_z}
+        return {"start_x": 0, "start_z": 0, "size_x": 0, "size_z": 0, "origin": Vector2.ZERO, "center": Vector2.ZERO, "width": 0.0, "depth": 0.0, "lod": lod_index, "tile_x": tile_x, "tile_z": tile_z}
+    var start_x: int = tile_x * tile_voxels
+    var start_z: int = tile_z * tile_voxels
+    var size_x: int = maxi(0, mini(tile_voxels, _world_size_voxels - start_x))
+    var size_z: int = maxi(0, mini(tile_voxels, _world_size_voxels - start_z))
+    var origin_x: float = _world_min_x + float(start_x) * VOXEL_SIZE
+    var origin_z: float = _world_min_z + float(start_z) * VOXEL_SIZE
+    var width: float = float(size_x) * VOXEL_SIZE
+    var depth: float = float(size_z) * VOXEL_SIZE
+    return {"start_x": start_x, "start_z": start_z, "size_x": size_x, "size_z": size_z, "origin": Vector2(origin_x, origin_z), "center": Vector2(origin_x + width * 0.5, origin_z + depth * 0.5), "width": width, "depth": depth, "lod": lod_index, "tile_x": tile_x, "tile_z": tile_z}
 
-    # Bound cache growth on the finite world; recent / nearby bounds keep their hits.
-    if _chunk_bounds_cache.size() >= 32768:
-        _chunk_bounds_cache.clear()
-    _chunk_bounds_cache[coord] = bounds
-    return bounds
 func _distance_to_chunk_bounds(point: Vector2, bounds: Dictionary) -> float:
     var center: Vector2 = bounds["center"]
     var width: float = float(bounds["width"])
@@ -543,67 +518,6 @@ func _distance_to_chunk_bounds(point: Vector2, bounds: Dictionary) -> float:
     var nearest_x: float = maxf(0.0, absf(point.x - center.x) - width * 0.5)
     var nearest_z: float = maxf(0.0, absf(point.y - center.y) - depth * 0.5)
     return Vector2(nearest_x, nearest_z).length()
-
-
-func _point_to_segment_distance(point: Vector2, start: Vector2, finish: Vector2) -> float:
-    var segment: Vector2 = finish - start
-    var length_squared: float = segment.length_squared()
-    if length_squared <= 0.000001:
-        return point.distance_to(start)
-    var t: float = clampf((point - start).dot(segment) / length_squared, 0.0, 1.0)
-    return point.distance_to(start + segment * t)
-
-
-func _swept_distance_to_chunk_bounds(start: Vector2, finish: Vector2, bounds: Dictionary) -> float:
-    if start.distance_squared_to(finish) <= 0.000001:
-        return _distance_to_chunk_bounds(start, bounds)
-    var center: Vector2 = bounds["center"]
-    var half_width: float = float(bounds["width"]) * 0.5
-    var half_depth: float = float(bounds["depth"]) * 0.5
-    var min_x: float = center.x - half_width
-    var max_x: float = center.x + half_width
-    var min_z: float = center.y - half_depth
-    var max_z: float = center.y + half_depth
-    var delta: Vector2 = finish - start
-
-    # Segment/AABB slab test: a chunk intersecting the forecast path has zero distance.
-    var t_min: float = 0.0
-    var t_max: float = 1.0
-    var intersects: bool = true
-    for axis in range(2):
-        var origin: float = start.x if axis == 0 else start.y
-        var direction: float = delta.x if axis == 0 else delta.y
-        var lower: float = min_x if axis == 0 else min_z
-        var upper: float = max_x if axis == 0 else max_z
-        if absf(direction) < 0.000001:
-            if origin < lower or origin > upper:
-                intersects = false
-                break
-            continue
-        var t1: float = (lower - origin) / direction
-        var t2: float = (upper - origin) / direction
-        t_min = maxf(t_min, minf(t1, t2))
-        t_max = minf(t_max, maxf(t1, t2))
-        if t_min > t_max:
-            intersects = false
-            break
-    if intersects:
-        return 0.0
-
-    var nearest: float = minf(_distance_to_chunk_bounds(start, bounds), _distance_to_chunk_bounds(finish, bounds))
-    var corners: Array[Vector2] = [
-        Vector2(min_x, min_z), Vector2(max_x, min_z),
-        Vector2(min_x, max_z), Vector2(max_x, max_z)
-    ]
-    for corner in corners:
-        nearest = minf(nearest, _point_to_segment_distance(corner, start, finish))
-    return nearest
-
-
-func _lod_selection_distance(horizontal_distance: float) -> float:
-    # A player high above the terrain should not force an expensive LOD0 ring beneath
-    # the entire flight path. The offset is evaluated once per streaming refresh.
-    return Vector2(horizontal_distance, _altitude_lod_offset_m).length()
 
 func _process_chunk_jobs() -> void:
     var worker_limit: int = maxi(1, mini(max_concurrent_mesh_jobs, maxi(1, OS.get_processor_count() - 1)))
@@ -712,11 +626,10 @@ func _apply_completed_jobs() -> void:
         return
 
     var coords: Array = _completed_jobs.keys()
-    var coverage_ready: bool = is_world_coverage_ready()
     coords.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
         var lod_a: int = int(_decode_lod_key(a)["lod"])
         var lod_b: int = int(_decode_lod_key(b)["lod"])
-        if not coverage_ready and lod_a != lod_b:
+        if not is_world_coverage_ready() and lod_a != lod_b:
             return lod_a > lod_b
         var distance_a: float = float(_wanted.get(a, {"distance": INF})["distance"])
         var distance_b: float = float(_wanted.get(b, {"distance": INF})["distance"])
@@ -760,7 +673,8 @@ func _apply_completed_jobs() -> void:
         _update_neighbor_chunk_skirts(coord)
         applied += 1
     if applied > 0:
-        _reconcile_and_refresh_skirts()
+        _reconcile_hierarchy_visibility()
+        _refresh_active_skirts()
 
 
 
@@ -885,17 +799,6 @@ func _all_lod_children_ready(children: Array[Vector2i]) -> bool:
             return false
     return true
 
-func _reconcile_and_refresh_skirts() -> void:
-    # Chunks moved out of the wanted set can change visibility before the hierarchy walk.
-    # Preserve that pending change while also tracking visibility transitions below.
-    var pending_visibility_change: bool = _visibility_changed
-    _visibility_changed = false
-    _reconcile_hierarchy_visibility()
-    if pending_visibility_change or _visibility_changed:
-        _refresh_active_skirts()
-    _visibility_changed = false
-
-
 func _reconcile_hierarchy_visibility() -> void:
     var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 64))
     for tz in range(root_tiles):
@@ -916,8 +819,6 @@ func _update_lod_subtree_visibility(coord: Vector2i, ancestors_visible: bool) ->
     var chunk: VoxelTerrainChunk = _chunks.get(coord) as VoxelTerrainChunk
     var node_active: bool = ancestors_visible and (not parent or not children_ready) and chunk != null and chunk.mesh_ready
     if chunk != null:
-        if chunk._render_active != node_active:
-            _visibility_changed = true
         chunk.set_render_active(node_active, bool(request.get("collision", false)))
     var children_visible: bool = ancestors_visible and parent and children_ready
     for child_key in children:
@@ -928,15 +829,9 @@ func _collect_lod_tiles(lod_index: int, tile_x: int, tile_z: int, player_xz: Vec
     var bounds := _chunk_bounds(key)
     if int(bounds["size_x"]) <= 0 or int(bounds["size_z"]) <= 0:
         return
-
-    # Plan ahead along the current movement vector instead of using prediction only in
-    # debug output / job priorities. Use the prediction interval cached for this refresh.
-    var predicted_xz: Vector2 = player_xz + planar_velocity * _current_prediction_seconds
-    var nearest: float = _swept_distance_to_chunk_bounds(player_xz, predicted_xz, bounds)
-    var selection_distance: float = _lod_selection_distance(nearest)
+    var nearest: float = _distance_to_chunk_bounds(player_xz, bounds)
     if nearest > render_distance_m:
         return
-
     var boundary: float = _lod_boundary_for(lod_index - 1) if lod_index > 0 else -1.0
     if lod_index == 6:
         boundary = get_lod_boundary_m(5)
@@ -944,16 +839,14 @@ func _collect_lod_tiles(lod_index: int, tile_x: int, tile_z: int, player_xz: Vec
     var was_split: bool = bool(previous.get("fallback", false))
     var split: bool = false
     if lod_index > 0:
+        # Keep hysteresis proportional when the shared LOD distance scale changes.
         var scaled_hysteresis: float = lod_hysteresis_m * lod0_distance_m / 128.0
         var threshold: float = boundary + scaled_hysteresis if was_split else maxf(0.0, boundary - scaled_hysteresis)
-        split = selection_distance < threshold
-
+        split = nearest < threshold
     var center: Vector2 = bounds["center"]
     var req := {
         "lod": lod_index, "fallback": split, "distance": center.distance_to(player_xz),
-        "nearest_distance": nearest,
-        "priority": center.distance_to(player_xz) - maxf(0.0, (center - player_xz).dot(heading) * 0.30),
-        # Collision stays horizontally distance-based, but uses the same predicted sweep.
+        "nearest_distance": nearest, "priority": center.distance_to(player_xz) - maxf(0.0, (center - player_xz).dot(heading) * 0.30),
         "collision": lod_index == 0 and nearest <= collision_distance_m,
         "start_x": int(bounds["start_x"]), "start_z": int(bounds["start_z"]),
         "size_x": int(bounds["size_x"]), "size_z": int(bounds["size_z"]),
@@ -965,6 +858,7 @@ func _collect_lod_tiles(lod_index: int, tile_x: int, tile_z: int, player_xz: Vec
         for dz in range(2):
             for dx in range(2):
                 _collect_lod_tiles(lod_index - 1, tile_x * 2 + dx, tile_z * 2 + dz, player_xz, heading, planar_velocity, wanted)
+
 func _get_streaming_heading() -> Vector2:
     if _player == null:
         return Vector2(0.0, -1.0)
