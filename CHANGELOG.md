@@ -4,14 +4,12 @@ All notable changes are recorded here. The current version is defined by `projec
 
 ## 0.1.0.9 — 2026-10-25
 
-Follow-up fixes within the same version:
-
-- Kept the far-blur distance and strength sliders as an optional experiment, but changed depth blur to **off by default** because it does not solve the likely terrain-shadow problem.
-- Disabled shadow casting for **all voxel LODs**, not only LOD2+. Voxel faces still receive normal directional and sky-ambient lighting; only their participation as shadow casters is removed.
-- This reduces coarse shadow blocks and self-shadow speckles, and avoids rendering voxel chunks into directional-light shadow cascades. The likely performance gain depends on the device and how much terrain is visible.
-- Retained the screen-space shader filter: 10 cm colour cells fade toward an average as they become sub-pixel, and larger Voronoi cracks are filtered separately. This treats shader-colour Moiré, while disabling terrain shadows targets shadow-map artifacts.
-- The native C++ mesh builder remains unchanged because shadow-casting flags belong to each Godot MeshInstance3D, and screen-space filtering runs in the GPU fragment shader.
-- Sized the menu logo to the same content width as the buttons while preserving its aspect ratio; the brown panel remains removed.
+- Removed the distant-terrain blur setting and its depth-blur mechanics. Legacy blur values are removed when settings are saved.
+- Continued addressing distant terrain ripple/Moiré with screen-space filtering: fine voxel colour cells and small Voronoi crack details fade as they become sub-pixel, while broad terrain colour variation is retained.
+- Preserved normal lighting on visible voxel surfaces but moved shadow casting to separate invisible `SHADOWS_ONLY` terrain proxies for active LOD chunks. LOD0–LOD3 proxies include top and side faces (without stitching skirts); LOD4–LOD6 use top faces only to retain broad landform shadows while reducing distant side-wall shadow noise.
+- Smoothed grass-to-rock transitions using the Neverland-style palette and continuous slope weighting. Kept the varied Voronoi cracks and omitted extra directional mineral bands/fissure overlays.
+- Corrected the rock-slope calculation to use GDScript-compatible `1.0 / sqrt(...)`; cleaned a stray literal newline in a mesh-builder comment and updated outdated shadow-proxy documentation.
+- A Godot 4.7.2 automated smoke test passed for surface rock-weight calculations, mesh generation at LOD2/LOD4, and shadow-proxy settings/geometry selection. The temporary test and workflow were removed after validation. The runner logged that the prebuilt Linux native GDExtension library was missing, so this run did not verify loading that native binary or replace visual testing on the target device.
 
 ## 0.1.0.8
 
