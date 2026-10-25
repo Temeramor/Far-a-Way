@@ -1,3 +1,4 @@
+# Temporary validation workflow; removed after this check.
 name: Temporary Godot syntax validation
 on:
   push:
