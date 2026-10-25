@@ -295,7 +295,7 @@ func _make_button(caption: String, primary: bool = false) -> Button:
     return button
 
 
-func _make_option_row(parent: VBoxContainer, caption: String, options: Array[String], selected_index: int) -> OptionButton:
+func _make_option_row(parent: VBoxContainer, caption: String, options: Array, selected_index: int) -> OptionButton:
     var row := HBoxContainer.new()
     row.add_theme_constant_override("separation", 8)
     row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -306,8 +306,8 @@ func _make_option_row(parent: VBoxContainer, caption: String, options: Array[Str
     row.add_child(label)
     var selector := OptionButton.new()
     selector.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    for option_text in options:
-        selector.add_item(option_text)
+    for option_value in options:
+        selector.add_item(str(option_value))
     selector.select(clampi(selected_index, 0, maxi(0, options.size() - 1)))
     _style_option_button(selector)
     row.add_child(selector)

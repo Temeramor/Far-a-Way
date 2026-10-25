@@ -178,19 +178,26 @@ vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world, float crack_weight) {
     float micro_width = mix(0.018, 0.060, micro_width_noise);
     float broad_width = mix(0.020, 0.075, broad_width_noise);
 
-    float micro_lifetime = smoothstep(0.24, 0.72,
-        value_noise(crack_world * 0.095 + vec2(29.1, seed_low * 0.0004)));
-    float broad_lifetime = smoothstep(0.30, 0.76,
-        value_noise(crack_world * 0.042 + vec2(3.7, seed_high * 0.0006)));
-    float micro_crack = (1.0 - smoothstep(micro_width, micro_width + 0.035, micro_edge))
-        * micro_lifetime;
-    float broad_crack = (1.0 - smoothstep(broad_width, broad_width + 0.030, broad_edge))
-        * broad_lifetime;
+    float micro_lifetime_noise = value_noise(crack_world * 0.095 + vec2(29.1, seed_low * 0.0004));
+    float broad_lifetime_noise = value_noise(crack_world * 0.042 + vec2(3.7, seed_high * 0.0006));
+    float micro_lifetime = smoothstep(0.24, 0.72, micro_lifetime_noise);
+    float broad_lifetime = smoothstep(0.30, 0.76, broad_lifetime_noise);
+
+    // Keep each smoothstep on one line with explicit intermediate values.
+    float micro_edge_limit = micro_width + 0.035;
+    float broad_edge_limit = broad_width + 0.030;
+    float micro_falloff = smoothstep(micro_width, micro_edge_limit, micro_edge);
+    float broad_falloff = smoothstep(broad_width, broad_edge_limit, broad_edge);
+    float micro_crack = (1.0 - micro_falloff) * micro_lifetime;
+    float broad_crack = (1.0 - broad_falloff) * broad_lifetime;
 
     // Use a muted dark stone colour and preserve some base pixels through each crack.
     // The overlapping scales yield varied cracks without heavy bands across a mountain.
     float crack_strength = clamp(micro_crack * 0.50 + broad_crack * 0.62, 0.0, 0.78);
-    return mix(base_color, palette_color(vec3(0.105, 0.112, 0.112)), crack_strength * clamp(crack_weight, 0.0, 1.0));
+    float normalized_crack_weight = clamp(crack_weight, 0.0, 1.0);
+    float final_crack_strength = crack_strength * normalized_crack_weight;
+    vec3 crack_color = palette_color(vec3(0.105, 0.112, 0.112));
+    return mix(base_color, crack_color, final_crack_strength);
 }
 
 void vertex() {
