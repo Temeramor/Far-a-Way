@@ -24,7 +24,7 @@ using namespace godot;
 namespace {
 
 constexpr double VOXEL_SIZE = 0.1;
-constexpr int32_t BASE_MESH_STEP_VOXELS = 2;
+constexpr int32_t BASE_MESH_STEP_VOXELS = 1;
 constexpr int HEIGHT_CACHE_STEP_VOXELS = 5;
 constexpr int LOD_SKIRT_DEPTH_VOXELS = 80;
 constexpr double SKIRT_ALPHA_LEFT = 0.80;
@@ -204,6 +204,9 @@ struct MeshBuild {
     std::vector<Vector3> normals;
     std::vector<Color> colors;
     std::vector<int32_t> indices;
+    std::vector<Vector3> smooth_shadow_vertices;
+    std::vector<Vector3> smooth_shadow_normals;
+    std::vector<int32_t> smooth_shadow_indices;
 
     explicit MeshBuild(int64_t seed) : noise(seed) {}
 
@@ -619,6 +622,60 @@ struct MeshBuild {
         }
     }
 
+    void build_smooth_shadow_surface() {
+        // A continuous (non-voxelized) heightfield casts the terrain silhouette.
+        // Bound each chunk to 128x128 cells while scaling the physical sampling interval with LOD.
+        const int32_t shadow_step_voxels = 20 << std::max<int32_t>(0, lod - 3);
+        const int32_t shadow_cells_x = static_cast<int32_t>(
+            std::ceil(static_cast<double>(size_voxels_x) / shadow_step_voxels));
+        const int32_t shadow_cells_z = static_cast<int32_t>(
+            std::ceil(static_cast<double>(size_voxels_z) / shadow_step_voxels));
+        const int32_t shadow_width = shadow_cells_x + 1;
+        const int32_t shadow_depth = shadow_cells_z + 1;
+        const size_t vertex_count = static_cast<size_t>(shadow_width) * shadow_depth;
+        const size_t index_count = static_cast<size_t>(shadow_cells_x) * shadow_cells_z * 6;
+        smooth_shadow_vertices.clear();
+        smooth_shadow_normals.clear();
+        smooth_shadow_indices.clear();
+        smooth_shadow_vertices.reserve(vertex_count);
+        smooth_shadow_normals.reserve(vertex_count);
+        smooth_shadow_indices.reserve(index_count);
+
+        for (int32_t z = 0; z < shadow_depth; ++z) {
+            const int32_t local_voxel_z = std::min(z * shadow_step_voxels, size_voxels_z);
+            const double world_z = world_min_z +
+                static_cast<double>(start_voxel_z + local_voxel_z) * VOXEL_SIZE;
+            for (int32_t x = 0; x < shadow_width; ++x) {
+                const int32_t local_voxel_x = std::min(x * shadow_step_voxels, size_voxels_x);
+                const double world_x = world_min_x +
+                    static_cast<double>(start_voxel_x + local_voxel_x) * VOXEL_SIZE;
+                // Do not quantize or reuse the visible voxel heights here.
+                const double height_m = noise.surface_height(world_x, world_z);
+                smooth_shadow_vertices.emplace_back(
+                    static_cast<double>(local_voxel_x) * VOXEL_SIZE,
+                    height_m,
+                    static_cast<double>(local_voxel_z) * VOXEL_SIZE);
+                smooth_shadow_normals.emplace_back(0.0, 1.0, 0.0);
+            }
+        }
+
+        for (int32_t z = 0; z < shadow_cells_z; ++z) {
+            for (int32_t x = 0; x < shadow_cells_x; ++x) {
+                const int32_t top_left = z * shadow_width + x;
+                const int32_t top_right = top_left + 1;
+                const int32_t bottom_left = top_left + shadow_width;
+                const int32_t bottom_right = bottom_left + 1;
+                // Upward-facing triangles; only this smooth surface is used by the shadow map.
+                smooth_shadow_indices.push_back(top_left);
+                smooth_shadow_indices.push_back(bottom_left);
+                smooth_shadow_indices.push_back(top_right);
+                smooth_shadow_indices.push_back(top_right);
+                smooth_shadow_indices.push_back(bottom_left);
+                smooth_shadow_indices.push_back(bottom_right);
+            }
+        }
+    }
+
     Dictionary run(const Dictionary &job_data, int64_t build_started_usec) {
         coord = job_data.get("coord", Vector2i());
         const Dictionary request = job_data.get("request", Dictionary());
@@ -663,11 +720,15 @@ struct MeshBuild {
         const int64_t shadow_full_vertex_count = static_cast<int64_t>(vertices.size());
         const int64_t shadow_full_index_count = static_cast<int64_t>(indices.size());
         build_lod_skirts();
+        build_smooth_shadow_surface();
 
         PackedVector3Array packed_vertices;
         PackedVector3Array packed_normals;
         PackedColorArray packed_colors;
         PackedInt32Array packed_indices;
+        PackedVector3Array packed_smooth_shadow_vertices;
+        PackedVector3Array packed_smooth_shadow_normals;
+        PackedInt32Array packed_smooth_shadow_indices;
         packed_vertices.resize(static_cast<int64_t>(vertices.size()));
         packed_normals.resize(static_cast<int64_t>(normals.size()));
         packed_colors.resize(static_cast<int64_t>(colors.size()));
@@ -680,6 +741,16 @@ struct MeshBuild {
         for (size_t i = 0; i < indices.size(); ++i) {
             packed_indices.set(static_cast<int64_t>(i), indices[i]);
         }
+        packed_smooth_shadow_vertices.resize(static_cast<int64_t>(smooth_shadow_vertices.size()));
+        packed_smooth_shadow_normals.resize(static_cast<int64_t>(smooth_shadow_normals.size()));
+        packed_smooth_shadow_indices.resize(static_cast<int64_t>(smooth_shadow_indices.size()));
+        for (size_t i = 0; i < smooth_shadow_vertices.size(); ++i) {
+            packed_smooth_shadow_vertices.set(static_cast<int64_t>(i), smooth_shadow_vertices[i]);
+            packed_smooth_shadow_normals.set(static_cast<int64_t>(i), smooth_shadow_normals[i]);
+        }
+        for (size_t i = 0; i < smooth_shadow_indices.size(); ++i) {
+            packed_smooth_shadow_indices.set(static_cast<int64_t>(i), smooth_shadow_indices[i]);
+        }
 
         Dictionary out;
         out["coord"] = coord;
@@ -691,6 +762,9 @@ struct MeshBuild {
         out["normals"] = packed_normals;
         out["colors"] = packed_colors;
         out["indices"] = packed_indices;
+        out["smooth_shadow_vertices"] = packed_smooth_shadow_vertices;
+        out["smooth_shadow_normals"] = packed_smooth_shadow_normals;
+        out["smooth_shadow_indices"] = packed_smooth_shadow_indices;
         out["shadow_top_vertex_count"] = shadow_top_vertex_count;
         out["shadow_top_index_count"] = shadow_top_index_count;
         out["shadow_full_vertex_count"] = shadow_full_vertex_count;

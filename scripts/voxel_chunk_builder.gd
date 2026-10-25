@@ -5,7 +5,7 @@ class_name VoxelChunkMeshBuilder
 ## the SceneTree, RenderingServer and physics resources are handled by the main-thread wrapper.
 
 const VOXEL_SIZE: float = 0.1
-const BASE_MESH_STEP_VOXELS: int = 2
+const BASE_MESH_STEP_VOXELS: int = 1
 const HEIGHT_CACHE_STEP_VOXELS: int = 5
 const LOD_SKIRT_DEPTH_VOXELS: int = 80
 const SKIRT_ALPHA_LEFT: float = 0.80
@@ -125,6 +125,10 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
     var shadow_full_vertex_count: int = _vertices.size()
     var shadow_full_index_count: int = _indices.size()
     _build_lod_skirts(heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels, neighbor_lods)
+    var smooth_shadow_data: Dictionary = _build_smooth_shadow_surface(
+        generator, p_lod, world_min_x, world_min_z,
+        start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z
+    )
 
     result = {
         "coord": coord,
@@ -140,6 +144,9 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
         "shadow_top_index_count": shadow_top_index_count,
         "shadow_full_vertex_count": shadow_full_vertex_count,
         "shadow_full_index_count": shadow_full_index_count,
+        "smooth_shadow_vertices": smooth_shadow_data["vertices"],
+        "smooth_shadow_normals": smooth_shadow_data["normals"],
+        "smooth_shadow_indices": smooth_shadow_data["indices"],
         "position": Vector3(
             world_min_x + float(start_voxel_x) * VOXEL_SIZE,
             0.0,
@@ -173,6 +180,70 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
         }
     result["build_usec"] = Time.get_ticks_usec() - build_started_usec
     return result
+
+
+func _build_smooth_shadow_surface(
+    generator: VoxelTerrainGenerator,
+    p_lod: int,
+    world_min_x: float,
+    world_min_z: float,
+    start_voxel_x: int,
+    start_voxel_z: int,
+    size_voxels_x: int,
+    size_voxels_z: int
+) -> Dictionary:
+    # This is a continuous heightfield sampled independently of the visible voxel grid.
+    # Keep the shadow mesh bounded to 128x128 cells per chunk: at distance its spacing
+    # increases with LOD, while remaining finer than the visible voxel silhouette.
+    var shadow_step_voxels: int = 20 << maxi(0, p_lod - 3)
+    var shadow_cells_x: int = ceili(float(size_voxels_x) / float(shadow_step_voxels))
+    var shadow_cells_z: int = ceili(float(size_voxels_z) / float(shadow_step_voxels))
+    var shadow_width: int = shadow_cells_x + 1
+    var shadow_depth: int = shadow_cells_z + 1
+
+    var shadow_vertices := PackedVector3Array()
+    var shadow_normals := PackedVector3Array()
+    var shadow_indices := PackedInt32Array()
+    shadow_vertices.resize(shadow_width * shadow_depth)
+    shadow_normals.resize(shadow_width * shadow_depth)
+    shadow_indices.resize(shadow_cells_x * shadow_cells_z * 6)
+
+    for z in range(shadow_depth):
+        var local_voxel_z: int = mini(z * shadow_step_voxels, size_voxels_z)
+        var world_z: float = world_min_z + float(start_voxel_z + local_voxel_z) * VOXEL_SIZE
+        for x in range(shadow_width):
+            var local_voxel_x: int = mini(x * shadow_step_voxels, size_voxels_x)
+            var world_x: float = world_min_x + float(start_voxel_x + local_voxel_x) * VOXEL_SIZE
+            var vertex_index: int = z * shadow_width + x
+            # get_surface_height samples the continuous generator, not quantized voxel heights.
+            shadow_vertices[vertex_index] = Vector3(
+                float(local_voxel_x) * VOXEL_SIZE,
+                generator.get_surface_height(world_x, world_z),
+                float(local_voxel_z) * VOXEL_SIZE
+            )
+            shadow_normals[vertex_index] = Vector3.UP
+
+    var index_cursor: int = 0
+    for z in range(shadow_cells_z):
+        for x in range(shadow_cells_x):
+            var top_left: int = z * shadow_width + x
+            var top_right: int = top_left + 1
+            var bottom_left: int = top_left + shadow_width
+            var bottom_right: int = bottom_left + 1
+            # Winding is upward-facing so the shadow map treats the heightfield as solid terrain.
+            shadow_indices[index_cursor] = top_left
+            shadow_indices[index_cursor + 1] = bottom_left
+            shadow_indices[index_cursor + 2] = top_right
+            shadow_indices[index_cursor + 3] = top_right
+            shadow_indices[index_cursor + 4] = bottom_left
+            shadow_indices[index_cursor + 5] = bottom_right
+            index_cursor += 6
+
+    return {
+        "vertices": shadow_vertices,
+        "normals": shadow_normals,
+        "indices": shadow_indices
+    }
 
 func _build_greedy_top_faces(
     heights: PackedInt32Array,

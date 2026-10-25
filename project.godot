@@ -26,7 +26,8 @@ window/stretch/mode="canvas_items"
 renderer/rendering_method="mobile"
 renderer/rendering_method.mobile="mobile"
 textures/default_filters/use_nearest_mipmap_filter=false
-shading/overrides/force_vertex_shading=false
+rendering/shading/overrides/force_vertex_shading=false
+rendering/shading/overrides/force_vertex_shading.mobile=false
 
 [input_devices]
 pointing/emulate_mouse_from_touch=true

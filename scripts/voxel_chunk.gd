@@ -114,23 +114,14 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     _skirt_visibility_cache = Vector4(-1.0, -1.0, -1.0, -1.0)
     add_child(mesh_instance)
 
-    var shadow_top_vertex_count: int = int(data.get("shadow_top_vertex_count", 0))
-    var shadow_top_index_count: int = int(data.get("shadow_top_index_count", 0))
-    var shadow_full_vertex_count: int = int(data.get("shadow_full_vertex_count", 0))
-    var shadow_full_index_count: int = int(data.get("shadow_full_index_count", 0))
-    # Use the full opaque relief silhouette for shadow-map occlusion.
-    var shadow_vertex_count: int = shadow_full_vertex_count
-    var shadow_index_count: int = shadow_full_index_count
-    if shadow_vertex_count >= 3 and shadow_index_count >= 3:
-        var source_vertices: PackedVector3Array = data["vertices"]
-        var source_normals: PackedVector3Array = data["normals"]
-        var source_colors: PackedColorArray = data["colors"]
-        var source_indices: PackedInt32Array = data["indices"]
+    var shadow_vertices: PackedVector3Array = data.get("smooth_shadow_vertices", PackedVector3Array())
+    var shadow_normals: PackedVector3Array = data.get("smooth_shadow_normals", PackedVector3Array())
+    var shadow_indices: PackedInt32Array = data.get("smooth_shadow_indices", PackedInt32Array())
+    if shadow_vertices.size() >= 3 and shadow_indices.size() >= 3:
         var shadow_data: Dictionary = {
-            "vertices": source_vertices.slice(0, shadow_vertex_count),
-            "normals": source_normals.slice(0, shadow_vertex_count),
-            "colors": source_colors.slice(0, shadow_vertex_count),
-            "indices": source_indices.slice(0, shadow_index_count)
+            "vertices": shadow_vertices,
+            "normals": shadow_normals,
+            "indices": shadow_indices
         }
         var shadow_mesh := _make_array_mesh(shadow_data, null)
         shadow_mesh.resource_name = "TerrainShadowProxy_%d_%d_LOD%d" % [coord.x, coord.y, lod]
@@ -257,7 +248,8 @@ func _make_array_mesh(data: Dictionary, material: Material) -> ArrayMesh:
     arrays.resize(Mesh.ARRAY_MAX)
     arrays[Mesh.ARRAY_VERTEX] = data["vertices"]
     arrays[Mesh.ARRAY_NORMAL] = data["normals"]
-    arrays[Mesh.ARRAY_COLOR] = data["colors"]
+    if data.has("colors") and not data["colors"].is_empty():
+        arrays[Mesh.ARRAY_COLOR] = data["colors"]
     arrays[Mesh.ARRAY_INDEX] = data["indices"]
     var mesh := ArrayMesh.new()
     if not data["indices"].is_empty():

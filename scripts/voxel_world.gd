@@ -3,7 +3,7 @@ class_name VoxelWorld
 
 const VOXEL_SIZE: float = 0.1
 const LOD_KEY_STRIDE: int = 100000
-const BASE_MESH_STEP_VOXELS: int = 2
+const BASE_MESH_STEP_VOXELS: int = 1
 const GeneratorScript = preload("res://scripts/voxel_generator.gd")
 const ChunkScript = preload("res://scripts/voxel_chunk.gd")
 const BuilderScript = preload("res://scripts/voxel_chunk_builder.gd")
