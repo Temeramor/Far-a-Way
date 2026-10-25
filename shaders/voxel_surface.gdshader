@@ -285,9 +285,8 @@ void fragment() {
             ALBEDO = filtered_rock;
         }
     }
-    // Use a common upward-facing diffuse normal on voxel faces to remove dark side-wall
-    // bands. The normal is transformed to view space as required by Godot's spatial shader.
-    // Standard direct illumination and shadow receiving remain enabled.
-    NORMAL = normalize(mat3(VIEW_MATRIX) * vec3(0.0, 1.0, 0.0));
+    // Keep Godot's interpolated mesh normal. Near voxel faces need their original
+    // directional light response to preserve the blocky relief; far shadow casting is
+    // controlled per LOD, with a separate top-only proxy preserving the broad terrain shadow.
     ROUGHNESS = 0.96;
 }
