@@ -10,7 +10,7 @@ const BuilderScript = preload("res://scripts/voxel_chunk_builder.gd")
 
 @export_category("Voxel world")
 @export_range(256.0, 20000.0, 256.0) var world_size_m: float = 10000.0
-@export_range(8.0, 32.0, 8.0) var chunk_size_m: float = 16.0
+@export_range(8.0, 32.0, 8.0) var chunk_size_m: float = 32.0
 @export var seed_value: int = 1337
 @export var auto_start_on_ready: bool = true
 
@@ -52,6 +52,7 @@ var _lod_state_cache: Dictionary = {}
 var _chunk_bounds_cache: Dictionary = {}
 var _visibility_changed: bool = false
 var _altitude_lod_offset_m: float = 0.0
+var _current_prediction_seconds: float = 1.4
 var _retiring_chunks: Array[VoxelTerrainChunk] = []
 var _generation_epoch: int = 0
 var _startup_load_pending: bool = true
@@ -222,7 +223,9 @@ func get_lod_boundary_m(lod_index: int) -> float:
 func get_mesh_step_voxels(lod_index: int) -> int:
     var safe_lod: int = clampi(lod_index, 0, 6)
     if safe_lod == 0:
-        return BASE_MESH_STEP_VOXELS
+        # A 20 cm near mesh cuts the LOD0 column count by 75% while keeping
+        # the existing chunk hierarchy and far-LOD workload unchanged.
+        return BASE_MESH_STEP_VOXELS << 1
     return BASE_MESH_STEP_VOXELS << (safe_lod + lod_detail_bias)
 
 
@@ -396,6 +399,8 @@ func _refresh_streaming() -> void:
     var player_xz := Vector2(_player.global_position.x, _player.global_position.z)
     var heading: Vector2 = _get_streaming_heading()
     var planar_velocity := Vector2(_player.velocity.x, _player.velocity.z)
+    # Prediction/queue-cost estimation is expensive enough to cache once per refresh.
+    _current_prediction_seconds = _effective_prediction_seconds()
     var height_above_ground: float = maxf(0.0, _player.global_position.y - get_surface_height(player_xz.x, player_xz.y))
     _altitude_lod_offset_m = height_above_ground * altitude_lod_weight
     var wanted: Dictionary = {}
@@ -416,6 +421,8 @@ func _refresh_streaming() -> void:
             continue
         var old_chunk: VoxelTerrainChunk = _chunks[existing_coord] as VoxelTerrainChunk
         if _distance_to_chunk_bounds(player_xz, _chunk_bounds(existing_coord)) > cache_radius:
+            if old_chunk._render_active:
+                _visibility_changed = true
             old_chunk.set_render_active(false)
             old_chunk._retire_current_generation()
             remove_child(old_chunk)
@@ -424,6 +431,8 @@ func _refresh_streaming() -> void:
             _completed_jobs.erase(existing_coord)
             _queued.erase(existing_coord)
         else:
+            if old_chunk._render_active:
+                _visibility_changed = true
             old_chunk.set_render_active(false)
     for coord_value in wanted.keys():
         var coord: Vector2i = coord_value
@@ -546,6 +555,8 @@ func _point_to_segment_distance(point: Vector2, start: Vector2, finish: Vector2)
 
 
 func _swept_distance_to_chunk_bounds(start: Vector2, finish: Vector2, bounds: Dictionary) -> float:
+    if start.distance_squared_to(finish) <= 0.000001:
+        return _distance_to_chunk_bounds(start, bounds)
     var center: Vector2 = bounds["center"]
     var half_width: float = float(bounds["width"]) * 0.5
     var half_depth: float = float(bounds["depth"]) * 0.5
@@ -875,10 +886,14 @@ func _all_lod_children_ready(children: Array[Vector2i]) -> bool:
     return true
 
 func _reconcile_and_refresh_skirts() -> void:
+    # Chunks moved out of the wanted set can change visibility before the hierarchy walk.
+    # Preserve that pending change while also tracking visibility transitions below.
+    var pending_visibility_change: bool = _visibility_changed
     _visibility_changed = false
     _reconcile_hierarchy_visibility()
-    if _visibility_changed:
+    if pending_visibility_change or _visibility_changed:
         _refresh_active_skirts()
+    _visibility_changed = false
 
 
 func _reconcile_hierarchy_visibility() -> void:
@@ -915,10 +930,8 @@ func _collect_lod_tiles(lod_index: int, tile_x: int, tile_z: int, player_xz: Vec
         return
 
     # Plan ahead along the current movement vector instead of using prediction only in
-    # debug output / job priorities. The swept distance covers every chunk the player
-    # can reach before another streaming pass and its mesh job complete.
-    var prediction_seconds: float = _effective_prediction_seconds()
-    var predicted_xz: Vector2 = player_xz + planar_velocity * prediction_seconds
+    # debug output / job priorities. Use the prediction interval cached for this refresh.
+    var predicted_xz: Vector2 = player_xz + planar_velocity * _current_prediction_seconds
     var nearest: float = _swept_distance_to_chunk_bounds(player_xz, predicted_xz, bounds)
     var selection_distance: float = _lod_selection_distance(nearest)
     if nearest > render_distance_m:
