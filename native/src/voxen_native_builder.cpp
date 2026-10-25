@@ -624,8 +624,8 @@ struct MeshBuild {
 
     void build_smooth_shadow_surface() {
         // A continuous (non-voxelized) heightfield casts the terrain silhouette.
-        // Bound each chunk to 128x128 cells while scaling the physical sampling interval with LOD.
-        const int32_t shadow_step_voxels = 20 << std::max<int32_t>(0, lod - 3);
+        // Bound each chunk to 256x256 cells while scaling physical sampling with LOD.
+        const int32_t shadow_step_voxels = 5 << std::max<int32_t>(0, lod - 2);
         const int32_t shadow_cells_x = static_cast<int32_t>(
             std::ceil(static_cast<double>(size_voxels_x) / shadow_step_voxels));
         const int32_t shadow_cells_z = static_cast<int32_t>(

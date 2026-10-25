@@ -193,9 +193,9 @@ func _build_smooth_shadow_surface(
     size_voxels_z: int
 ) -> Dictionary:
     # This is a continuous heightfield sampled independently of the visible voxel grid.
-    # Keep the shadow mesh bounded to 128x128 cells per chunk: at distance its spacing
+    # Keep the shadow mesh bounded to 256x256 cells per chunk: at distance its spacing
     # increases with LOD, while remaining finer than the visible voxel silhouette.
-    var shadow_step_voxels: int = 20 << maxi(0, p_lod - 3)
+    var shadow_step_voxels: int = 5 << maxi(0, p_lod - 2)
     var shadow_cells_x: int = ceili(float(size_voxels_x) / float(shadow_step_voxels))
     var shadow_cells_z: int = ceili(float(size_voxels_z) / float(shadow_step_voxels))
     var shadow_width: int = shadow_cells_x + 1
