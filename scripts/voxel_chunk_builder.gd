@@ -362,6 +362,16 @@ func _add_segmented_side_face(
         return
     var point_a := Vector3(p0.x, 0.0, p0.z)
     var point_b: Vector3 = Vector3(p3.x, 0.0, p3.z) if vertical_first else Vector3(p1.x, 0.0, p1.z)
+
+    # Rock faces must remain a continuous gray rock surface at every LOD. The soil band
+    # is retained for grassy terrain, but never inserted beneath a rocky top material.
+    if top_material == VoxelTerrainGenerator.ROCK:
+        _emit_side_segment(
+            point_a, point_b, normal, low_height_voxels, high_height_voxels,
+            VoxelTerrainGenerator.ROCK, vertical_first, edge_alpha
+        )
+        return
+
     var top_start: int = maxi(low_height_voxels, high_height_voxels - 1)
     var soil_start: int = maxi(low_height_voxels, high_height_voxels - 5)
     _emit_side_segment(point_a, point_b, normal, low_height_voxels, soil_start, VoxelTerrainGenerator.ROCK, vertical_first, edge_alpha)
@@ -389,6 +399,8 @@ func _emit_side_segment(
         _add_quad(a_low, b_low, b_high, a_high, normal, side_color)
 
 func _side_material_at_height(y: int, high_height_voxels: int, top_material: int) -> int:
+    if top_material == VoxelTerrainGenerator.ROCK:
+        return VoxelTerrainGenerator.ROCK
     if y >= high_height_voxels - 1:
         return top_material
     if y >= high_height_voxels - 5:
