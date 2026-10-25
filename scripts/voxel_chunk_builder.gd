@@ -22,6 +22,10 @@ var _vertices := PackedVector3Array()
 var _normals := PackedVector3Array()
 var _colors := PackedColorArray()
 var _indices := PackedInt32Array()
+var _smooth_normals_xz := PackedFloat32Array()
+var _cell_smooth_normals_xz := PackedVector2Array()
+var _smooth_cells_x: int = 0
+var _smooth_cell_size: float = 1.0
 var result: Dictionary = {}
 
 func build_mesh_data(job_data: Dictionary) -> Dictionary:
@@ -47,12 +51,16 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
     _normals = PackedVector3Array()
     _colors = PackedColorArray()
     _indices = PackedInt32Array()
+    _smooth_normals_xz = PackedFloat32Array()
+    _cell_smooth_normals_xz = PackedVector2Array()
+    _smooth_cells_x = 0
+    _smooth_cell_size = 1.0
     coord = p_coord
     lod = p_lod
     collision_enabled = false
     debug_lod_colors = p_debug_lod_colors
 
-    var step_voxels: int = maxi(1, int(request.get("step_voxels", BASE_MESH_STEP_VOXELS << lod)))
+    var step_voxels: int = maxi(1, int(request.get("step_voxels", BASE_MESH_STEP_VOXELS << (lod + 1))))
     var cell_size: float = float(step_voxels) * VOXEL_SIZE
     var cells_x: int = int(ceil(float(size_voxels_x) / float(step_voxels)))
     var cells_z: int = int(ceil(float(size_voxels_z) / float(step_voxels)))
@@ -61,74 +69,96 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
     var grid_width: int = cells_x + halo * 2
     var grid_depth: int = cells_z + halo * 2
     var total_samples: int = grid_width * grid_depth
+    # Far LODs are built directly from the continuous heightfield; do not spend time
+    # preparing a second quantized height cache and voxel material grid that they won't use.
     var cache_step_voxels: int = maxi(HEIGHT_CACHE_STEP_VOXELS, step_voxels)
-    var cache_origin_x: int = floori(float(start_voxel_x - halo * step_voxels - cache_step_voxels * 2) / float(cache_step_voxels)) * cache_step_voxels
-    var cache_origin_z: int = floori(float(start_voxel_z - halo * step_voxels - cache_step_voxels * 2) / float(cache_step_voxels)) * cache_step_voxels
-    var cache_end_x: int = start_voxel_x + size_voxels_x + halo * step_voxels + cache_step_voxels * 2
-    var cache_end_z: int = start_voxel_z + size_voxels_z + halo * step_voxels + cache_step_voxels * 2
-    var cache_width: int = ceili(float(cache_end_x - cache_origin_x) / float(cache_step_voxels)) + 1
-    var cache_depth: int = ceili(float(cache_end_z - cache_origin_z) / float(cache_step_voxels)) + 1
+    var cache_origin_x: int = 0
+    var cache_origin_z: int = 0
+    var cache_width: int = 0
+    var cache_depth: int = 0
     var height_cache := PackedInt32Array()
-    height_cache.resize(cache_width * cache_depth)
-    for cz in range(cache_depth):
-        var cache_z: float = float(cache_origin_z + cz * cache_step_voxels)
-        for cx in range(cache_width):
-            var cache_x: float = float(cache_origin_x + cx * cache_step_voxels)
-            height_cache[cz * cache_width + cx] = _sample_height_voxels(cache_x, cache_z, generator, world_min_x, world_min_z, world_size_voxels)
-
-    # The height-cache spacing follows the requested mesh stride (at least the 0.5 m base).
-    # Sampled heights stay quantised to the 10 cm logical voxel grid.
     var raw_heights := PackedInt32Array()
-    raw_heights.resize(total_samples)
-    for gz in range(grid_depth):
-        var global_cell_z: float = float(start_voxel_z) + float(gz - halo) * float(step_voxels) + float(step_voxels) * 0.5
-        for gx in range(grid_width):
-            var global_cell_x: float = float(start_voxel_x) + float(gx - halo) * float(step_voxels) + float(step_voxels) * 0.5
-            raw_heights[gz * grid_width + gx] = _cached_height_voxels(global_cell_x, global_cell_z, height_cache, cache_width, cache_depth, cache_origin_x, cache_origin_z, cache_step_voxels, world_size_voxels)
-    var heights: PackedInt32Array = raw_heights
-
+    var heights := PackedInt32Array()
     var surface_types := PackedByteArray()
-    surface_types.resize(cells_x * cells_z)
-    # One-cell colour halo keeps interpolated grass/rock blends continuous across chunk seams.
     var rock_weight_width: int = cells_x + 2
     var surface_rock_weights := PackedFloat32Array()
-    surface_rock_weights.resize((cells_x + 2) * (cells_z + 2))
-    for z in range(-1, cells_z + 1):
-        for x in range(-1, cells_x + 1):
-            var gx: int = x + halo
-            var gz: int = z + halo
-            var left_h: int = raw_heights[gz * grid_width + gx - macro_offset]
-            var right_h: int = raw_heights[gz * grid_width + gx + macro_offset]
-            var north_h: int = raw_heights[(gz - macro_offset) * grid_width + gx]
-            var south_h: int = raw_heights[(gz + macro_offset) * grid_width + gx]
-            var dx: float = float(right_h - left_h) * VOXEL_SIZE / (2.0 * float(macro_offset) * cell_size)
-            var dz: float = float(south_h - north_h) * VOXEL_SIZE / (2.0 * float(macro_offset) * cell_size)
-            var slope: float = sqrt(dx * dx + dz * dz)
-            var world_x: float = world_min_x + (float(start_voxel_x + x * step_voxels) + float(step_voxels) * 0.5) * VOXEL_SIZE
-            var world_z: float = world_min_z + (float(start_voxel_z + z * step_voxels) + float(step_voxels) * 0.5) * VOXEL_SIZE
-            var rock_weight: float = generator.get_surface_rock_weight(slope, world_x, world_z)
-            surface_rock_weights[(z + 1) * rock_weight_width + x + 1] = rock_weight
-            if x >= 0 and x < cells_x and z >= 0 and z < cells_z:
-                surface_types[z * cells_x + x] = VoxelTerrainGenerator.ROCK if rock_weight >= 0.5 else VoxelTerrainGenerator.GRASS
+    if p_lod < 2:
+        cache_origin_x = floori(float(start_voxel_x - halo * step_voxels - cache_step_voxels * 2) / float(cache_step_voxels)) * cache_step_voxels
+        cache_origin_z = floori(float(start_voxel_z - halo * step_voxels - cache_step_voxels * 2) / float(cache_step_voxels)) * cache_step_voxels
+        var cache_end_x: int = start_voxel_x + size_voxels_x + halo * step_voxels + cache_step_voxels * 2
+        var cache_end_z: int = start_voxel_z + size_voxels_z + halo * step_voxels + cache_step_voxels * 2
+        cache_width = ceili(float(cache_end_x - cache_origin_x) / float(cache_step_voxels)) + 1
+        cache_depth = ceili(float(cache_end_z - cache_origin_z) / float(cache_step_voxels)) + 1
+        height_cache.resize(cache_width * cache_depth)
+        for cz in range(cache_depth):
+            var cache_z: float = float(cache_origin_z + cz * cache_step_voxels)
+            for cx in range(cache_width):
+                var cache_x: float = float(cache_origin_x + cx * cache_step_voxels)
+                height_cache[cz * cache_width + cx] = _sample_height_voxels(cache_x, cache_z, generator, world_min_x, world_min_z, world_size_voxels)
 
-    _build_greedy_top_faces(
-        heights, surface_types, surface_rock_weights,
-        grid_width, halo, cells_x, cells_z, cell_size, step_voxels
-    )
-    # Build separate shadow-only geometry for every LOD. Near/mid levels keep the same
-    # vertical faces as the original terrain caster; distant levels use only top surfaces.
-    var shadow_top_vertex_count: int = _vertices.size()
-    var shadow_top_index_count: int = _indices.size()
-    _build_exposed_side_faces(
-        heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels
-    )
-    var shadow_full_vertex_count: int = _vertices.size()
-    var shadow_full_index_count: int = _indices.size()
-    _build_lod_skirts(heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels, neighbor_lods)
+        # Near/mid block meshes use quantized heights with a one-cell normal/material halo.
+        raw_heights.resize(total_samples)
+        for gz in range(grid_depth):
+            var global_cell_z: float = float(start_voxel_z) + float(gz - halo) * float(step_voxels) + float(step_voxels) * 0.5
+            for gx in range(grid_width):
+                var global_cell_x: float = float(start_voxel_x) + float(gx - halo) * float(step_voxels) + float(step_voxels) * 0.5
+                raw_heights[gz * grid_width + gx] = _cached_height_voxels(global_cell_x, global_cell_z, height_cache, cache_width, cache_depth, cache_origin_x, cache_origin_z, cache_step_voxels, world_size_voxels)
+        heights = raw_heights
+        surface_types.resize(cells_x * cells_z)
+        # One-cell colour and normal halo keeps blends/lighting continuous across chunk seams.
+        surface_rock_weights.resize((cells_x + 2) * (cells_z + 2))
+        _cell_smooth_normals_xz.resize((cells_x + 2) * (cells_z + 2))
+        _smooth_cells_x = cells_x
+        _smooth_cell_size = cell_size
+        for z in range(-1, cells_z + 1):
+            for x in range(-1, cells_x + 1):
+                var gx: int = x + halo
+                var gz: int = z + halo
+                var left_h: int = raw_heights[gz * grid_width + gx - macro_offset]
+                var right_h: int = raw_heights[gz * grid_width + gx + macro_offset]
+                var north_h: int = raw_heights[(gz - macro_offset) * grid_width + gx]
+                var south_h: int = raw_heights[(gz + macro_offset) * grid_width + gx]
+                var dx: float = float(right_h - left_h) * VOXEL_SIZE / (2.0 * float(macro_offset) * cell_size)
+                var dz: float = float(south_h - north_h) * VOXEL_SIZE / (2.0 * float(macro_offset) * cell_size)
+                var slope: float = sqrt(dx * dx + dz * dz)
+                var normal_length: float = sqrt(dx * dx + 1.0 + dz * dz)
+                _cell_smooth_normals_xz[(z + 1) * rock_weight_width + x + 1] = Vector2(-dx / normal_length, -dz / normal_length)
+                var world_x: float = world_min_x + (float(start_voxel_x + x * step_voxels) + float(step_voxels) * 0.5) * VOXEL_SIZE
+                var world_z: float = world_min_z + (float(start_voxel_z + z * step_voxels) + float(step_voxels) * 0.5) * VOXEL_SIZE
+                var rock_weight: float = generator.get_surface_rock_weight(slope, world_x, world_z)
+                surface_rock_weights[(z + 1) * rock_weight_width + x + 1] = rock_weight
+                if x >= 0 and x < cells_x and z >= 0 and z < cells_z:
+                    surface_types[z * cells_x + x] = VoxelTerrainGenerator.ROCK if rock_weight >= 0.5 else VoxelTerrainGenerator.GRASS
+
     var smooth_shadow_data: Dictionary = _build_smooth_shadow_surface(
         generator, p_lod, world_min_x, world_min_z,
         start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z
     )
+    var shadow_top_vertex_count: int = 0
+    var shadow_top_index_count: int = 0
+    var shadow_full_vertex_count: int = 0
+    var shadow_full_index_count: int = 0
+
+    if p_lod >= 2:
+        # Far LODs display the continuous heightfield directly, removing the shadow proxy
+        # duplication and the checkerboard caused by coarse quantized vertical faces.
+        _vertices = smooth_shadow_data["vertices"]
+        _normals = smooth_shadow_data["normals"]
+        _colors = smooth_shadow_data["colors"]
+        _indices = smooth_shadow_data["indices"]
+    else:
+        _build_greedy_top_faces(
+            heights, surface_types, surface_rock_weights,
+            grid_width, halo, cells_x, cells_z, cell_size, step_voxels
+        )
+        shadow_top_vertex_count = _vertices.size()
+        shadow_top_index_count = _indices.size()
+        _build_exposed_side_faces(
+            heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels
+        )
+        shadow_full_vertex_count = _vertices.size()
+        shadow_full_index_count = _indices.size()
+        _build_lod_skirts(heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels, neighbor_lods)
 
     result = {
         "coord": coord,
@@ -140,13 +170,14 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
         "normals": _normals,
         "colors": _colors,
         "indices": _indices,
+        "smooth_normals_xz": _smooth_normals_xz,
         "shadow_top_vertex_count": shadow_top_vertex_count,
         "shadow_top_index_count": shadow_top_index_count,
         "shadow_full_vertex_count": shadow_full_vertex_count,
         "shadow_full_index_count": shadow_full_index_count,
-        "smooth_shadow_vertices": smooth_shadow_data["vertices"],
-        "smooth_shadow_normals": smooth_shadow_data["normals"],
-        "smooth_shadow_indices": smooth_shadow_data["indices"],
+        "smooth_shadow_vertices": smooth_shadow_data["vertices"] if p_lod < 2 else PackedVector3Array(),
+        "smooth_shadow_normals": smooth_shadow_data["normals"] if p_lod < 2 else PackedVector3Array(),
+        "smooth_shadow_indices": smooth_shadow_data["indices"] if p_lod < 2 else PackedInt32Array(),
         "position": Vector3(
             world_min_x + float(start_voxel_x) * VOXEL_SIZE,
             0.0,
@@ -203,10 +234,13 @@ func _build_smooth_shadow_surface(
 
     var shadow_vertices := PackedVector3Array()
     var shadow_normals := PackedVector3Array()
+    var shadow_colors := PackedColorArray()
     var shadow_indices := PackedInt32Array()
     shadow_vertices.resize(shadow_width * shadow_depth)
     shadow_normals.resize(shadow_width * shadow_depth)
     shadow_indices.resize(shadow_cells_x * shadow_cells_z * 6)
+    if p_lod >= 2:
+        shadow_colors.resize(shadow_width * shadow_depth)
 
     for z in range(shadow_depth):
         var local_voxel_z: int = mini(z * shadow_step_voxels, size_voxels_z)
@@ -222,6 +256,37 @@ func _build_smooth_shadow_surface(
                 float(local_voxel_z) * VOXEL_SIZE
             )
             shadow_normals[vertex_index] = Vector3.UP
+
+    if p_lod >= 2:
+        # Central differences provide true smooth normals on the visible far heightfield.
+        for z in range(shadow_depth):
+            var z_before: int = maxi(0, z - 1)
+            var z_after: int = mini(shadow_cells_z, z + 1)
+            for x in range(shadow_width):
+                var x_before: int = maxi(0, x - 1)
+                var x_after: int = mini(shadow_cells_x, x + 1)
+                var left_index: int = z * shadow_width + x_before
+                var right_index: int = z * shadow_width + x_after
+                var north_index: int = z_before * shadow_width + x
+                var south_index: int = z_after * shadow_width + x
+                var run_x: float = shadow_vertices[right_index].x - shadow_vertices[left_index].x
+                var run_z: float = shadow_vertices[south_index].z - shadow_vertices[north_index].z
+                var dx: float = 0.0
+                var dz: float = 0.0
+                if run_x > 0.0001:
+                    dx = (shadow_vertices[right_index].y - shadow_vertices[left_index].y) / run_x
+                if run_z > 0.0001:
+                    dz = (shadow_vertices[south_index].y - shadow_vertices[north_index].y) / run_z
+                var vertex_index: int = z * shadow_width + x
+                shadow_normals[vertex_index] = Vector3(-dx, 1.0, -dz).normalized()
+
+                var local_voxel_x: int = mini(x * shadow_step_voxels, size_voxels_x)
+                var local_voxel_z: int = mini(z * shadow_step_voxels, size_voxels_z)
+                var world_x: float = world_min_x + float(start_voxel_x + local_voxel_x) * VOXEL_SIZE
+                var world_z: float = world_min_z + float(start_voxel_z + local_voxel_z) * VOXEL_SIZE
+                var rock_weight: float = generator.get_surface_rock_weight(sqrt(dx * dx + dz * dz), world_x, world_z)
+                var material_type: int = VoxelTerrainGenerator.ROCK if rock_weight >= 0.5 else VoxelTerrainGenerator.GRASS
+                shadow_colors[vertex_index] = _top_face_color(material_type, rock_weight)
 
     var index_cursor: int = 0
     for z in range(shadow_cells_z):
@@ -242,6 +307,7 @@ func _build_smooth_shadow_surface(
     return {
         "vertices": shadow_vertices,
         "normals": shadow_normals,
+        "colors": shadow_colors,
         "indices": shadow_indices
     }
 
@@ -553,6 +619,11 @@ func _add_quad_vertex_colors(
     _vertices.append(p3)
     for _i in range(4):
         _normals.append(normal)
+    if lod == 1:
+        _append_smooth_normal_xz(p0)
+        _append_smooth_normal_xz(p1)
+        _append_smooth_normal_xz(p2)
+        _append_smooth_normal_xz(p3)
     _colors.append(color0)
     _colors.append(color1)
     _colors.append(color2)
@@ -574,6 +645,11 @@ func _add_quad(p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3, normal: Vecto
     for _i in range(4):
         _normals.append(normal)
         _colors.append(color)
+    if lod == 1:
+        _append_smooth_normal_xz(p0)
+        _append_smooth_normal_xz(p1)
+        _append_smooth_normal_xz(p2)
+        _append_smooth_normal_xz(p3)
     # Godot treats clockwise triangles as front-facing. The quad vertices are
     # authored in outward-normal order (right-handed cross product points out),
     # so reverse the index winding to make the visible front face point outward.
@@ -584,3 +660,24 @@ func _add_quad(p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3, normal: Vecto
     _indices.append(base_index + 3)
     _indices.append(base_index + 2)
 
+
+
+func _append_smooth_normal_xz(position: Vector3) -> void:
+    if _cell_smooth_normals_xz.is_empty() or _smooth_cell_size <= 0.0001:
+        _smooth_normals_xz.append(0.0)
+        _smooth_normals_xz.append(0.0)
+        return
+    var corner_x: int = roundi(position.x / _smooth_cell_size)
+    var corner_z: int = roundi(position.z / _smooth_cell_size)
+    var normal_xz := Vector2.ZERO
+    var width: int = _smooth_cells_x + 2
+    var height: int = int(_cell_smooth_normals_xz.size() / maxi(width, 1))
+    for cell_z in range(corner_z - 1, corner_z + 1):
+        for cell_x in range(corner_x - 1, corner_x + 1):
+            var ix: int = clampi(cell_x + 1, 0, width - 1)
+            var iz: int = clampi(cell_z + 1, 0, height - 1)
+            normal_xz += _cell_smooth_normals_xz[iz * width + ix]
+    if normal_xz.length_squared() > 0.000001:
+        normal_xz = normal_xz.normalized()
+    _smooth_normals_xz.append(normal_xz.x)
+    _smooth_normals_xz.append(normal_xz.y)
