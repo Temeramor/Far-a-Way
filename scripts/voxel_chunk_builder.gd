@@ -105,15 +105,17 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
             surface_types[z * cells_x + x] = generator.get_surface_material(float(center_h) * VOXEL_SIZE, slope, world_x, world_z)
 
     _build_greedy_top_faces(heights, surface_types, grid_width, halo, cells_x, cells_z, cell_size, step_voxels)
-    _build_exposed_side_faces(
-        heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels
-    )
+    # Save only the coarse top surface for the hidden terrain-shadow layer. Capturing
+    # here (before vertical faces and skirts are appended) prevents side-face shadow bands
+    # from being reintroduced at distant LODs while preserving the landform silhouette.
     var shadow_vertex_count: int = 0
     var shadow_index_count: int = 0
     if lod == 6:
-        # Store coarse terrain faces for shadows, excluding the stitching skirts.
         shadow_vertex_count = _vertices.size()
         shadow_index_count = _indices.size()
+    _build_exposed_side_faces(
+        heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels
+    )
     _build_lod_skirts(heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels, neighbor_lods)
 
     result = {
