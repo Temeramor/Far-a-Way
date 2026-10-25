@@ -710,20 +710,41 @@ struct MeshBuild {
                     const int32_t x_before = std::max<int32_t>(0, x - 1);
                     const int32_t x_after = std::min<int32_t>(shadow_cells_x, x + 1);
                     const size_t center_index = static_cast<size_t>(z) * shadow_width + x;
+                    const Vector3 &center = smooth_shadow_vertices[center_index];
                     const Vector3 &left = smooth_shadow_vertices[static_cast<size_t>(z) * shadow_width + x_before];
                     const Vector3 &right = smooth_shadow_vertices[static_cast<size_t>(z) * shadow_width + x_after];
                     const Vector3 &north = smooth_shadow_vertices[static_cast<size_t>(z_before) * shadow_width + x];
                     const Vector3 &south = smooth_shadow_vertices[static_cast<size_t>(z_after) * shadow_width + x];
-                    const double run_x = right.x - left.x;
-                    const double run_z = south.z - north.z;
-                    const double dx = run_x > 0.0001 ? (right.y - left.y) / run_x : 0.0;
-                    const double dz = run_z > 0.0001 ? (south.y - north.y) / run_z : 0.0;
-                    smooth_shadow_normals[center_index] = Vector3(-dx, 1.0, -dz).normalized();
-
                     const int32_t local_voxel_x = std::min(x * shadow_step_voxels, size_voxels_x);
                     const int32_t local_voxel_z = std::min(z * shadow_step_voxels, size_voxels_z);
                     const double world_x = world_min_x + static_cast<double>(start_voxel_x + local_voxel_x) * VOXEL_SIZE;
                     const double world_z = world_min_z + static_cast<double>(start_voxel_z + local_voxel_z) * VOXEL_SIZE;
+
+                    double left_height = left.y;
+                    double right_height = right.y;
+                    double north_height = north.y;
+                    double south_height = south.y;
+                    double run_x = right.x - left.x;
+                    double run_z = south.z - north.z;
+                    // Sample just beyond chunk edges so neighbouring heightfields share
+                    // the same central-difference normal at their common boundary.
+                    if (x == 0) {
+                        run_x = (right.x - center.x) * 2.0;
+                        left_height = noise.surface_height(world_x - run_x * 0.5, world_z);
+                    } else if (x == shadow_cells_x) {
+                        run_x = (center.x - left.x) * 2.0;
+                        right_height = noise.surface_height(world_x + run_x * 0.5, world_z);
+                    }
+                    if (z == 0) {
+                        run_z = (south.z - center.z) * 2.0;
+                        north_height = noise.surface_height(world_x, world_z - run_z * 0.5);
+                    } else if (z == shadow_cells_z) {
+                        run_z = (center.z - north.z) * 2.0;
+                        south_height = noise.surface_height(world_x, world_z + run_z * 0.5);
+                    }
+                    const double dx = run_x > 0.0001 ? (right_height - left_height) / run_x : 0.0;
+                    const double dz = run_z > 0.0001 ? (south_height - north_height) / run_z : 0.0;
+                    smooth_shadow_normals[center_index] = Vector3(-dx, 1.0, -dz).normalized();
                     const double rock_weight = noise.surface_rock_weight(std::sqrt(dx * dx + dz * dz), world_x, world_z);
                     Color color = material_color(rock_weight >= 0.5 ? ROCK : GRASS);
                     color.a = 0.965 + std::clamp(rock_weight, 0.0, 1.0) * 0.025;
