@@ -6,6 +6,7 @@ uniform float seed_low = 240518.0;
 uniform float seed_high = 0.0;
 uniform bool debug_lod_colors = false;
 uniform vec4 skirt_visibility = vec4(1.0);
+uniform float lod_shadow_strength : hint_range(0.0, 1.0, 0.05) = 1.0;
 uniform float voxel_detail_filter_multiplier : hint_range(0.0, 2.0, 0.1) = 1.0;
 uniform float rock_crack_filter_multiplier : hint_range(0.0, 2.0, 0.1) = 1.0;
 uniform bool procedural_mipmap_enabled = true;
@@ -329,4 +330,25 @@ void fragment() {
         ROUGHNESS = 0.84;
     }
     METALLIC = 0.0;
+}
+
+// Blend directional shadow attenuation per LOD while preserving the base albedo.
+void light() {
+    float direct_attenuation = ATTENUATION;
+    if (LIGHT_IS_DIRECTIONAL) {
+        direct_attenuation = mix(1.0, ATTENUATION, clamp(lod_shadow_strength, 0.0, 1.0));
+    }
+    if (LIGHT_IS_AREA) {
+        DIFFUSE_LIGHT += LIGHT_AREA_DIFFUSE_MULTIPLIER * direct_attenuation * LIGHT_COLOR;
+        SPECULAR_LIGHT += LIGHT_AREA_SPECULAR_MULTIPLIER * direct_attenuation * LIGHT_COLOR * SPECULAR_AMOUNT;
+    } else {
+        float ndotl = clamp(dot(NORMAL, LIGHT), 0.0, 1.0);
+        DIFFUSE_LIGHT += ndotl * direct_attenuation * LIGHT_COLOR / PI;
+        vec3 half_vector = normalize(LIGHT + VIEW);
+        float roughness = clamp(ROUGHNESS, 0.04, 1.0);
+        float specular_power = mix(128.0, 4.0, roughness);
+        float specular_lobe = pow(max(dot(NORMAL, half_vector), 0.0), specular_power);
+        SPECULAR_LIGHT += specular_lobe * direct_attenuation * LIGHT_COLOR
+            * SPECULAR_AMOUNT * (1.0 - roughness) * 0.08;
+    }
 }

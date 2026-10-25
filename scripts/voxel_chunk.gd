@@ -17,6 +17,7 @@ var debug_lod_colors: bool = false
 var neighbor_lods_used: Dictionary = {}
 
 var _render_active: bool = true
+var _shadow_mode: int = 1
 var _skirt_visibility_cache := Vector4(-1.0, -1.0, -1.0, -1.0)
 # Use a unique regular ShaderMaterial per chunk instead of instance uniforms.
 # Compatibility renderer hardware can impose a very low per-instance-uniform limit.
@@ -72,6 +73,7 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     _mesh_shader_material = null
     coord = data.get("coord", Vector2i.ZERO)
     lod = int(data.get("lod", -1))
+    _shadow_mode = clampi(GameSettings.shadow_mode, 0, 1)
     mesh_step_voxels = int(data.get("step_voxels", 2 << clampi(lod, 0, 6)))
     debug_lod_colors = bool(data.get("debug_lod_colors", false))
     neighbor_lods_used = data.get("neighbor_lods_used", {}).duplicate(true)
@@ -95,6 +97,7 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     if material is ShaderMaterial:
         _mesh_shader_material = (material as ShaderMaterial).duplicate() as ShaderMaterial
         _mesh_shader_material.set_shader_parameter("skirt_visibility", Vector4(1.0, 1.0, 1.0, 1.0))
+        _mesh_shader_material.set_shader_parameter("lod_shadow_strength", _shadow_receive_strength())
         mesh_material = _mesh_shader_material
 
     var mesh := _make_array_mesh(data, mesh_material)
@@ -115,11 +118,9 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     var shadow_top_index_count: int = int(data.get("shadow_top_index_count", 0))
     var shadow_full_vertex_count: int = int(data.get("shadow_full_vertex_count", 0))
     var shadow_full_index_count: int = int(data.get("shadow_full_index_count", 0))
-    # LOD0–3 retain top + vertical faces (matching main's original terrain caster), but omit
-    # stitching skirts. LOD4+ casts only from the top surface, preserving broad landform shadows
-    # without the far-away side-wall shadow noise.
-    var shadow_vertex_count: int = shadow_full_vertex_count if lod <= 3 else shadow_top_vertex_count
-    var shadow_index_count: int = shadow_full_index_count if lod <= 3 else shadow_top_index_count
+    # Use the full opaque relief silhouette for shadow-map occlusion.
+    var shadow_vertex_count: int = shadow_full_vertex_count
+    var shadow_index_count: int = shadow_full_index_count
     if shadow_vertex_count >= 3 and shadow_index_count >= 3:
         var source_vertices: PackedVector3Array = data["vertices"]
         var source_normals: PackedVector3Array = data["normals"]
@@ -136,7 +137,7 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
         var shadow_proxy := MeshInstance3D.new()
         shadow_proxy.name = "TerrainShadowProxy"
         shadow_proxy.mesh = shadow_mesh
-        shadow_proxy.visible = _render_active
+        shadow_proxy.visible = _render_active and _should_proxy_cast_shadow()
         shadow_proxy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
         add_child(shadow_proxy)
 
@@ -172,19 +173,39 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
             collision_active = should_collide
 
 func set_render_active(active: bool, request_collision: bool = false) -> void:
-    # Refresh visits hundreds of resident chunks. Do not walk child nodes unless
-    # render visibility actually changes; collision state is handled independently.
     var render_state_changed: bool = _render_active != active
     _render_active = active
     if render_state_changed:
         for child in get_children():
-            if child is VisualInstance3D:
-                # Only the active LOD contributes its matching invisible terrain-shadow mesh.
+            if child is MeshInstance3D and child.name == "TerrainShadowProxy":
+                child.visible = active and _should_proxy_cast_shadow()
+            elif child is VisualInstance3D:
                 child.visible = active
-
     var wants_active_collision: bool = active and request_collision and collision_enabled
     if collision_active != wants_active_collision:
         set_collision_active(wants_active_collision)
+
+
+func set_shadow_mode(mode: int) -> void:
+    _shadow_mode = clampi(mode, 0, 1)
+    if _mesh_shader_material != null:
+        _mesh_shader_material.set_shader_parameter("lod_shadow_strength", _shadow_receive_strength())
+    var shadow_proxy := get_node_or_null("TerrainShadowProxy") as MeshInstance3D
+    if shadow_proxy != null:
+        shadow_proxy.visible = _render_active and _should_proxy_cast_shadow()
+
+
+func _shadow_receive_strength() -> float:
+    if lod < 0 or lod >= 4:
+        return 0.0
+    if _shadow_mode == 0:
+        return 1.0
+    return maxf(0.0, 1.0 - float(lod) * 0.25)
+
+
+func _should_proxy_cast_shadow() -> bool:
+    # In gradual mode these invisible silhouettes stop sunlight leaking through distant mountains.
+    return lod <= 3 or _shadow_mode == 1
 
 func set_mesh_shader_parameter(parameter_name: StringName, value: Variant) -> void:
     if _mesh_shader_material != null:

@@ -64,16 +64,49 @@ func _ready() -> void:
     touch_controls.process_mode = Node.PROCESS_MODE_DISABLED
     loading_screen.visible = false
     voxel_world.set_lod_settings(GameSettings.lod_detail_bias, GameSettings.lod0_distance_m)
-
-    var gameplay_camera: Camera3D = $Player/CameraPivot/Camera3D
-    gameplay_camera.far = maxf(2200.0, terrain.get_render_distance_m() * 1.35)
+    voxel_world.set_shadow_mode(GameSettings.shadow_mode)
+    voxel_world.set_render_distance_m(GameSettings.view_distance_m)
     _configure_sky_system()
+    _apply_view_distance_environment(GameSettings.view_distance_m)
     _build_flight_status()
     _setup_weather_controls()
     _build_voxen_debug_ui()
     _build_pause_menu_ui()
     _apply_weather(WEATHER_CLOUDY, false)
     call_deferred("_begin_pending_game_if_requested")
+
+
+func set_view_distance_m(distance_m: float, persist: bool = true) -> void:
+    var safe_distance: float = snappedf(clampf(distance_m, 512.0, 8192.0), 256.0)
+    GameSettings.update_view_distance_m(safe_distance, persist)
+    voxel_world.set_render_distance_m(GameSettings.view_distance_m)
+    _apply_view_distance_environment(GameSettings.view_distance_m)
+
+
+func _apply_view_distance_environment(distance_m: float) -> void:
+    var safe_distance: float = clampf(distance_m, 512.0, 8192.0)
+    var gameplay_camera: Camera3D = $Player/CameraPivot/Camera3D
+    gameplay_camera.far = safe_distance * 1.06
+    var environment: Environment = sky_system.environment
+    if environment != null:
+        environment.fog_enabled = true
+        environment.fog_mode = Environment.FOG_MODE_DEPTH
+        environment.fog_depth_begin = safe_distance * 0.70
+        environment.fog_depth_end = safe_distance * 0.98
+        environment.fog_depth_curve = 1.20
+        environment.fog_light_color = Color(0.25, 0.31, 0.26, 1.0)
+        environment.fog_light_energy = 0.72
+        environment.fog_sun_scatter = 0.0
+        environment.fog_aerial_perspective = 0.0
+        environment.fog_sky_affect = 0.0
+    for light_name in ["SunLight", "MoonLight"]:
+        var directional_light := sky_system.get_node_or_null(light_name) as DirectionalLight3D
+        if directional_light != null:
+            directional_light.shadow_enabled = true
+            directional_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+            directional_light.directional_shadow_blend_splits = true
+            directional_light.directional_shadow_max_distance = safe_distance
+            directional_light.directional_shadow_fade_start = 0.92
 
 
 func _configure_sky_system() -> void:
@@ -119,8 +152,8 @@ func begin_generation(seed_value: int) -> void:
 
     player.flight_speed_multiplier = GameSettings.flight_speed_multiplier
     player.flight_fov = GameSettings.flight_fov
-    var gameplay_camera: Camera3D = $Player/CameraPivot/Camera3D
-    gameplay_camera.far = maxf(2200.0, terrain.get_render_distance_m() * 1.35)
+    voxel_world.set_render_distance_m(GameSettings.view_distance_m)
+    _apply_view_distance_environment(GameSettings.view_distance_m)
 
     loading_screen.visible = true
     loading_screen.set_progress(0.0, "Подготавливаем генератор ландшафта...")
@@ -640,7 +673,7 @@ func _build_pause_menu_ui() -> void:
     $CanvasLayer.add_child(_pause_button)
 
     _pause_menu = PauseMenuScript.new() as PauseMenu
-    _pause_menu.configure(voxel_world)
+    _pause_menu.configure(voxel_world, self)
     _pause_menu.opened.connect(_on_pause_menu_opened)
     _pause_menu.closed.connect(_on_pause_menu_closed)
     _pause_menu.quit_to_menu_requested.connect(_return_to_menu)

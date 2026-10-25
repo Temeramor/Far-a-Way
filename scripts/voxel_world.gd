@@ -15,7 +15,7 @@ const BuilderScript = preload("res://scripts/voxel_chunk_builder.gd")
 @export var auto_start_on_ready: bool = true
 
 @export_category("Streaming and LOD")
-@export_range(1024.0, 20000.0, 256.0) var render_distance_m: float = 4096.0
+@export_range(512.0, 8192.0, 256.0) var render_distance_m: float = 4096.0
 @export_range(32.0, 256.0, 16.0) var lod0_distance_m: float = 64.0
 @export_range(0, 3, 1) var lod_detail_bias: int = 1
 @export_range(0.0, 24.0, 2.0) var lod_hysteresis_m: float = 12.0
@@ -70,6 +70,7 @@ func _ready() -> void:
     _world_min_x = -world_size_m * 0.5
     _world_min_z = -world_size_m * 0.5
     _chunks_per_axis = int(ceil(float(_world_size_voxels) / float(_chunk_size_voxels)))
+    render_distance_m = clampf(GameSettings.view_distance_m, 512.0, 8192.0)
     _generator = GeneratorScript.new(seed_value, world_size_m)
 
     var surface_shader := load("res://shaders/voxel_surface.gdshader") as Shader
@@ -189,6 +190,24 @@ func set_lod_settings(detail_bias: int, lod0_distance: float) -> void:
         _refresh_streaming()
 
 
+func set_render_distance_m(distance_m: float) -> void:
+    var safe_distance: float = snappedf(clampf(distance_m, 512.0, 8192.0), 256.0)
+    if is_equal_approx(render_distance_m, safe_distance):
+        return
+    render_distance_m = safe_distance
+    if _world_started:
+        _last_player_position = Vector2(INF, INF)
+        _refresh_streaming()
+
+
+func set_shadow_mode(mode: int) -> void:
+    var safe_mode: int = clampi(mode, 0, 1)
+    for chunk_value in _chunks.values():
+        var chunk: VoxelTerrainChunk = chunk_value as VoxelTerrainChunk
+        if chunk != null:
+            chunk.set_shadow_mode(safe_mode)
+
+
 func get_lod_boundary_m(lod_index: int) -> float:
     if lod_index < 0 or lod_index > 5:
         return INF
@@ -208,9 +227,12 @@ func is_terrain_shadow_ready() -> bool:
 
 func is_world_coverage_ready() -> bool:
     var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 64))
+    var player_xz: Vector2 = _player_xz()
     for tz in range(root_tiles):
         for tx in range(root_tiles):
             var root_key := _make_lod_key(6, tx, tz)
+            if _distance_to_chunk_bounds(player_xz, _chunk_bounds(root_key)) > render_distance_m:
+                continue
             var root_chunk: VoxelTerrainChunk = _chunks.get(root_key) as VoxelTerrainChunk
             if root_chunk == null or not root_chunk.mesh_ready:
                 return false
@@ -297,11 +319,16 @@ func get_startup_progress() -> float:
     if not _startup_load_pending:
         return 1.0
     var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 64))
-    var roots_total: int = root_tiles * root_tiles
+    var player_xz: Vector2 = _player_xz()
+    var roots_total: int = 0
     var roots_ready: int = 0
     for tz in range(root_tiles):
         for tx in range(root_tiles):
-            var root_chunk: VoxelTerrainChunk = _chunks.get(_make_lod_key(6, tx, tz)) as VoxelTerrainChunk
+            var root_key := _make_lod_key(6, tx, tz)
+            if _distance_to_chunk_bounds(player_xz, _chunk_bounds(root_key)) > render_distance_m:
+                continue
+            roots_total += 1
+            var root_chunk: VoxelTerrainChunk = _chunks.get(root_key) as VoxelTerrainChunk
             if root_chunk != null and root_chunk.mesh_ready:
                 roots_ready += 1
     if roots_ready < roots_total:
@@ -311,7 +338,7 @@ func get_startup_progress() -> float:
     for coord_value in _wanted.keys():
         var coord: Vector2i = coord_value
         var request: Dictionary = _wanted[coord]
-        if bool(request.get("fallback", false)) or float(request.get("nearest_distance", INF)) > 256.0:
+        if bool(request.get("fallback", false)) or float(request.get("nearest_distance", INF)) > minf(256.0, render_distance_m):
             continue
         near_total += 1
         var chunk: VoxelTerrainChunk = _chunks.get(coord) as VoxelTerrainChunk
@@ -763,19 +790,12 @@ func _get_lod_tile_children(coord: Vector2i) -> Array[Vector2i]:
     return children
 
 func _all_lod_children_ready(children: Array[Vector2i]) -> bool:
-    if children.is_empty():
-        return false
-    for key in children:
-        var child: VoxelTerrainChunk = _chunks.get(key) as VoxelTerrainChunk
-        var target_request: Dictionary = _wanted.get(key, {})
-        if child == null or not child.mesh_ready or target_request.is_empty():
-            return false
-        # A resident mesh from an earlier distance/detail setting is not ready for
-        # hierarchy hand-off. Keep the parent fallback visible until this exact LOD
-        # and sampling stride have been applied.
-        if child.lod != int(target_request.get("lod", -1)):
-            return false
-        if child.mesh_step_voxels != int(target_request.get("step_voxels", -1)):
+    var player_xz: Vector2 = _player_xz()
+    for child_key in children:
+        if _distance_to_chunk_bounds(player_xz, _chunk_bounds(child_key)) > render_distance_m:
+            continue
+        var child: VoxelTerrainChunk = _chunks.get(child_key) as VoxelTerrainChunk
+        if child == null or not child.mesh_ready:
             return false
     return true
 
@@ -810,6 +830,8 @@ func _collect_lod_tiles(lod_index: int, tile_x: int, tile_z: int, player_xz: Vec
     if int(bounds["size_x"]) <= 0 or int(bounds["size_z"]) <= 0:
         return
     var nearest: float = _distance_to_chunk_bounds(player_xz, bounds)
+    if nearest > render_distance_m:
+        return
     var boundary: float = _lod_boundary_for(lod_index - 1) if lod_index > 0 else -1.0
     if lod_index == 6:
         boundary = get_lod_boundary_m(5)

@@ -19,16 +19,18 @@ var _main_panel: PanelContainer
 var _settings_panel: PanelContainer
 var _settings_scroll: ScrollContainer
 
-var _msaa_selector: OptionButton
-var _screen_aa_selector: OptionButton
-var _voxel_filter_selector: OptionButton
-var _crack_filter_selector: OptionButton
-var _procedural_mip_toggle: CheckButton
+var _aa_selector: OptionButton
+var _shadow_mode_selector: OptionButton
+var _view_distance_slider: HSlider
+var _view_distance_label: Label
+var _world_controller: Node
+var _view_distance_drag_active: bool = false
 var _mouse_mode_before_pause: int = Input.MOUSE_MODE_VISIBLE
 
 
-func configure(voxel_world: Node) -> void:
+func configure(voxel_world: Node, world_controller: Node = null) -> void:
     _voxel_world = voxel_world
+    _world_controller = world_controller
 
 
 func _ready() -> void:
@@ -152,43 +154,64 @@ func _build_ui() -> void:
     settings_content.add_theme_constant_override("separation", 8)
     _settings_scroll.add_child(settings_content)
 
-    var filter_heading := _make_label("ФИЛЬТРАЦИЯ ДАЛЬНЕЙ ПОВЕРХНОСТИ", true)
-    settings_content.add_child(filter_heading)
-    var filter_description := _make_label(
-        "Сравни способы устранения ряби. MSAA сглаживает геометрию, экранное AA обрабатывает кадр, а фильтры ниже усредняют процедурные цвета и трещины вдали.",
+    settings_content.add_child(_make_label("СГЛАЖИВАНИЕ", true))
+    var aa_description := _make_label("Выбери один способ сглаживания. Настройка применяется сразу.", false)
+    aa_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    settings_content.add_child(aa_description)
+    _aa_selector = _make_option_row(settings_content, "Режим сглаживания",
+        ["Выкл.", "FXAA", "SMAA", "MSAA ×2", "MSAA ×4", "MSAA ×8"], GameSettings.anti_aliasing_mode)
+    _aa_selector.item_selected.connect(_on_anti_aliasing_selected)
+
+    settings_content.add_child(_make_divider())
+    settings_content.add_child(_make_label("ТЕНИ РЕЛЬЕФА", true))
+    var shadow_description := _make_label(
+        "Строгий режим оставляет полную силу теней только на LOD0–LOD3. Постепенный режим ослабляет их по мере удаления.",
         false
     )
-    filter_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    settings_content.add_child(filter_description)
+    shadow_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    settings_content.add_child(shadow_description)
+    _shadow_mode_selector = _make_option_row(settings_content, "Режим теней",
+        ["Строгий (LOD0–LOD3)", "Постепенное осветление"], GameSettings.shadow_mode)
+    _shadow_mode_selector.item_selected.connect(_on_shadow_mode_selected)
 
-    _msaa_selector = _make_option_row(settings_content, "Сглаживание 3D (MSAA)",
-        ["Выкл.", "2×", "4×", "8×"], GameSettings.msaa_mode)
-    _msaa_selector.item_selected.connect(_on_msaa_selected)
+    settings_content.add_child(_make_divider())
+    settings_content.add_child(_make_label("ДАЛЬНОСТЬ ПРОРИСОВКИ", true))
+    var distance_description := _make_label("Мягкий туман скрывает край обзора, не выбеливая дальний рельеф.", false)
+    distance_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    settings_content.add_child(distance_description)
+    var distance_row := HBoxContainer.new()
+    distance_row.add_theme_constant_override("separation", 8)
+    var distance_caption := _make_label("Дальность", true)
+    distance_caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    distance_row.add_child(distance_caption)
+    _view_distance_label = _make_label("%d м" % int(GameSettings.view_distance_m), true)
+    _view_distance_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+    distance_row.add_child(_view_distance_label)
+    settings_content.add_child(distance_row)
 
-    _screen_aa_selector = _make_option_row(settings_content, "Экранное AA",
-        ["Выкл.", "FXAA", "SMAA"], GameSettings.screen_space_aa_mode)
-    _screen_aa_selector.item_selected.connect(_on_screen_aa_selected)
-
-    _voxel_filter_selector = _make_option_row(settings_content, "Фильтр цветов",
-        ["Без фильтра", "0,5×", "1×", "1,5×", "2×"], GameSettings.voxel_detail_filter_mode)
-    _voxel_filter_selector.item_selected.connect(_on_voxel_filter_selected)
-
-    _crack_filter_selector = _make_option_row(settings_content, "Фильтр трещин",
-        ["Без фильтра", "0,5×", "1×", "2×"], GameSettings.rock_crack_filter_mode)
-    _crack_filter_selector.item_selected.connect(_on_crack_filter_selected)
-
-    _procedural_mip_toggle = _make_check_button(
-        "Мип-подобная фильтрация шума", GameSettings.procedural_mip_filter_enabled
-    )
-    _procedural_mip_toggle.toggled.connect(_on_procedural_mip_toggled)
-    settings_content.add_child(_procedural_mip_toggle)
-
-    var hint := _make_label(
-        "Процедурные цвета создаются шейдером, а не mipmap-текстурой. Переключатель включает/выключает усреднение субпиксельных деталей — аналог mip-фильтра для сравнения. Настройки применяются сразу и сохраняются.",
-        false
-    )
-    hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    settings_content.add_child(hint)
+    _view_distance_slider = HSlider.new()
+    _view_distance_slider.name = "ViewDistanceSlider"
+    _view_distance_slider.min_value = 512.0
+    _view_distance_slider.max_value = 8192.0
+    _view_distance_slider.step = 256.0
+    _view_distance_slider.value = GameSettings.view_distance_m
+    _view_distance_slider.custom_minimum_size = Vector2(0.0, 34.0)
+    _view_distance_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    var slider_track := StyleBoxFlat.new()
+    slider_track.bg_color = COLOR_BG
+    slider_track.set_corner_radius_all(3)
+    slider_track.content_margin_top = 5.0
+    slider_track.content_margin_bottom = 5.0
+    _view_distance_slider.add_theme_stylebox_override("slider", slider_track)
+    var slider_fill := StyleBoxFlat.new()
+    slider_fill.bg_color = COLOR_GOLD
+    slider_fill.set_corner_radius_all(3)
+    _view_distance_slider.add_theme_stylebox_override("grabber_area", slider_fill)
+    _view_distance_slider.add_theme_stylebox_override("grabber_area_highlight", slider_fill)
+    _view_distance_slider.value_changed.connect(_on_view_distance_changed)
+    _view_distance_slider.drag_started.connect(_on_view_distance_drag_started)
+    _view_distance_slider.drag_ended.connect(_on_view_distance_drag_ended)
+    settings_content.add_child(_view_distance_slider)
 
     var settings_buttons := HBoxContainer.new()
     settings_buttons.add_theme_constant_override("separation", 8)
@@ -374,49 +397,44 @@ func _show_settings_page() -> void:
 
 
 func _sync_graphics_controls() -> void:
-    _msaa_selector.select(GameSettings.msaa_mode)
-    _screen_aa_selector.select(GameSettings.screen_space_aa_mode)
-    _voxel_filter_selector.select(GameSettings.voxel_detail_filter_mode)
-    _crack_filter_selector.select(GameSettings.rock_crack_filter_mode)
-    _procedural_mip_toggle.set_pressed_no_signal(GameSettings.procedural_mip_filter_enabled)
+    _aa_selector.select(GameSettings.anti_aliasing_mode)
+    _shadow_mode_selector.select(GameSettings.shadow_mode)
+    _view_distance_slider.set_value_no_signal(GameSettings.view_distance_m)
+    _view_distance_label.text = "%d м" % int(GameSettings.view_distance_m)
 
 
-func _on_msaa_selected(_index: int) -> void:
-    _apply_graphics_settings(true)
+func _on_anti_aliasing_selected(index: int) -> void:
+    GameSettings.update_anti_aliasing_mode(index, true)
 
 
-func _on_screen_aa_selected(_index: int) -> void:
-    _apply_graphics_settings(true)
-
-
-func _on_voxel_filter_selected(_index: int) -> void:
-    _apply_graphics_settings(true)
-
-
-func _on_crack_filter_selected(_index: int) -> void:
-    _apply_graphics_settings(true)
-
-
-func _on_procedural_mip_toggled(_enabled: bool) -> void:
-    _apply_graphics_settings(true)
-
-
-func _apply_graphics_settings(persist: bool) -> void:
-    GameSettings.update_graphics_settings(
-        _msaa_selector.selected,
-        _screen_aa_selector.selected,
-        _voxel_filter_selector.selected,
-        _crack_filter_selector.selected,
-        _procedural_mip_toggle.button_pressed,
-        persist
-    )
+func _on_shadow_mode_selected(index: int) -> void:
+    GameSettings.update_shadow_mode(index, true)
     if _voxel_world != null and is_instance_valid(_voxel_world):
-        _voxel_world.call(
-            "set_surface_filter_settings",
-            GameSettings.get_voxel_detail_filter_multiplier(),
-            GameSettings.get_rock_crack_filter_multiplier(),
-            GameSettings.procedural_mip_filter_enabled
-        )
+        _voxel_world.call("set_shadow_mode", GameSettings.shadow_mode)
+
+
+func _on_view_distance_drag_started() -> void:
+    _view_distance_drag_active = true
+
+
+func _on_view_distance_changed(value: float) -> void:
+    _view_distance_label.text = "%d м" % int(roundf(value))
+    _apply_view_distance(value, not _view_distance_drag_active)
+
+
+func _on_view_distance_drag_ended(value_changed: bool) -> void:
+    _view_distance_drag_active = false
+    if value_changed:
+        _apply_view_distance(_view_distance_slider.value, true)
+
+
+func _apply_view_distance(value: float, persist: bool) -> void:
+    if _world_controller != null and is_instance_valid(_world_controller):
+        _world_controller.call("set_view_distance_m", value, persist)
+        return
+    GameSettings.update_view_distance_m(value, persist)
+    if _voxel_world != null and is_instance_valid(_voxel_world):
+        _voxel_world.call("set_render_distance_m", GameSettings.view_distance_m)
 
 
 func _quit_to_menu() -> void:

@@ -4,8 +4,8 @@ config_version=5
 
 [application]
 config/name="Far a Way"
-config/description="Far a Way 0.1.0.9 — procedural voxel exploration with hierarchical LOD."
-config/version="0.1.0.9"
+config/description="Far a Way 0.1.0.10 — procedural voxel exploration with hierarchical LOD."
+config/version="0.1.0.10"
 config/icon="res://icon.svg"
 run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
@@ -26,6 +26,7 @@ window/stretch/mode="canvas_items"
 renderer/rendering_method="mobile"
 renderer/rendering_method.mobile="mobile"
 textures/default_filters/use_nearest_mipmap_filter=false
+shading/overrides/force_vertex_shading=false
 
 [input_devices]
 pointing/emulate_mouse_from_touch=true

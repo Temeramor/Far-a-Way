@@ -2,7 +2,16 @@
 
 All notable changes are recorded here. The current version is defined by `project.godot` and `VERSION`.
 
-## 0.1.0.9 — 2026-10-25
+## 0.1.0.10 — 2026-10-25
+
+- Removed the brown soil band beneath gray mountain rock. Both mesh builders now make visible walls and rock-topped slopes solid gray stone; grass-topped ground retains a shallow soil layer.
+- Simplified the graphics menu to one anti-aliasing selector; added strict/gradual shadow modes and a live view-distance slider from 512 to 8192 m.
+- Added per-LOD directional shadow influence: strict mode keeps full shadowing on LOD0–LOD3 and none on LOD4+; gradual mode uses 100%, 75%, 50%, and 25% influence on LOD0–LOD3. Visible simplified meshes do not cast shadows. Gradual mode retains invisible relief silhouettes as casters so distant mountains can block sunlight and cast onto nearer terrain.
+- Added soft depth fog with a muted green-gray tint, and synchronized terrain streaming, camera far distance, and directional shadow distance to the view-distance slider.
+- Extended the native C++ mesher to return top/full geometry ranges needed by shadow proxies and aligned its rock slope/side-wall decisions with the GDScript fallback.
+- Per-chunk height sampling, caching, surface classification, greedy meshing, side faces, stitching skirts, and collision height-map data run in the native C++ builder when its GDExtension library is available. Streaming priorities, LOD hierarchy, UI, shader parameters, and scene/physics attachment remain in GDScript. Rebuild the native binary from updated C++ sources to include the matching shadow metadata.
+
+
 
 - Removed the distant-terrain blur setting and its depth-blur mechanics. Legacy blur values are removed when settings are saved.
 - Continued addressing distant terrain ripple/Moiré with screen-space filtering: fine voxel colour cells and small Voronoi crack details fade as they become sub-pixel, while broad terrain colour variation is retained.

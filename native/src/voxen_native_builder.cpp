@@ -154,7 +154,8 @@ struct NoiseSet {
 
     int32_t surface_material(double height_m, double slope, double x, double z) const {
         const double transition_noise = transition->get_noise_2d(x * 0.008, z * 0.008) * 0.05;
-        return slope + transition_noise >= 0.39 ? ROCK : GRASS;
+        const double normal_slope = 1.0 - 1.0 / std::sqrt(1.0 + slope * slope);
+        return normal_slope + transition_noise >= 0.39 ? ROCK : GRASS;
     }
 };
 
@@ -347,6 +348,13 @@ struct MeshBuild {
         const Vector3 point_b = vertical_first
             ? Vector3(p3.x, 0.0, p3.z)
             : Vector3(p1.x, 0.0, p1.z);
+        // Visible terrain walls and rock-topped slopes are solid gray rock.
+        // Only thin stitching skirts preserve the three-material transition.
+        if (edge_alpha >= 0.95 || top_material == ROCK) {
+            emit_side_segment(point_a, point_b, normal, low_height_voxels, high_height_voxels,
+                ROCK, vertical_first, edge_alpha);
+            return;
+        }
         const int32_t top_start = std::max(low_height_voxels, high_height_voxels - 1);
         const int32_t soil_start = std::max(low_height_voxels, high_height_voxels - 5);
         emit_side_segment(point_a, point_b, normal, low_height_voxels, soil_start, ROCK, vertical_first, edge_alpha);
@@ -649,7 +657,11 @@ struct MeshBuild {
         indices.reserve(base_cells * 12);
 
         build_greedy_top_faces();
+        const int64_t shadow_top_vertex_count = static_cast<int64_t>(vertices.size());
+        const int64_t shadow_top_index_count = static_cast<int64_t>(indices.size());
         build_exposed_side_faces();
+        const int64_t shadow_full_vertex_count = static_cast<int64_t>(vertices.size());
+        const int64_t shadow_full_index_count = static_cast<int64_t>(indices.size());
         build_lod_skirts();
 
         PackedVector3Array packed_vertices;
@@ -679,6 +691,10 @@ struct MeshBuild {
         out["normals"] = packed_normals;
         out["colors"] = packed_colors;
         out["indices"] = packed_indices;
+        out["shadow_top_vertex_count"] = shadow_top_vertex_count;
+        out["shadow_top_index_count"] = shadow_top_index_count;
+        out["shadow_full_vertex_count"] = shadow_full_vertex_count;
+        out["shadow_full_index_count"] = shadow_full_index_count;
         out["position"] = Vector3(
             world_min_x + static_cast<double>(start_voxel_x) * VOXEL_SIZE,
             0.0,

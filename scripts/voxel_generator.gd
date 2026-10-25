@@ -235,8 +235,16 @@ func get_voxel_material(voxel: Vector3i, world_min_x: float, world_min_z: float,
     var surface_y: int = get_surface_height_voxels(world_x, world_z)
     if voxel.y >= surface_y:
         return AIR
+    var surface_sample: Vector3 = get_surface_sample(world_x, world_z)
+    var surface_slope: float = Vector2(surface_sample.y, surface_sample.z).length()
+    var top_material: int = get_surface_material(
+        float(surface_y) * VOXEL_SIZE, surface_slope, world_x, world_z
+    )
     if voxel.y == surface_y - 1:
-        return get_surface_material(float(surface_y) * VOXEL_SIZE, 0.0, world_x, world_z)
+        return top_material
+    # A gray rock-topped mountain is a solid stone mass, not a brown soil rind.
+    if top_material == ROCK:
+        return ROCK
     if voxel.y >= surface_y - 5:
         return SOIL
     return ROCK
