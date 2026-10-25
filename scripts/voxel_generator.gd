@@ -209,11 +209,13 @@ func get_surface_height_voxels(x: float, z: float) -> int:
     return maxi(1, int(round(get_surface_height(x, z) / VOXEL_SIZE)))
 
 
-func get_surface_rock_weight(slope: float, x: float, z: float) -> float:
-    # Match main's continuous slope-based grass/rock blend (0.30–0.48).
-    # This is independent of elevation, leaving gentle high-altitude shelves grassy.
-    var transition_noise: float = _transition_noise.get_noise_2d(x, z) * 0.10
-    return _smoothstep(0.30, 0.48, slope + transition_noise)
+func get_surface_rock_weight(gradient: float, x: float, z: float) -> float:
+    # Main's shader evaluates slope as 1 - normal.y, not raw height-gradient magnitude.
+    # Convert the gradient to that same normal-based slope before applying its 0.30–0.48
+    # blend range. This keeps gentle high-altitude shelves grassy and avoids overly early rock.
+    var normal_slope: float = 1.0 - inversesqrt(1.0 + gradient * gradient)
+    var transition_noise: float = _transition_noise.get_noise_2d(x, z) * 0.05
+    return _smoothstep(0.30, 0.48, normal_slope + transition_noise)
 
 
 func get_surface_material(height_m: float, slope: float, x: float, z: float) -> int:
