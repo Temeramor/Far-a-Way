@@ -209,12 +209,16 @@ func get_surface_height_voxels(x: float, z: float) -> int:
     return maxi(1, int(round(get_surface_height(x, z) / VOXEL_SIZE)))
 
 
+func get_surface_rock_weight(slope: float, x: float, z: float) -> float:
+    # Match main's continuous slope-based grass/rock blend (0.30–0.48).
+    # This is independent of elevation, leaving gentle high-altitude shelves grassy.
+    var transition_noise: float = _transition_noise.get_noise_2d(x, z) * 0.10
+    return _smoothstep(0.30, 0.48, slope + transition_noise)
+
+
 func get_surface_material(height_m: float, slope: float, x: float, z: float) -> int:
-    # Match Neverland's grass-to-stone transition: slope, not elevation, determines rock.
-    # At voxel scale a single material is chosen per column, so the original smooth colour
-    # blend becomes a fine seeded transition across 10 cm columns.
-    var transition_noise: float = _transition_noise.get_noise_2d(x, z) * 0.05
-    return ROCK if slope + transition_noise >= 0.39 else GRASS
+    # Categorical helper for vertical faces; top faces use the continuous weight directly.
+    return ROCK if get_surface_rock_weight(slope, x, z) >= 0.5 else GRASS
 
 
 func get_terrain_density(world_x: float, world_y: float, world_z: float) -> float:
