@@ -203,7 +203,7 @@ func get_mesh_step_voxels(lod_index: int) -> int:
 
 
 func is_terrain_shadow_ready() -> bool:
-    # Legacy API used by the loading UI. Coarse shadow-caster proxies are created per LOD6 chunk.
+    # Legacy API used by the loading UI. Each active LOD chunk owns its invisible terrain-shadow proxy.
     return is_world_coverage_ready()
 
 func is_world_coverage_ready() -> bool:
