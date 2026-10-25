@@ -6,6 +6,9 @@ uniform float seed_low = 240518.0;
 uniform float seed_high = 0.0;
 uniform bool debug_lod_colors = false;
 uniform vec4 skirt_visibility = vec4(1.0);
+uniform float voxel_detail_filter_multiplier : hint_range(0.0, 2.0, 0.1) = 1.0;
+uniform float rock_crack_filter_multiplier : hint_range(0.0, 2.0, 0.1) = 1.0;
+uniform bool procedural_mipmap_enabled = true;
 
 varying vec3 world_position;
 varying vec3 world_normal;
@@ -149,7 +152,7 @@ vec3 rock_palette(float pick) {
     return color * 0.86;
 }
 
-vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world) {
+vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world, float crack_weight) {
     // Base rock remains the original Neverland pixel palette. No mineral bands,
     // vertical fissure overlays, chips, pitting or broad warm/cool tint layers.
     float broad_tone = value_noise(pixel_world * 0.021 + vec2(13.8, seed_low * 0.0006));
@@ -187,7 +190,7 @@ vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world) {
     // Use a muted dark stone colour and preserve some base pixels through each crack.
     // The overlapping scales yield varied cracks without heavy bands across a mountain.
     float crack_strength = clamp(micro_crack * 0.50 + broad_crack * 0.62, 0.0, 0.78);
-    return mix(base_color, palette_color(vec3(0.105, 0.112, 0.112)), crack_strength);
+    return mix(base_color, palette_color(vec3(0.105, 0.112, 0.112)), crack_strength * clamp(crack_weight, 0.0, 1.0));
 }
 
 void vertex() {
@@ -233,13 +236,19 @@ void fragment() {
         length(dFdy(world_position))
     );
     float voxel_footprint = world_units_per_pixel / max(pixel_size, 0.1);
-    float voxel_detail_weight = 1.0 - smoothstep(0.70, 1.55, voxel_footprint);
+    float voxel_detail_weight = 1.0;
+    if (procedural_mipmap_enabled && voxel_detail_filter_multiplier > 0.001) {
+        voxel_detail_weight = 1.0 - smoothstep(0.70, 1.55, voxel_footprint * voxel_detail_filter_multiplier);
+    }
 
     // Voronoi rock cracks have a larger 5.5 m cell size; fade them separately when that
     // pattern itself becomes sub-pixel, even if the voxel-colour cells are still visible.
     float rock_crack_footprint = world_units_per_pixel / 5.5;
-    float rock_crack_weight = 1.0 - smoothstep(0.55, 1.25, rock_crack_footprint);
-    float rock_detail_weight = min(voxel_detail_weight, rock_crack_weight);
+    float rock_crack_weight = 1.0;
+    if (procedural_mipmap_enabled && rock_crack_filter_multiplier > 0.001) {
+        rock_crack_weight = 1.0 - smoothstep(0.55, 1.25, rock_crack_footprint * rock_crack_filter_multiplier);
+    }
+    float rock_detail_weight = voxel_detail_weight;
 
     if (debug_lod_colors) {
         float variation = mix(0.96, 1.04, pixel_variation);
@@ -264,10 +273,14 @@ void fragment() {
     } else {
         vec3 filtered_rock = rock_palette(0.46);
         if (rock_detail_weight > 0.005) {
-            ALBEDO = mix(filtered_rock, rock_pixel(pixel_cell, pixel_center), rock_detail_weight);
+            ALBEDO = mix(filtered_rock, rock_pixel(pixel_cell, pixel_center, rock_crack_weight), rock_detail_weight);
         } else {
             ALBEDO = filtered_rock;
         }
     }
+    // Use a common upward-facing diffuse normal on voxel faces to remove dark side-wall
+    // bands. The normal is transformed to view space as required by Godot's spatial shader.
+    // Standard direct illumination and shadow receiving remain enabled.
+    NORMAL = normalize(mat3(VIEW_MATRIX) * vec3(0.0, 1.0, 0.0));
     ROUGHNESS = 0.96;
 }

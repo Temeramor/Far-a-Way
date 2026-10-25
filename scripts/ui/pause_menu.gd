@@ -19,11 +19,11 @@ var _main_panel: PanelContainer
 var _settings_panel: PanelContainer
 var _settings_scroll: ScrollContainer
 
-var _far_terrain_blur_toggle: CheckButton
-var _far_blur_distance_slider: HSlider
-var _far_blur_distance_value: Label
-var _far_blur_strength_slider: HSlider
-var _far_blur_strength_value: Label
+var _msaa_selector: OptionButton
+var _screen_aa_selector: OptionButton
+var _voxel_filter_selector: OptionButton
+var _crack_filter_selector: OptionButton
+var _procedural_mip_toggle: CheckButton
 var _mouse_mode_before_pause: int = Input.MOUSE_MODE_VISIBLE
 
 
@@ -152,61 +152,39 @@ func _build_ui() -> void:
     settings_content.add_theme_constant_override("separation", 8)
     _settings_scroll.add_child(settings_content)
 
-    var blur_heading := _make_label("Фильтр ряби вдали", true)
-    settings_content.add_child(blur_heading)
-    var blur_description := _make_label(
-        "Размывает дальние объекты постепенно. Выбери расстояние, с которого начинается эффект, и его максимальную силу.",
+    var filter_heading := _make_label("ФИЛЬТРАЦИЯ ДАЛЬНЕЙ ПОВЕРХНОСТИ", true)
+    settings_content.add_child(filter_heading)
+    var filter_description := _make_label(
+        "Сравни способы устранения ряби. MSAA сглаживает геометрию, экранное AA обрабатывает кадр, а фильтры ниже усредняют процедурные цвета и трещины вдали.",
         false
     )
-    blur_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    settings_content.add_child(blur_description)
+    filter_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    settings_content.add_child(filter_description)
 
-    _far_terrain_blur_toggle = CheckButton.new()
-    _far_terrain_blur_toggle.text = "Включить размытие дальнего плана"
-    _far_terrain_blur_toggle.custom_minimum_size = Vector2(0.0, 48.0)
-    _far_terrain_blur_toggle.toggled.connect(_on_far_terrain_blur_toggled)
-    settings_content.add_child(_far_terrain_blur_toggle)
+    _msaa_selector = _make_option_row(settings_content, "Сглаживание 3D (MSAA)",
+        ["Выкл.", "2×", "4×", "8×"], GameSettings.msaa_mode)
+    _msaa_selector.item_selected.connect(_on_msaa_selected)
 
-    var distance_row := HBoxContainer.new()
-    distance_row.add_theme_constant_override("separation", 8)
-    settings_content.add_child(distance_row)
-    var distance_caption := _make_label("Начало размытия", true)
-    distance_caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    distance_row.add_child(distance_caption)
-    _far_blur_distance_value = _make_label("", true)
-    _far_blur_distance_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-    distance_row.add_child(_far_blur_distance_value)
+    _screen_aa_selector = _make_option_row(settings_content, "Экранное AA",
+        ["Выкл.", "FXAA", "SMAA"], GameSettings.screen_space_aa_mode)
+    _screen_aa_selector.item_selected.connect(_on_screen_aa_selected)
 
-    _far_blur_distance_slider = HSlider.new()
-    _far_blur_distance_slider.min_value = GameSettings.MIN_FAR_TERRAIN_BLUR_DISTANCE_M
-    _far_blur_distance_slider.max_value = GameSettings.MAX_FAR_TERRAIN_BLUR_DISTANCE_M
-    _far_blur_distance_slider.step = GameSettings.FAR_TERRAIN_BLUR_DISTANCE_STEP_M
-    _far_blur_distance_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    _far_blur_distance_slider.value = GameSettings.far_terrain_blur_distance_m
-    _far_blur_distance_slider.value_changed.connect(_on_far_blur_distance_changed)
-    settings_content.add_child(_far_blur_distance_slider)
+    _voxel_filter_selector = _make_option_row(settings_content, "Фильтр цветов",
+        ["Без фильтра", "0,5×", "1×", "1,5×", "2×"], GameSettings.voxel_detail_filter_mode)
+    _voxel_filter_selector.item_selected.connect(_on_voxel_filter_selected)
 
-    var strength_row := HBoxContainer.new()
-    strength_row.add_theme_constant_override("separation", 8)
-    settings_content.add_child(strength_row)
-    var strength_caption := _make_label("Сила размытия", true)
-    strength_caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    strength_row.add_child(strength_caption)
-    _far_blur_strength_value = _make_label("", true)
-    _far_blur_strength_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-    strength_row.add_child(_far_blur_strength_value)
+    _crack_filter_selector = _make_option_row(settings_content, "Фильтр трещин",
+        ["Без фильтра", "0,5×", "1×", "2×"], GameSettings.rock_crack_filter_mode)
+    _crack_filter_selector.item_selected.connect(_on_crack_filter_selected)
 
-    _far_blur_strength_slider = HSlider.new()
-    _far_blur_strength_slider.min_value = GameSettings.MIN_FAR_TERRAIN_BLUR_AMOUNT
-    _far_blur_strength_slider.max_value = GameSettings.MAX_FAR_TERRAIN_BLUR_AMOUNT
-    _far_blur_strength_slider.step = GameSettings.FAR_TERRAIN_BLUR_AMOUNT_STEP
-    _far_blur_strength_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    _far_blur_strength_slider.value = GameSettings.far_terrain_blur_amount
-    _far_blur_strength_slider.value_changed.connect(_on_far_blur_strength_changed)
-    settings_content.add_child(_far_blur_strength_slider)
+    _procedural_mip_toggle = _make_check_button(
+        "Мип-подобная фильтрация шума", GameSettings.procedural_mip_filter_enabled
+    )
+    _procedural_mip_toggle.toggled.connect(_on_procedural_mip_toggled)
+    settings_content.add_child(_procedural_mip_toggle)
 
     var hint := _make_label(
-        "Фильтр влияет только на дальний план 3D-сцены. Интерфейс остаётся чётким; параметр применяется сразу и сохраняется.",
+        "Процедурные цвета создаются шейдером, а не mipmap-текстурой. Переключатель включает/выключает усреднение субпиксельных деталей — аналог mip-фильтра для сравнения. Настройки применяются сразу и сохраняются.",
         false
     )
     hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -226,7 +204,6 @@ func _build_ui() -> void:
     done_button.pressed.connect(_show_main_page)
     settings_buttons.add_child(done_button)
 
-    _apply_control_styles()
     _sync_graphics_controls()
     _show_main_page()
 
@@ -318,41 +295,59 @@ func _make_button(caption: String, primary: bool = false) -> Button:
     return button
 
 
-func _apply_control_styles() -> void:
+func _make_option_row(parent: VBoxContainer, caption: String, options: Array[String], selected_index: int) -> OptionButton:
+    var row := HBoxContainer.new()
+    row.add_theme_constant_override("separation", 8)
+    row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    parent.add_child(row)
+    var label := _make_label(caption, true)
+    label.custom_minimum_size = Vector2(125.0, 0.0)
+    label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    row.add_child(label)
+    var selector := OptionButton.new()
+    selector.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    for option_text in options:
+        selector.add_item(option_text)
+    selector.select(clampi(selected_index, 0, maxi(0, options.size() - 1)))
+    _style_option_button(selector)
+    row.add_child(selector)
+    return selector
 
-    _far_terrain_blur_toggle.add_theme_stylebox_override(
-        "normal", _button_style_texture("res://assets/ui/button_secondary.png")
-    )
-    _far_terrain_blur_toggle.add_theme_stylebox_override(
-        "hover", _button_style_texture("res://assets/ui/button_hover.png")
-    )
-    _far_terrain_blur_toggle.add_theme_stylebox_override(
-        "pressed", _button_style_texture("res://assets/ui/button_pressed.png")
-    )
-    _far_terrain_blur_toggle.add_theme_color_override("font_color", COLOR_TEXT)
-    _far_terrain_blur_toggle.add_theme_color_override("font_hover_color", COLOR_GOLD)
-    _far_terrain_blur_toggle.add_theme_color_override("font_pressed_color", COLOR_GOLD)
-    _far_terrain_blur_toggle.add_theme_font_size_override("font_size", 14)
-    _far_terrain_blur_toggle.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
-    var slider_track := StyleBoxFlat.new()
-    slider_track.bg_color = COLOR_TEAL
-    slider_track.set_corner_radius_all(0)
-    slider_track.content_margin_top = 3.0
-    slider_track.content_margin_bottom = 3.0
-    var slider_fill := StyleBoxFlat.new()
-    slider_fill.bg_color = COLOR_GREEN
-    slider_fill.set_corner_radius_all(0)
-    var slider_grabber := load("res://assets/ui/slider_grabber.png") as Texture2D
-    for slider in [_far_blur_distance_slider, _far_blur_strength_slider]:
-        slider.add_theme_stylebox_override("slider", slider_track)
-        slider.add_theme_stylebox_override("grabber_area", slider_track)
-        slider.add_theme_stylebox_override("grabber_area_highlight", slider_fill)
-        if slider_grabber != null:
-            slider.add_theme_icon_override("grabber", slider_grabber)
-            slider.add_theme_icon_override("grabber_highlight", slider_grabber)
-        slider.custom_minimum_size = Vector2(0.0, 32.0)
-        slider.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+func _make_check_button(caption: String, checked: bool) -> CheckButton:
+    var toggle := CheckButton.new()
+    toggle.text = caption
+    toggle.custom_minimum_size = Vector2(0.0, 42.0)
+    toggle.button_pressed = checked
+    _style_check_button(toggle)
+    return toggle
+
+
+func _style_option_button(selector: OptionButton) -> void:
+    selector.add_theme_stylebox_override("normal", _button_style_texture("res://assets/ui/button_secondary.png"))
+    selector.add_theme_stylebox_override("hover", _button_style_texture("res://assets/ui/button_hover.png"))
+    selector.add_theme_stylebox_override("pressed", _button_style_texture("res://assets/ui/button_pressed.png"))
+    selector.add_theme_stylebox_override("focus", _button_style_texture("res://assets/ui/button_hover.png"))
+    selector.add_theme_color_override("font_color", COLOR_TEXT)
+    selector.add_theme_color_override("font_hover_color", COLOR_GOLD)
+    selector.add_theme_color_override("font_pressed_color", COLOR_TEXT)
+    selector.add_theme_font_size_override("font_size", 14)
+    selector.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+    var popup := selector.get_popup()
+    popup.add_theme_color_override("font_color", COLOR_TEXT)
+    popup.add_theme_color_override("font_hover_color", COLOR_GOLD)
+    popup.add_theme_stylebox_override("panel", _button_style_texture("res://assets/ui/button_secondary.png"))
+
+
+func _style_check_button(toggle: CheckButton) -> void:
+    toggle.add_theme_stylebox_override("normal", _button_style_texture("res://assets/ui/button_secondary.png"))
+    toggle.add_theme_stylebox_override("hover", _button_style_texture("res://assets/ui/button_hover.png"))
+    toggle.add_theme_stylebox_override("pressed", _button_style_texture("res://assets/ui/button_pressed.png"))
+    toggle.add_theme_color_override("font_color", COLOR_TEXT)
+    toggle.add_theme_color_override("font_hover_color", COLOR_GOLD)
+    toggle.add_theme_color_override("font_pressed_color", COLOR_GOLD)
+    toggle.add_theme_font_size_override("font_size", 14)
+    toggle.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
 
 func _fit_to_viewport() -> void:
@@ -379,41 +374,48 @@ func _show_settings_page() -> void:
 
 
 func _sync_graphics_controls() -> void:
-    _far_terrain_blur_toggle.set_pressed_no_signal(GameSettings.far_terrain_blur_enabled)
-    _far_blur_distance_slider.set_value_no_signal(GameSettings.far_terrain_blur_distance_m)
-    _far_blur_strength_slider.set_value_no_signal(GameSettings.far_terrain_blur_amount)
-    _refresh_blur_value_labels()
+    _msaa_selector.select(GameSettings.msaa_mode)
+    _screen_aa_selector.select(GameSettings.screen_space_aa_mode)
+    _voxel_filter_selector.select(GameSettings.voxel_detail_filter_mode)
+    _crack_filter_selector.select(GameSettings.rock_crack_filter_mode)
+    _procedural_mip_toggle.set_pressed_no_signal(GameSettings.procedural_mip_filter_enabled)
 
 
-func _refresh_blur_value_labels() -> void:
-    _far_blur_distance_value.text = "%d м" % int(roundi(_far_blur_distance_slider.value))
-    _far_blur_strength_value.text = "%.3f" % _far_blur_strength_slider.value
-
-
-func _on_far_terrain_blur_toggled(_enabled: bool) -> void:
+func _on_msaa_selected(_index: int) -> void:
     _apply_graphics_settings(true)
 
 
-func _on_far_blur_distance_changed(_value: float) -> void:
+func _on_screen_aa_selected(_index: int) -> void:
     _apply_graphics_settings(true)
 
 
-func _on_far_blur_strength_changed(_value: float) -> void:
+func _on_voxel_filter_selected(_index: int) -> void:
+    _apply_graphics_settings(true)
+
+
+func _on_crack_filter_selected(_index: int) -> void:
+    _apply_graphics_settings(true)
+
+
+func _on_procedural_mip_toggled(_enabled: bool) -> void:
     _apply_graphics_settings(true)
 
 
 func _apply_graphics_settings(persist: bool) -> void:
-    var blur_enabled: bool = _far_terrain_blur_toggle.button_pressed
-    var blur_distance: float = _far_blur_distance_slider.value
-    var blur_amount: float = _far_blur_strength_slider.value
-    GameSettings.update_graphics_settings(blur_enabled, blur_distance, blur_amount, persist)
-    _refresh_blur_value_labels()
+    GameSettings.update_graphics_settings(
+        _msaa_selector.selected,
+        _screen_aa_selector.selected,
+        _voxel_filter_selector.selected,
+        _crack_filter_selector.selected,
+        _procedural_mip_toggle.button_pressed,
+        persist
+    )
     if _voxel_world != null and is_instance_valid(_voxel_world):
         _voxel_world.call(
-            "set_far_terrain_blur_options",
-            GameSettings.far_terrain_blur_enabled,
-            GameSettings.far_terrain_blur_distance_m,
-            GameSettings.far_terrain_blur_amount
+            "set_surface_filter_settings",
+            GameSettings.get_voxel_detail_filter_multiplier(),
+            GameSettings.get_rock_crack_filter_multiplier(),
+            GameSettings.procedural_mip_filter_enabled
         )
 
 

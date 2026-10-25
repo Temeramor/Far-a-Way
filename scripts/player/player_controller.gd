@@ -22,59 +22,11 @@ var mouse_capture_paused: bool = false
 var _camera_yaw: float = 0.0
 var _camera_pitch: float = 0.0
 var _last_space_tap_msec: int = -10000
-var _far_blur_attributes: CameraAttributesPractical
 
 
 func _ready() -> void:
     camera_pivot.rotation = Vector3(_camera_pitch, _camera_yaw, 0.0)
     camera.fov = base_camera_fov
-    set_far_terrain_blur_options(
-        GameSettings.far_terrain_blur_enabled,
-        GameSettings.far_terrain_blur_distance_m,
-        GameSettings.far_terrain_blur_amount
-    )
-
-
-func set_far_terrain_blur_options(enabled: bool, distance_m: float, amount: float) -> void:
-    _ensure_far_blur_attributes()
-    _far_blur_attributes.dof_blur_far_enabled = enabled
-    _far_blur_attributes.dof_blur_far_distance = clampf(
-        distance_m,
-        GameSettings.MIN_FAR_TERRAIN_BLUR_DISTANCE_M,
-        GameSettings.MAX_FAR_TERRAIN_BLUR_DISTANCE_M
-    )
-    _far_blur_attributes.dof_blur_amount = clampf(
-        amount,
-        GameSettings.MIN_FAR_TERRAIN_BLUR_AMOUNT,
-        GameSettings.MAX_FAR_TERRAIN_BLUR_AMOUNT
-    )
-    # Fade in slowly after the selected start distance: 128 m starts near the player,
-    # while larger values defer the same effect farther into the landscape.
-    _far_blur_attributes.dof_blur_far_transition = maxf(
-        768.0, _far_blur_attributes.dof_blur_far_distance
-    )
-
-
-func _ensure_far_blur_attributes() -> void:
-    if _far_blur_attributes != null:
-        return
-
-    # Use a private copy so enabling depth-of-field on this player camera does not
-    # unintentionally blur other cameras or the environment's editor preview.
-    if camera.attributes is CameraAttributesPractical:
-        _far_blur_attributes = (camera.attributes as CameraAttributesPractical).duplicate() as CameraAttributesPractical
-    else:
-        var sky_environment := get_parent().get_node_or_null("Sky3D")
-        if sky_environment != null:
-            var environment_attributes: Variant = sky_environment.get("camera_attributes")
-            if environment_attributes is CameraAttributesPractical:
-                _far_blur_attributes = (environment_attributes as CameraAttributesPractical).duplicate() as CameraAttributesPractical
-
-    if _far_blur_attributes == null:
-        _far_blur_attributes = CameraAttributesPractical.new()
-
-    camera.attributes = _far_blur_attributes
-    _far_blur_attributes.dof_blur_near_enabled = false
 
 
 func set_touch_move(value: Vector2) -> void:

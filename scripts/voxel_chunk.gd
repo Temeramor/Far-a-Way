@@ -112,6 +112,30 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
     _skirt_visibility_cache = Vector4(-1.0, -1.0, -1.0, -1.0)
     add_child(mesh_instance)
+
+    if lod == 6:
+        var shadow_vertex_count: int = int(data.get("shadow_vertex_count", 0))
+        var shadow_index_count: int = int(data.get("shadow_index_count", 0))
+        if shadow_vertex_count >= 3 and shadow_index_count >= 3:
+            var source_vertices: PackedVector3Array = data["vertices"]
+            var source_normals: PackedVector3Array = data["normals"]
+            var source_colors: PackedColorArray = data["colors"]
+            var source_indices: PackedInt32Array = data["indices"]
+            var shadow_data: Dictionary = {
+                "vertices": source_vertices.slice(0, shadow_vertex_count),
+                "normals": source_normals.slice(0, shadow_vertex_count),
+                "colors": source_colors.slice(0, shadow_vertex_count),
+                "indices": source_indices.slice(0, shadow_index_count)
+            }
+            var shadow_mesh := _make_array_mesh(shadow_data, null)
+            shadow_mesh.resource_name = "TerrainShadowProxy_%d_%d" % [coord.x, coord.y]
+            var shadow_proxy := MeshInstance3D.new()
+            shadow_proxy.name = "TerrainShadowProxy"
+            shadow_proxy.mesh = shadow_mesh
+            shadow_proxy.visible = true
+            shadow_proxy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+            add_child(shadow_proxy)
+
     mesh_ready = true
 
     if wants_collision and not preserve_collision:
@@ -151,7 +175,8 @@ func set_render_active(active: bool, request_collision: bool = false) -> void:
     if render_state_changed:
         for child in get_children():
             if child is VisualInstance3D:
-                child.visible = active
+                # Keep the hidden coarse caster active when this render LOD is inactive.
+                child.visible = true if child.name == "TerrainShadowProxy" else active
 
     var wants_active_collision: bool = active and request_collision and collision_enabled
     if collision_active != wants_active_collision:

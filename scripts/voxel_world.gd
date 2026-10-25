@@ -76,6 +76,11 @@ func _ready() -> void:
     _voxel_material = ShaderMaterial.new()
     _voxel_material.shader = surface_shader
     _apply_seed_to_material()
+    set_surface_filter_settings(
+        GameSettings.get_voxel_detail_filter_multiplier(),
+        GameSettings.get_rock_crack_filter_multiplier(),
+        GameSettings.procedural_mip_filter_enabled
+    )
 
     _player = get_node_or_null(NodePath("../Player")) as CharacterBody3D
     if _player != null:
@@ -226,9 +231,20 @@ func get_surface_height(x: float, z: float) -> float:
         _generator = GeneratorScript.new(seed_value, world_size_m)
     return float(_generator.get_surface_height_voxels(x, z)) * VOXEL_SIZE
 
-func set_far_terrain_blur_options(enabled: bool, distance_m: float, amount: float) -> void:
-    if _player != null and is_instance_valid(_player):
-        _player.call("set_far_terrain_blur_options", enabled, distance_m, amount)
+func set_surface_filter_settings(detail_multiplier: float, crack_multiplier: float, mip_filter_enabled: bool) -> void:
+    var safe_detail_multiplier: float = clampf(detail_multiplier, 0.0, 2.0)
+    var safe_crack_multiplier: float = clampf(crack_multiplier, 0.0, 2.0)
+    if _voxel_material != null:
+        _voxel_material.set_shader_parameter("voxel_detail_filter_multiplier", safe_detail_multiplier)
+        _voxel_material.set_shader_parameter("rock_crack_filter_multiplier", safe_crack_multiplier)
+        _voxel_material.set_shader_parameter("procedural_mipmap_enabled", mip_filter_enabled)
+    # Chunks use private material copies for skirt visibility; update all loaded chunks as well.
+    for chunk_value in _chunks.values():
+        var chunk: VoxelTerrainChunk = chunk_value as VoxelTerrainChunk
+        if chunk != null:
+            chunk.set_mesh_shader_parameter("voxel_detail_filter_multiplier", safe_detail_multiplier)
+            chunk.set_mesh_shader_parameter("rock_crack_filter_multiplier", safe_crack_multiplier)
+            chunk.set_mesh_shader_parameter("procedural_mipmap_enabled", mip_filter_enabled)
 
 
 func get_voxel_material(global_voxel: Vector3i) -> int:
