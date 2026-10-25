@@ -269,21 +269,39 @@ func _build_smooth_shadow_surface(
                 var right_index: int = z * shadow_width + x_after
                 var north_index: int = z_before * shadow_width + x
                 var south_index: int = z_after * shadow_width + x
+                var vertex_index: int = z * shadow_width + x
+                var local_voxel_x: int = mini(x * shadow_step_voxels, size_voxels_x)
+                var local_voxel_z: int = mini(z * shadow_step_voxels, size_voxels_z)
+                var center_vertex: Vector3 = shadow_vertices[vertex_index]
+                var world_x: float = world_min_x + float(start_voxel_x) * VOXEL_SIZE + center_vertex.x
+                var world_z: float = world_min_z + float(start_voxel_z) * VOXEL_SIZE + center_vertex.z
+                var left_height: float = shadow_vertices[left_index].y
+                var right_height: float = shadow_vertices[right_index].y
+                var north_height: float = shadow_vertices[north_index].y
+                var south_height: float = shadow_vertices[south_index].y
                 var run_x: float = shadow_vertices[right_index].x - shadow_vertices[left_index].x
                 var run_z: float = shadow_vertices[south_index].z - shadow_vertices[north_index].z
+                # Query just outside chunk borders so adjacent smooth meshes produce identical
+                # boundary normals instead of a one-sided derivative seam.
+                if x == 0:
+                    run_x = (shadow_vertices[right_index].x - center_vertex.x) * 2.0
+                    left_height = generator.get_surface_height(world_x - run_x * 0.5, world_z)
+                elif x == shadow_cells_x:
+                    run_x = (center_vertex.x - shadow_vertices[left_index].x) * 2.0
+                    right_height = generator.get_surface_height(world_x + run_x * 0.5, world_z)
+                if z == 0:
+                    run_z = (shadow_vertices[south_index].z - center_vertex.z) * 2.0
+                    north_height = generator.get_surface_height(world_x, world_z - run_z * 0.5)
+                elif z == shadow_cells_z:
+                    run_z = (center_vertex.z - shadow_vertices[north_index].z) * 2.0
+                    south_height = generator.get_surface_height(world_x, world_z + run_z * 0.5)
                 var dx: float = 0.0
                 var dz: float = 0.0
                 if run_x > 0.0001:
-                    dx = (shadow_vertices[right_index].y - shadow_vertices[left_index].y) / run_x
+                    dx = (right_height - left_height) / run_x
                 if run_z > 0.0001:
-                    dz = (shadow_vertices[south_index].y - shadow_vertices[north_index].y) / run_z
-                var vertex_index: int = z * shadow_width + x
+                    dz = (south_height - north_height) / run_z
                 shadow_normals[vertex_index] = Vector3(-dx, 1.0, -dz).normalized()
-
-                var local_voxel_x: int = mini(x * shadow_step_voxels, size_voxels_x)
-                var local_voxel_z: int = mini(z * shadow_step_voxels, size_voxels_z)
-                var world_x: float = world_min_x + float(start_voxel_x + local_voxel_x) * VOXEL_SIZE
-                var world_z: float = world_min_z + float(start_voxel_z + local_voxel_z) * VOXEL_SIZE
                 var rock_weight: float = generator.get_surface_rock_weight(sqrt(dx * dx + dz * dz), world_x, world_z)
                 var material_type: int = VoxelTerrainGenerator.ROCK if rock_weight >= 0.5 else VoxelTerrainGenerator.GRASS
                 shadow_colors[vertex_index] = _top_face_color(material_type, rock_weight)
