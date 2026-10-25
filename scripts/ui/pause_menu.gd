@@ -165,7 +165,7 @@ func _build_ui() -> void:
     settings_content.add_child(_make_divider())
     settings_content.add_child(_make_label("ТЕНИ РЕЛЬЕФА", true))
     var shadow_description := _make_label(
-        "Строгий режим оставляет полную силу теней только на LOD0–LOD3. Постепенный режим ослабляет их по мере удаления.",
+        "Видимые поверхности LOD4+ не получают прямых теней. Невидимый силуэт рельефа на любой дистанции сохраняет перекрытие солнечного света и тени гор на ближней местности.",
         false
     )
     shadow_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
