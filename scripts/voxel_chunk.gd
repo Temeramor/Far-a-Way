@@ -204,8 +204,11 @@ func _shadow_receive_strength() -> float:
 
 
 func _should_proxy_cast_shadow() -> bool:
-    # In gradual mode these invisible silhouettes stop sunlight leaking through distant mountains.
-    return lod <= 3 or _shadow_mode == 1
+    # The proxy is only an opaque terrain silhouette for the directional shadow map.
+    # Keep it at every active LOD so distant mountains always occlude the sun and
+    # cast relief shadows onto nearer chunks. The LOD mode controls how much shadow
+    # the visible surface receives; LOD4+ receives none in either mode.
+    return lod >= 0 and lod <= 6
 
 func set_mesh_shader_parameter(parameter_name: StringName, value: Variant) -> void:
     if _mesh_shader_material != null:
