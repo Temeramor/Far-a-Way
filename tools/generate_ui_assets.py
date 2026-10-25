@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Generate Neverland's modular pixel-art UI textures.
+"""Generate Far a Way's modular pixel-art UI textures.
 
 Requires Pillow: python -m pip install Pillow
 Run from the project root or any other working directory:
     python tools/generate_ui_assets.py
 
-Standalone layers are written to assets/ui/components/. Composite button-state
-textures are assembled from the layers and remain the files used by Godot.
+The script builds intermediate layers in memory and writes only the four composite button-state
+textures consumed by the game.
 """
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageChops, ImageFont
+from PIL import Image, ImageDraw, ImageChops
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 OUT_DIR = PROJECT_DIR / "assets" / "ui"
-COMPONENT_DIR = OUT_DIR / "components"
 W, H = 128, 48
 MOSS_H = 16
 
@@ -235,65 +234,12 @@ def draw_moss_strip(palette: dict[str, str], brighter: bool = False) -> Image.Im
     return image
 
 
-def save_layer(image: Image.Image, filename: str) -> None:
-    path = COMPONENT_DIR / filename
-    image.save(path, optimize=True)
-    print(f"Generated {path.relative_to(PROJECT_DIR)}")
 
-
-
-def generate_component_preview(faces: dict[str, Image.Image], frames: dict[str, Image.Image], mosses: dict[str, Image.Image]) -> None:
-    """Create a small developer reference showing the layers and their composition."""
-    preview = Image.new("RGB", (900, 420), (35, 30, 23))
-    draw = ImageDraw.Draw(preview)
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 15)
-        title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
-    except OSError:
-        font = ImageFont.load_default()
-        title_font = ImageFont.load_default()
-    draw.text((24, 18), "NEVERLAND / MODULAR UI ELEMENTS", font=title_font, fill=(232, 215, 179))
-
-    def checkerboard(x: int, y: int, width: int, height: int) -> Image.Image:
-        tile = Image.new("RGB", (width, height), (45, 40, 31))
-        td = ImageDraw.Draw(tile)
-        step = 12
-        for yy in range(0, height, step):
-            for xx in range(0, width, step):
-                if ((xx // step) + (yy // step)) % 2:
-                    td.rectangle((xx, yy, min(width - 1, xx + step - 1), min(height - 1, yy + step - 1)), fill=(57, 51, 39))
-        return tile
-
-    panels = [
-        (24, "WOOD SURFACE", faces["primary"].resize((256, 96), Image.Resampling.NEAREST)),
-        (322, "ORNATE FRAME", frames["primary"].resize((256, 96), Image.Resampling.NEAREST)),
-        (620, "MOSS STRIP", mosses["primary"].resize((256, 32), Image.Resampling.NEAREST)),
-    ]
-    for x, label, layer in panels:
-        draw.text((x, 62), label, font=font, fill=(217, 164, 65))
-        tile = checkerboard(x, 88, 256, 104)
-        rgba = tile.convert("RGBA")
-        rgba.alpha_composite(layer, (0, (104 - layer.height) // 2))
-        preview.paste(rgba.convert("RGB"), (x, 88))
-
-    draw.text((24, 224), "COMPOSED BUTTON / PRIMARY STATE", font=font, fill=(217, 164, 65))
-    tile = checkerboard(24, 250, 512, 144)
-    composed = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    composed = Image.alpha_composite(composed, faces["primary"])
-    composed = Image.alpha_composite(composed, frames["primary"])
-    composed.alpha_composite(mosses["primary"], (0, 0))
-    tile_rgba = tile.convert("RGBA")
-    tile_rgba.alpha_composite(composed.resize((512, 192), Image.Resampling.NEAREST), (0, -24))
-    preview.paste(tile_rgba.crop((0, 0, 512, 144)).convert("RGB"), (24, 250))
-    preview_path = OUT_DIR / "components_preview.png"
-    preview.save(preview_path, optimize=True)
-    print(f"Generated {preview_path.relative_to(PROJECT_DIR)}")
 
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    COMPONENT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Standalone face, frame and moss layers. These can be reused independently.
+    # Compose intermediate face, frame and moss layers in memory; do not export them separately.
     faces: dict[str, Image.Image] = {}
     frames: dict[str, Image.Image] = {}
     mosses: dict[str, Image.Image] = {}
@@ -302,18 +248,6 @@ def main() -> None:
         frames[state] = draw_frame(state, palette)
         mosses[state] = draw_moss_strip(palette, brighter=(state == "hover"))
 
-    save_layer(frames["primary"], "button_frame.png")
-    save_layer(frames["secondary"], "button_frame_secondary.png")
-    save_layer(frames["hover"], "button_frame_hover.png")
-    save_layer(frames["pressed"], "button_frame_pressed.png")
-    save_layer(faces["primary"], "button_surface_primary.png")
-    save_layer(faces["secondary"], "button_surface_secondary.png")
-    save_layer(faces["hover"], "button_surface_hover.png")
-    save_layer(faces["pressed"], "button_surface_pressed.png")
-    save_layer(mosses["primary"], "moss_strip.png")
-    save_layer(mosses["secondary"], "moss_strip_secondary.png")
-    save_layer(mosses["hover"], "moss_strip_hover.png")
-    save_layer(mosses["pressed"], "moss_strip_pressed.png")
 
     # Preserve the existing Godot-facing paths, composing each state from the layers.
     state_files = {
@@ -332,8 +266,7 @@ def main() -> None:
         composite.save(path, optimize=True)
         print(f"Generated composite {path.relative_to(PROJECT_DIR)}")
 
-    generate_component_preview(faces, frames, mosses)
-    print("UI layers ready: surface + ornate frame + moss strip. Godot uses the composite textures above.")
+    print("Far a Way UI button textures generated.")
 
 
 if __name__ == "__main__":

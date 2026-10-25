@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/menu/menu_controller.gd" id="1_menu"]
 [ext_resource type="Texture2D" path="res://assets/ui/menu_background.png" id="2_background"]
-[ext_resource type="Texture2D" path="res://assets/ui/island_emblem.png" id="3_emblem"]
+[ext_resource type="Texture2D" path="res://assets/ui/logo.png" id="3_logo"]
 [ext_resource type="Texture2D" path="res://assets/ui/divider.png" id="4_divider"]
 
 [node name="Menu" type="Control"]
@@ -61,22 +61,15 @@ layout_mode = 2
 [node name="Stack" type="VBoxContainer" parent="Center/Panel/Margin"]
 layout_mode = 2
 
-[node name="Emblem" type="TextureRect" parent="Center/Panel/Margin/Stack"]
-custom_minimum_size = Vector2(100, 60)
+[node name="Logo" type="TextureRect" parent="Center/Panel/Margin/Stack"]
+custom_minimum_size = Vector2(0, 0)
 layout_mode = 2
-size_flags_horizontal = 8
+size_flags_horizontal = 3
 mouse_filter = 2
-texture = ExtResource("3_emblem")
+texture = ExtResource("3_logo")
 expand_mode = 1
-stretch_mode = 5
-texture_filter = 1
-
-[node name="Title" type="Label" parent="Center/Panel/Margin/Stack"]
-custom_minimum_size = Vector2(0, 62)
-layout_mode = 2
-text = "NEVERLAND"
-horizontal_alignment = 1
-vertical_alignment = 1
+stretch_mode = 0
+texture_filter = 2
 
 [node name="Divider" type="TextureRect" parent="Center/Panel/Margin/Stack"]
 custom_minimum_size = Vector2(0, 16)

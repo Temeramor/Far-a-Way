@@ -46,8 +46,6 @@ func _ready() -> void:
     var stack := $Center/Panel/Margin/Stack as VBoxContainer
     stack.add_theme_constant_override("separation", 10)
 
-    var emblem := $Center/Panel/Margin/Stack/Emblem as TextureRect
-    emblem.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
     var divider := $Center/Panel/Margin/Stack/Divider as TextureRect
     divider.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 

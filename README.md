@@ -1,84 +1,88 @@
-# Neverland — Godot 4.7.2
+# Far a Way 0.1.0.9
 
-Neverland — одиночная процедурная 3D-песочница от первого лица. Текущий игровой цикл — создать мир по сиду и исследовать горный ландшафт пешком или в режиме свободного полёта, меняя погоду и время суток. В проекте есть главное меню, экран генерации, настройки управления полётом и сенсорное управление для Android.
+Far a Way is a procedural first-person voxel landscape exploration game built with **Godot 4.7.2**. The experimental `feature/voxen-integration` branch integrates **VoxEn 0.3.5** for streamed block-voxel terrain while retaining the existing menu, animated sky, day/night cycle, weather controls, player controller, Windows input, Android touch controls and flight mode.
 
-Этот README описывает механики, которые подключены в сценах и скриптах текущей ветки `main`, а не планируемые функции.
+## Project overview
 
-## Какие механики работают сейчас
+- **Genre:** first-person landscape exploration / procedural voxel terrain.
+- **Engine:** Godot 4.7.2, Mobile renderer.
+- **World:** seeded 10 × 10 km height-column voxel landscape with hierarchical LOD.
+- **Voxel scale:** 10 cm logical height quantisation; mesh sampling becomes coarser with distance.
+- **Targets:** Android ARM64 and Windows x86-64; native extension binaries are platform-specific.
+- **Version:** `0.1.0.9`.
 
-### Мир и сид
+## Gameplay and controls
 
-- При выборе «Новая игра» создаётся мир по введённому сиду. Числовая строка длиной до 18 символов используется как число; произвольный текст преобразуется в детерминированный целочисленный ключ. По умолчанию указан сид `1337`.
-- Сид управляет формой рельефа, процедурным цветовым рисунком поверхности, размещением травы и цветов. Повторная генерация с тем же сидом воспроизводит тот же рельеф и размещение растительности.
-- Размер поля рельефа — 10 × 10 км. Высотная карта имеет 2049 × 2049 узлов (2048 ячеек на сторону), расстояние между семплами — около 4,88 м.
-- Рельеф состоит из трёх искривлённых горных хребтов, предгорий, холмов, гребней и мелкого шума. В центре сглажена стартовая долина, чтобы рядом с точкой появления не было резкого горного склона. Высота ограничивается диапазоном от −80 до 1600 м.
-- Мир строится чанками: каждый чанк содержит сетку 128 × 128 ячеек, всего получается 16 × 16 (256) чанков. Видимая геометрия и физические коллизии создаются отдельно на основе общей высотной карты.
+1. Open the project in Godot 4.7.2, let the editor import resources, press **F5**, and start a new game from the menu.
+2. **Windows:** move with WASD / arrow keys and look with the mouse. Press **Esc** to pause.
+3. **Android:** use the left-side touch joystick to move, drag on the right side to look, and use the pause button on the HUD.
+4. Double-tap the right half of the screen (or double-tap Space on desktop) to toggle flight.
+5. **VOXEN DEBUG** toggles streaming/LOD/collision/task diagnostics; **F3** toggles diagnostic LOD colours; **R** regenerates the landscape with a new seed.
 
-### Поверхность, трава и цветы
+## Graphics and lighting
 
-- Цвет поверхности не зависит от готовой текстуры ландшафта. Шейдер формирует его по мировым координатам и сиду: на пологих участках смешиваются оттенки травы и сухой земли, а с ростом уклона появляются минеральные и каменные поверхности.
-- Детальный рисунок камня включает цветовые слои, трещины, мелкие сколы и впадины. На расстоянии мелкие детали плавно заменяются крупными цветовыми вариациями.
-- Трава генерируется как отдельные изогнутые ленты-клинки, а не как импортированные модели или пересекающиеся плоскости. Высота, направление, ширина и оттенок варьируются детерминированно; размещение учитывает высоту и уклон ландшафта.
-- Растительность создаётся в перемещаемой области 144 × 144 м вокруг камеры. Патч обновляется по мере движения игрока; построение и передача экземпляров разбиты на пакеты, а уже готовый MultiMesh остаётся видимым до готовности нового.
-- На короткой траве (до 50 см) размещаются процедурные пиксельные цветы. Их палитра включает розовые, жёлтые, сиреневые, голубые и оранжевые оттенки; размер цветочной головки — примерно 10–20 см. Наклон цветка индивидуален и определяется сидом.
-- Ветер раскачивает траву и цветы. Интенсивность и скорость колебаний меняются вместе с выбранной погодой.
+- **Far depth blur** is an optional experiment with start-distance and strength sliders. It is **off by default** because it is not the primary fix for terrain shimmer.
+- All voxel LOD meshes have shadow casting disabled. This stops voxel faces from producing terrain-wide shadow blocks and self-shadow speckles. Their regular directional/sky lighting remains enabled, so the terrain is still shaded rather than unlit.
+- The voxel shader estimates projected 10 cm colour-cell size using fragment derivatives. When cells become sub-pixel, it blends random colour variation toward a stable material average; larger rock cracks are filtered separately. This targets shader-colour Moiré but cannot fix geometric/shadow aliasing by itself.
+- These visual filters run in the renderer/GPU, not the native mesh builder. VoxEn C++ remains responsible for CPU mesh geometry and height-cache generation.
 
-### Персонаж и перемещение
+Disabling shadow casting avoids the extra shadow-map rendering of voxel chunks and should improve performance, especially with directional-light shadow cascades. It does not disable direct light or sky ambient contribution ([Godot shadow-casting settings](https://docs.godotengine.org/en/4.x/classes/class_geometryinstance3d.html), [shadow performance guidance](https://docs.godotengine.org/en/latest/tutorials/performance/gpu_optimization.html)).
 
-- Игра ведётся от первого лица. В обычном режиме персонаж ходит по поверхности, разгоняется постепенно и падает под действием гравитации; коллизия персонажа взаимодействует с коллизиями рельефа.
-- Отдельного прыжка, бега, боевой системы или взаимодействия с предметами в текущем контроллере персонажа нет.
-- Свободный полёт включается двойным нажатием пробела на ПК или двойным касанием правой половины экрана на Android. В полёте перемещение следует полному направлению камеры, в том числе её наклону вверх и вниз.
-- Скорость полёта настраивается множителем от ×1 до ×20 (по умолчанию ×10). Поле зрения камеры в полёте настраивается от 82° до 120° (по умолчанию 100°); после выхода из полёта камера возвращается к базовому FOV 82°.
-- На ПК обзор выполняется мышью после захвата курсора щелчком по миру. `Esc` освобождает мышь. В обычном движении используются WASD или стрелки.
+## Native VoxEn extension
 
-### Погода, небо и время
+The repository contains native GDExtension sources but **does not commit compiled DLL/SO libraries**. If no compatible extension binary is installed, the game uses the GDScript mesh-builder fallback; a native build is recommended for performance.
 
-- Доступны три погодных пресета: **«Ясно»**, **«Облачно»** и **«Пасмурно»**. Новый мир начинается с облачной погоды и полудня.
-- Погода меняет покрытие и вид двух слоёв облаков, яркость солнца и рассеянного освещения, оттенок неба и скорость ветра. Параметры освещения и облачности переходят к новым значениям плавно; растительность постепенно подстраивается под ветер.
-- Доступны четыре пресета времени: **«Рассвет»** (06:00), **«День»** (12:00), **«Закат»** (18:00) и **«Ночь»** (00:00). Между выбором пресетов часы продолжают идти. Полный цикл суток длится 24 минуты реального времени.
-- Система неба на базе адаптированного Sky3D рассчитывает положение Солнца и Луны и формирует атмосферу, экранный туман, звёзды, полосу Млечного Пути и облачные слои процедурными шейдерами. Солнце и Луна не являются отдельными неподвижными объектами, вручную размещёнными на небе.
-- Для ясной погоды используется отдельная бесшовная карта шума облаков, созданная скриптом проекта. Пасмурный и облачный пресеты используют другую карту шума. Дождя, снегопада или влияния погоды на физику персонажа нет.
+Requirements: a C++ compiler/toolchain, Python 3.12+, SCons, Godot 4.7.2 C++ bindings (`godot-cpp` tag `10.0.0-stable`), and the Android NDK for Android builds.
 
-### Меню, настройки и Android
+From the project root:
 
-- Главное меню содержит переход к новой игре, настройки и выход.
-- Экран новой игры принимает числа и произвольный текст в качестве сида. При генерации показывается экран загрузки с прогрессом и текущим этапом: расчёт высот, построение геометрии/коллизий и размещение растительности.
-- В настройках можно изменить скорость полёта и FOV, сохранить значения, отменить изменения или вернуть значения по умолчанию. Эти два параметра сохраняются в `user://settings.cfg`. Сохранения позиции игрока или состояния мира нет.
-- На Android движение задаётся касанием/перетаскиванием в левой части экрана, обзор — свайпом справа. Обе области можно использовать одновременно. Верхняя полоса экрана зарезервирована под интерфейс, а кнопка «ПОГОДА / ВРЕМЯ» открывает меню пресетов.
-- Меню погоды и времени открывается клавишей `M` на ПК; `Esc` закрывает его. На Android оно открывается экранной кнопкой.
+```sh
+git clone --depth 1 --branch 10.0.0-stable https://github.com/godotengine/godot-cpp.git native/godot-cpp
+python -m pip install --upgrade scons
+cd native
+```
 
-## Производительность и детали реализации
+Linux x86-64:
 
-- `ArrayMesh` использует индексные LOD для рельефа: примерно с 900 м применяется шаг 2, с 1800 м — шаг 4, с 3000 м — шаг 8. Граничные полосы сохраняют семплы краёв чанков, чтобы соседние участки не расходились при разных уровнях детализации.
-- Детализация материала поверхности смешивается с крупным дальним рисунком в диапазоне примерно 920–1780 м. Это снижает количество мелких пиксельных деталей вдали, не меняя саму высотную карту.
-- Коллизии рельефа используют более плотную сетку рядом с игроком и более редкую вдали: шаг 1 семпл примерно до 700 м от чанка, шаг 2 — до 1900 м, дальше — шаг 4. Перестройка распределяется по кадрам.
-- Растительность использует MultiMesh без теней и без участия в GI. Кандидаты размещения проверяются пакетами по 4096 ячеек, а загрузка экземпляров — пакетами по 8192, чтобы уменьшить паузы при перемещении.
-- Параметры рендера проекта настроены на мобильный renderer Godot. Фактическая производительность зависит от устройства и настроек драйвера.
+```sh
+scons platform=linux target=template_debug arch=x86_64
+scons platform=linux target=template_release arch=x86_64
+```
 
-## Основные файлы
+Windows x86-64 (from a shell where the native compiler is configured):
 
-- `project.godot` — настройки проекта и автозагрузка `GameSettings`.
-- `scenes/menu.tscn`, `scripts/menu/menu_controller.gd` — главное меню, ввод сида и настройки.
-- `scenes/world.tscn`, `scripts/world/world_controller.gd` — запуск генерации, управление погодой и временем, переключение полёта.
-- `scripts/world/terrain_generator.gd` — высотная карта, горные хребты, чанки, LOD и коллизии.
-- `scenes/player.tscn`, `scripts/player/player_controller.gd` — движение, обзор и свободный полёт.
-- `scripts/systems/game_settings.gd` — загрузка и сохранение настроек.
-- `scripts/ui/touch_controls.gd`, `scripts/ui/loading_screen.gd` — сенсорное управление и экран генерации.
-- `assets/terrain/grass/grass_field.gd`, `shaders/procedural_grass.gdshader`, `shaders/procedural_flowers.gdshader` — процедурная трава, цветы и ветер.
-- `shaders/procedural_terrain.gdshader` — материал поверхности, рисунок камня/травы и дальний LOD материала.
-- `scripts/sky/`, `shaders/sky/` — Sky3D, расчёт времени и небесные шейдеры.
-- `tools/generate_sky_noise.py` — повторная генерация карты шума для ясной погоды (Python, NumPy и Pillow).
+```sh
+scons platform=windows target=template_debug arch=x86_64
+scons platform=windows target=template_release arch=x86_64
+```
 
-## Что пока не реализовано
+Android ARM64 (with the Android NDK environment configured):
 
-По текущим игровым сценам и скриптам проект остаётся прототипом исследования ландшафта. В них не обнаружены NPC и враги, бой, квесты, инвентарь, сбор ресурсов, крафт, строительство, показатели выживания или система прогрессии. Также не реализованы снежные шапки, реки, озёра и переключение биомов. Смена погоды пока управляет небом, освещением и ветром растительности, а не создаёт осадки или новые физические состояния мира.
+```sh
+scons platform=android target=template_debug arch=arm64
+scons platform=android target=template_release arch=arm64
+```
 
-## Запуск
+The extension descriptor is `bin/voxen_native.gdextension`; compiled outputs are expected under `bin/linux/`, `bin/windows/` and `bin/android/`. Do not commit generated libraries.
 
-1. Откройте `project.godot` в Godot 4.7.2.
-2. Запустите проект клавишей `F5`, выберите **«Новая игра»** и введите сид.
-3. Репозиторий содержит исходники, а не APK. Для экспорта Android потребуются Android SDK, Java SDK и шаблоны экспорта Godot.
+## Architecture and limitations
 
-## Проверка
+- **Native C++:** CPU mesh building, height-cache sampling, greedy top-face merging, exposed side faces, LOD skirts and collision-height data.
+- **GDScript:** streaming/task priority, worker lifecycle, applying Godot rendering and physics resources on the main thread, UI, controls, sky/weather and world orchestration.
+- **Startup and LOD:** coarse tiles cover the map first; parent tiles remain visible until their children are ready, preventing visible holes while detail increases.
+- **Terrain model:** height-column voxels, not a full 3D volume. Enclosed caves, overhangs, arbitrary voxel editing and persistent voxel changes are not implemented yet.
+- **Native binaries:** build separately for each target platform; compiled artifacts are intentionally excluded from the repository.
 
-README составлен по подключённым сценам, скриптам и шейдерам текущей ветки `main`. Проверка здесь была статической: запустить редактор Godot и выполнить настоящую компиляцию GDScript и GPU-шейдеров в этой среде не удалось. Поэтому перед релизом проверьте проект в Godot 4.7.2, особенно генерацию мира, переключение погоды/времени и производительность на целевом устройстве.
+## Checks
+
+With Godot 4.7.2 installed:
+
+```sh
+godot --headless --editor --path . --quit
+godot --headless --path . --script res://tests/neverland_voxen_smoke_test.gd
+godot --headless --path . --script res://tests/lod_hierarchy_smoke_test.gd
+```
+
+The smoke tests cover deterministic terrain generation and LOD hierarchy/mesh sampling; they do not yet verify native-vs-GDScript mesh parity.
+
+Version history is maintained in [CHANGELOG.md](CHANGELOG.md).

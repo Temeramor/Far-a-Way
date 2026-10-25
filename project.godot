@@ -3,8 +3,9 @@
 config_version=5
 
 [application]
-config/name="Neverland"
-config/description="Neverland — a procedural 3D island exploration prototype."
+config/name="Far a Way"
+config/description="Far a Way 0.1.0.9 — procedural voxel exploration with hierarchical LOD."
+config/version="0.1.0.9"
 config/icon="res://icon.svg"
 run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.7", "Mobile")

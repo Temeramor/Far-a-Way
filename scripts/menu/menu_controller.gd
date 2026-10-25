@@ -76,6 +76,12 @@ func _adapt_to_viewport() -> void:
     panel.position = Vector2(maxf(12.0, view_size.x * 0.03), maxf(12.0, (view_size.y - panel_height) * 0.5))
     panel.size = Vector2(panel_width, panel_height)
 
+    var logo := $Center/Panel/Margin/Stack/Logo as TextureRect
+    if logo.texture != null and logo.texture.get_width() > 0:
+        var column_width: float = maxf(1.0, panel_width - 46.0)
+        var logo_height: float = column_width * float(logo.texture.get_height()) / float(logo.texture.get_width())
+        logo.custom_minimum_size = Vector2(0.0, logo_height)
+
     corner_badge.set_anchors_preset(Control.PRESET_TOP_LEFT)
     if view_size.x >= 900.0 and view_size.y >= 500.0:
         corner_badge.visible = true
@@ -136,7 +142,14 @@ func _apply_visual_theme() -> void:
         menu_theme.default_font_size = 16
     theme = menu_theme
 
-    panel.add_theme_stylebox_override("panel", _style_texture("res://assets/ui/panel_texture.png", 12.0, 23.0, 19.0, 23.0, 19.0))
+    var transparent_panel := StyleBoxFlat.new()
+    transparent_panel.bg_color = Color(0.0, 0.0, 0.0, 0.0)
+    transparent_panel.border_color = Color(0.0, 0.0, 0.0, 0.0)
+    transparent_panel.content_margin_left = 23.0
+    transparent_panel.content_margin_top = 19.0
+    transparent_panel.content_margin_right = 23.0
+    transparent_panel.content_margin_bottom = 19.0
+    panel.add_theme_stylebox_override("panel", transparent_panel)
     panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
     var badge := _style_texture("res://assets/ui/badge_texture.png", 7.0, 15.0, 8.0, 15.0, 8.0)
@@ -187,18 +200,15 @@ func _apply_visual_theme() -> void:
             view.add_theme_constant_override("separation", 9)
     ($Center/Panel/Margin/Stack/SettingsView/SettingsButtons as VBoxContainer).add_theme_constant_override("separation", 7)
 
-    var emblem := $Center/Panel/Margin/Stack/Emblem as TextureRect
-    emblem.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+    var logo := $Center/Panel/Margin/Stack/Logo as TextureRect
+    logo.custom_minimum_size = Vector2.ZERO
+    logo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    # Height will be set from the available button-column width, preserving the logo ratio.
+    logo.stretch_mode = TextureRect.STRETCH_SCALE
+    logo.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
     var divider := $Center/Panel/Margin/Stack/Divider as TextureRect
     divider.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-
-    var title := $Center/Panel/Margin/Stack/Title as Label
-    title.add_theme_font_size_override("font_size", 36)
-    title.add_theme_color_override("font_color", COLOR_GOLD)
-    title.add_theme_color_override("font_outline_color", Color("#211812"))
-    title.add_theme_constant_override("outline_size", 2)
-    title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 
     var badge_text := $CornerBadge/Margin/BadgeText as Label
     badge_text.add_theme_font_size_override("font_size", 16)
