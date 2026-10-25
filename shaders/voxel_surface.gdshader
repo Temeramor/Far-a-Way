@@ -10,9 +10,13 @@ uniform float lod_shadow_strength : hint_range(0.0, 1.0, 0.05) = 1.0;
 uniform float voxel_detail_filter_multiplier : hint_range(0.0, 2.0, 0.1) = 1.0;
 uniform float rock_crack_filter_multiplier : hint_range(0.0, 2.0, 0.1) = 1.0;
 uniform bool procedural_mipmap_enabled = true;
+uniform bool smooth_lighting_enabled = false;
+uniform float smooth_lighting_footprint_start : hint_range(0.1, 1.5, 0.05) = 0.45;
+uniform float smooth_lighting_footprint_end : hint_range(0.2, 2.0, 0.05) = 1.10;
 
 varying vec3 world_position;
 varying vec3 world_normal;
+varying vec3 world_smooth_normal;
 
 vec3 palette_color(vec3 srgb) {
     return pow(srgb, vec3(2.2));
@@ -238,6 +242,12 @@ vec3 distant_rock_color(vec2 projected_world) {
 void vertex() {
     world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
     world_normal = normalize(MODEL_NORMAL_MATRIX * NORMAL);
+    world_smooth_normal = world_normal;
+    if (smooth_lighting_enabled) {
+        vec2 smooth_xz = clamp(CUSTOM0.xy, vec2(-1.0), vec2(1.0));
+        float smooth_y = sqrt(max(1.0 - dot(smooth_xz, smooth_xz), 1e-4));
+        world_smooth_normal = normalize(MODEL_NORMAL_MATRIX * vec3(smooth_xz.x, smooth_y, smooth_xz.y));
+    }
 }
 
 void fragment() {
@@ -257,7 +267,12 @@ void fragment() {
         }
     }
 
-    vec3 normal = normalize(world_normal);
+    // Keep texture projection tied to the true face normal. The independent smooth
+    // normal affects lighting only, not the triplanar or voxel-cell orientation.
+    vec3 normal = normalize(cross(dFdx(world_position), dFdy(world_position)));
+    if (dot(normal, normalize(world_normal)) < 0.0) {
+        normal = -normal;
+    }
     vec3 voxel_cell_3d = floor((world_position - normal * 0.001) / max(pixel_size, 0.1));
     vec3 voxel_center_world = (voxel_cell_3d + vec3(0.5)) * max(pixel_size, 0.1);
     vec2 pixel_cell = vec2(voxel_cell_3d.x + voxel_cell_3d.y * 37.0,
@@ -271,6 +286,15 @@ void fragment() {
         length(dFdy(world_position))
     );
     float voxel_footprint = world_units_per_pixel / max(pixel_size, 0.1);
+    if (smooth_lighting_enabled) {
+        float smooth_weight = smoothstep(
+            smooth_lighting_footprint_start,
+            max(smooth_lighting_footprint_end, smooth_lighting_footprint_start + 0.01),
+            voxel_footprint
+        );
+        vec3 lit_normal = normalize(mix(normal, normalize(world_smooth_normal), smooth_weight));
+        NORMAL = normalize((VIEW_MATRIX * vec4(lit_normal, 0.0)).xyz);
+    }
     float voxel_detail_weight = 1.0;
     if (procedural_mipmap_enabled && voxel_detail_filter_multiplier > 0.001) {
         voxel_detail_weight = 1.0 - smoothstep(0.70, 1.55, voxel_footprint * voxel_detail_filter_multiplier);
