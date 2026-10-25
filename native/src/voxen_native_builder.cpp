@@ -152,10 +152,15 @@ struct NoiseSet {
         return std::max<int32_t>(1, static_cast<int32_t>(std::llround(surface_height(x, z) / VOXEL_SIZE)));
     }
 
-    int32_t surface_material(double height_m, double slope, double x, double z) const {
+    double surface_rock_weight(double slope, double x, double z) const {
         const double transition_noise = transition->get_noise_2d(x * 0.008, z * 0.008) * 0.05;
         const double normal_slope = 1.0 - 1.0 / std::sqrt(1.0 + slope * slope);
-        return normal_slope + transition_noise >= 0.39 ? ROCK : GRASS;
+        return smoothstep(0.30, 0.48, normal_slope + transition_noise);
+    }
+
+    int32_t surface_material(double height_m, double slope, double x, double z) const {
+        (void)height_m;
+        return surface_rock_weight(slope, x, z) >= 0.5 ? ROCK : GRASS;
     }
 };
 
@@ -199,6 +204,8 @@ struct MeshBuild {
     std::vector<int32_t> raw_heights;
     std::vector<int32_t> heights;
     std::vector<uint8_t> surface_types;
+    std::vector<Vector2> cell_smooth_normals_xz;
+    std::vector<float> smooth_normals_xz;
 
     std::vector<Vector3> vertices;
     std::vector<Vector3> normals;
@@ -206,6 +213,7 @@ struct MeshBuild {
     std::vector<int32_t> indices;
     std::vector<Vector3> smooth_shadow_vertices;
     std::vector<Vector3> smooth_shadow_normals;
+    std::vector<Color> smooth_surface_colors;
     std::vector<int32_t> smooth_shadow_indices;
 
     explicit MeshBuild(int64_t seed) : noise(seed) {}
@@ -314,6 +322,14 @@ struct MeshBuild {
         indices.push_back(base_index);
         indices.push_back(base_index + 3);
         indices.push_back(base_index + 2);
+        if (lod == 1) {
+            const Vector3 points[4] = {p0, p1, p2, p3};
+            for (const Vector3 &point : points) {
+                const Vector2 smooth = corner_smooth_normal(point);
+                smooth_normals_xz.push_back(static_cast<float>(smooth.x));
+                smooth_normals_xz.push_back(static_cast<float>(smooth.y));
+            }
+        }
     }
 
     void emit_side_segment(const Vector3 &point_a, const Vector3 &point_b,
@@ -410,10 +426,11 @@ struct MeshBuild {
 
     void build_surface_types() {
         const int32_t macro_offset = std::max<int32_t>(1, static_cast<int32_t>(std::llround(1.0 / cell_size)));
+        const size_t halo_cells = static_cast<size_t>(cells_x + 2) * (cells_z + 2);
         surface_types.resize(static_cast<size_t>(cells_x) * cells_z);
-
-        for (int32_t z = 0; z < cells_z; ++z) {
-            for (int32_t x = 0; x < cells_x; ++x) {
+        cell_smooth_normals_xz.resize(halo_cells);
+        for (int32_t z = -1; z <= cells_z; ++z) {
+            for (int32_t x = -1; x <= cells_x; ++x) {
                 const int32_t gx = x + halo;
                 const int32_t gz = z + halo;
                 const int32_t center_h = raw_heights[static_cast<size_t>(gz) * grid_width + gx];
@@ -425,18 +442,43 @@ struct MeshBuild {
                     (2.0 * macro_offset * cell_size);
                 const double dz = static_cast<double>(south_h - north_h) * VOXEL_SIZE /
                     (2.0 * macro_offset * cell_size);
+                const double normal_length = std::sqrt(dx * dx + 1.0 + dz * dz);
+                const size_t halo_index = static_cast<size_t>(z + 1) * (cells_x + 2) + (x + 1);
+                cell_smooth_normals_xz[halo_index] = Vector2(-dx / normal_length, -dz / normal_length);
+
                 const double slope = std::sqrt(dx * dx + dz * dz);
                 const double world_x = world_min_x +
                     (static_cast<double>(start_voxel_x + x * step_voxels) + step_voxels * 0.5) * VOXEL_SIZE;
                 const double world_z = world_min_z +
                     (static_cast<double>(start_voxel_z + z * step_voxels) + step_voxels * 0.5) * VOXEL_SIZE;
-                surface_types[static_cast<size_t>(z) * cells_x + x] =
-                    static_cast<uint8_t>(noise.surface_material(
-                        static_cast<double>(center_h) * VOXEL_SIZE, slope, world_x, world_z));
+                if (x >= 0 && x < cells_x && z >= 0 && z < cells_z) {
+                    surface_types[static_cast<size_t>(z) * cells_x + x] =
+                        static_cast<uint8_t>(noise.surface_material(
+                            static_cast<double>(center_h) * VOXEL_SIZE, slope, world_x, world_z));
+                }
             }
         }
     }
 
+    Vector2 corner_smooth_normal(const Vector3 &position) const {
+        if (cell_smooth_normals_xz.empty() || cell_size <= 0.0001) {
+            return Vector2();
+        }
+        const int32_t corner_x = static_cast<int32_t>(std::llround(position.x / cell_size));
+        const int32_t corner_z = static_cast<int32_t>(std::llround(position.z / cell_size));
+        Vector2 result;
+        for (int32_t dz = corner_z - 1; dz <= corner_z; ++dz) {
+            for (int32_t dx = corner_x - 1; dx <= corner_x; ++dx) {
+                const int32_t ix = std::clamp(dx + 1, 0, cells_x + 1);
+                const int32_t iz = std::clamp(dz + 1, 0, cells_z + 1);
+                result += cell_smooth_normals_xz[static_cast<size_t>(iz) * (cells_x + 2) + ix];
+            }
+        }
+        if (result.length_squared() > 0.000001) {
+            result = result.normalized();
+        }
+        return result;
+    }
     void build_greedy_top_faces() {
         std::vector<uint8_t> visited(static_cast<size_t>(cells_x) * cells_z, 0);
 
@@ -623,8 +665,8 @@ struct MeshBuild {
     }
 
     void build_smooth_shadow_surface() {
-        // A continuous (non-voxelized) heightfield casts the terrain silhouette.
-        // Bound each chunk to 256x256 cells while scaling physical sampling with LOD.
+        // At LOD2+ this continuous heightfield is the visible mesh as well as the
+        // terrain silhouette. Lower LODs keep it as a separate shadow-only proxy.
         const int32_t shadow_step_voxels = 5 << std::max<int32_t>(0, lod - 2);
         const int32_t shadow_cells_x = static_cast<int32_t>(
             std::ceil(static_cast<double>(size_voxels_x) / shadow_step_voxels));
@@ -636,9 +678,11 @@ struct MeshBuild {
         const size_t index_count = static_cast<size_t>(shadow_cells_x) * shadow_cells_z * 6;
         smooth_shadow_vertices.clear();
         smooth_shadow_normals.clear();
+        smooth_surface_colors.clear();
         smooth_shadow_indices.clear();
         smooth_shadow_vertices.reserve(vertex_count);
         smooth_shadow_normals.reserve(vertex_count);
+        if (lod >= 2) smooth_surface_colors.resize(vertex_count);
         smooth_shadow_indices.reserve(index_count);
 
         for (int32_t z = 0; z < shadow_depth; ++z) {
@@ -649,7 +693,6 @@ struct MeshBuild {
                 const int32_t local_voxel_x = std::min(x * shadow_step_voxels, size_voxels_x);
                 const double world_x = world_min_x +
                     static_cast<double>(start_voxel_x + local_voxel_x) * VOXEL_SIZE;
-                // Do not quantize or reuse the visible voxel heights here.
                 const double height_m = noise.surface_height(world_x, world_z);
                 smooth_shadow_vertices.emplace_back(
                     static_cast<double>(local_voxel_x) * VOXEL_SIZE,
@@ -659,13 +702,42 @@ struct MeshBuild {
             }
         }
 
+        if (lod >= 2) {
+            for (int32_t z = 0; z < shadow_depth; ++z) {
+                const int32_t z_before = std::max<int32_t>(0, z - 1);
+                const int32_t z_after = std::min<int32_t>(shadow_cells_z, z + 1);
+                for (int32_t x = 0; x < shadow_width; ++x) {
+                    const int32_t x_before = std::max<int32_t>(0, x - 1);
+                    const int32_t x_after = std::min<int32_t>(shadow_cells_x, x + 1);
+                    const size_t center_index = static_cast<size_t>(z) * shadow_width + x;
+                    const Vector3 &left = smooth_shadow_vertices[static_cast<size_t>(z) * shadow_width + x_before];
+                    const Vector3 &right = smooth_shadow_vertices[static_cast<size_t>(z) * shadow_width + x_after];
+                    const Vector3 &north = smooth_shadow_vertices[static_cast<size_t>(z_before) * shadow_width + x];
+                    const Vector3 &south = smooth_shadow_vertices[static_cast<size_t>(z_after) * shadow_width + x];
+                    const double run_x = right.x - left.x;
+                    const double run_z = south.z - north.z;
+                    const double dx = run_x > 0.0001 ? (right.y - left.y) / run_x : 0.0;
+                    const double dz = run_z > 0.0001 ? (south.y - north.y) / run_z : 0.0;
+                    smooth_shadow_normals[center_index] = Vector3(-dx, 1.0, -dz).normalized();
+
+                    const int32_t local_voxel_x = std::min(x * shadow_step_voxels, size_voxels_x);
+                    const int32_t local_voxel_z = std::min(z * shadow_step_voxels, size_voxels_z);
+                    const double world_x = world_min_x + static_cast<double>(start_voxel_x + local_voxel_x) * VOXEL_SIZE;
+                    const double world_z = world_min_z + static_cast<double>(start_voxel_z + local_voxel_z) * VOXEL_SIZE;
+                    const double rock_weight = noise.surface_rock_weight(std::sqrt(dx * dx + dz * dz), world_x, world_z);
+                    Color color = material_color(rock_weight >= 0.5 ? ROCK : GRASS);
+                    color.a = 0.965 + std::clamp(rock_weight, 0.0, 1.0) * 0.025;
+                    smooth_surface_colors[center_index] = color;
+                }
+            }
+        }
+
         for (int32_t z = 0; z < shadow_cells_z; ++z) {
             for (int32_t x = 0; x < shadow_cells_x; ++x) {
                 const int32_t top_left = z * shadow_width + x;
                 const int32_t top_right = top_left + 1;
                 const int32_t bottom_left = top_left + shadow_width;
                 const int32_t bottom_right = bottom_left + 1;
-                // Upward-facing triangles; only this smooth surface is used by the shadow map.
                 smooth_shadow_indices.push_back(top_left);
                 smooth_shadow_indices.push_back(bottom_left);
                 smooth_shadow_indices.push_back(top_right);
@@ -675,7 +747,6 @@ struct MeshBuild {
             }
         }
     }
-
     Dictionary run(const Dictionary &job_data, int64_t build_started_usec) {
         coord = job_data.get("coord", Vector2i());
         const Dictionary request = job_data.get("request", Dictionary());
@@ -696,36 +767,58 @@ struct MeshBuild {
             return Dictionary();
         }
 
-        step_voxels = std::max<int32_t>(1, static_cast<int32_t>(request.get("step_voxels", BASE_MESH_STEP_VOXELS << lod)));
+        step_voxels = std::max<int32_t>(1, static_cast<int32_t>(request.get("step_voxels", BASE_MESH_STEP_VOXELS << (lod + 1))));
         cache_step_voxels = std::max<int32_t>(HEIGHT_CACHE_STEP_VOXELS, step_voxels);
         cell_size = static_cast<double>(step_voxels) * VOXEL_SIZE;
         cells_x = static_cast<int32_t>(std::ceil(static_cast<double>(size_voxels_x) / step_voxels));
         cells_z = static_cast<int32_t>(std::ceil(static_cast<double>(size_voxels_z) / step_voxels));
 
         noise.configure_from_job(job_data, static_cast<double>(world_size_voxels) * VOXEL_SIZE);
-        build_cache_and_heights();
-        build_surface_types();
+        // The distant continuous heightfield samples the generator directly; building a
+        // second quantized height cache for it wastes much of the LOD2+ worker budget.
+        if (lod < 2) {
+            build_cache_and_heights();
+            build_surface_types();
+        }
 
-        // Conservative reserve avoids repeated growth in the geometry hot loop.
-        const size_t base_cells = static_cast<size_t>(cells_x) * cells_z;
-        vertices.reserve(base_cells * 8);
-        normals.reserve(base_cells * 8);
-        colors.reserve(base_cells * 8);
-        indices.reserve(base_cells * 12);
+        int64_t shadow_top_vertex_count = 0;
+        int64_t shadow_top_index_count = 0;
+        int64_t shadow_full_vertex_count = 0;
+        int64_t shadow_full_index_count = 0;
 
-        build_greedy_top_faces();
-        const int64_t shadow_top_vertex_count = static_cast<int64_t>(vertices.size());
-        const int64_t shadow_top_index_count = static_cast<int64_t>(indices.size());
-        build_exposed_side_faces();
-        const int64_t shadow_full_vertex_count = static_cast<int64_t>(vertices.size());
-        const int64_t shadow_full_index_count = static_cast<int64_t>(indices.size());
-        build_lod_skirts();
-        build_smooth_shadow_surface();
+        if (lod >= 2) {
+            // Use the smooth continuous heightfield as the visible far mesh. Moving its
+            // arrays avoids retaining a second copy as a shadow proxy.
+            build_smooth_shadow_surface();
+            vertices.swap(smooth_shadow_vertices);
+            normals.swap(smooth_shadow_normals);
+            colors.swap(smooth_surface_colors);
+            indices.swap(smooth_shadow_indices);
+            shadow_top_vertex_count = static_cast<int64_t>(vertices.size());
+            shadow_top_index_count = static_cast<int64_t>(indices.size());
+            shadow_full_vertex_count = shadow_top_vertex_count;
+            shadow_full_index_count = shadow_top_index_count;
+        } else {
+            const size_t base_cells = static_cast<size_t>(cells_x) * cells_z;
+            vertices.reserve(base_cells * 8);
+            normals.reserve(base_cells * 8);
+            colors.reserve(base_cells * 8);
+            indices.reserve(base_cells * 12);
+            build_greedy_top_faces();
+            shadow_top_vertex_count = static_cast<int64_t>(vertices.size());
+            shadow_top_index_count = static_cast<int64_t>(indices.size());
+            build_exposed_side_faces();
+            shadow_full_vertex_count = static_cast<int64_t>(vertices.size());
+            shadow_full_index_count = static_cast<int64_t>(indices.size());
+            build_lod_skirts();
+            build_smooth_shadow_surface();
+        }
 
         PackedVector3Array packed_vertices;
         PackedVector3Array packed_normals;
         PackedColorArray packed_colors;
         PackedInt32Array packed_indices;
+        PackedFloat32Array packed_smooth_normals_xz;
         PackedVector3Array packed_smooth_shadow_vertices;
         PackedVector3Array packed_smooth_shadow_normals;
         PackedInt32Array packed_smooth_shadow_indices;
@@ -733,24 +826,19 @@ struct MeshBuild {
         packed_normals.resize(static_cast<int64_t>(normals.size()));
         packed_colors.resize(static_cast<int64_t>(colors.size()));
         packed_indices.resize(static_cast<int64_t>(indices.size()));
-        for (size_t i = 0; i < vertices.size(); ++i) {
-            packed_vertices.set(static_cast<int64_t>(i), vertices[i]);
-            packed_normals.set(static_cast<int64_t>(i), normals[i]);
-            packed_colors.set(static_cast<int64_t>(i), colors[i]);
-        }
-        for (size_t i = 0; i < indices.size(); ++i) {
-            packed_indices.set(static_cast<int64_t>(i), indices[i]);
-        }
+        packed_smooth_normals_xz.resize(static_cast<int64_t>(smooth_normals_xz.size()));
+        if (!vertices.empty()) std::copy(vertices.begin(), vertices.end(), packed_vertices.ptrw());
+        if (!normals.empty()) std::copy(normals.begin(), normals.end(), packed_normals.ptrw());
+        if (!colors.empty()) std::copy(colors.begin(), colors.end(), packed_colors.ptrw());
+        if (!indices.empty()) std::copy(indices.begin(), indices.end(), packed_indices.ptrw());
+        if (!smooth_normals_xz.empty()) std::copy(smooth_normals_xz.begin(), smooth_normals_xz.end(), packed_smooth_normals_xz.ptrw());
+
         packed_smooth_shadow_vertices.resize(static_cast<int64_t>(smooth_shadow_vertices.size()));
         packed_smooth_shadow_normals.resize(static_cast<int64_t>(smooth_shadow_normals.size()));
         packed_smooth_shadow_indices.resize(static_cast<int64_t>(smooth_shadow_indices.size()));
-        for (size_t i = 0; i < smooth_shadow_vertices.size(); ++i) {
-            packed_smooth_shadow_vertices.set(static_cast<int64_t>(i), smooth_shadow_vertices[i]);
-            packed_smooth_shadow_normals.set(static_cast<int64_t>(i), smooth_shadow_normals[i]);
-        }
-        for (size_t i = 0; i < smooth_shadow_indices.size(); ++i) {
-            packed_smooth_shadow_indices.set(static_cast<int64_t>(i), smooth_shadow_indices[i]);
-        }
+        if (!smooth_shadow_vertices.empty()) std::copy(smooth_shadow_vertices.begin(), smooth_shadow_vertices.end(), packed_smooth_shadow_vertices.ptrw());
+        if (!smooth_shadow_normals.empty()) std::copy(smooth_shadow_normals.begin(), smooth_shadow_normals.end(), packed_smooth_shadow_normals.ptrw());
+        if (!smooth_shadow_indices.empty()) std::copy(smooth_shadow_indices.begin(), smooth_shadow_indices.end(), packed_smooth_shadow_indices.ptrw());
 
         Dictionary out;
         out["coord"] = coord;
@@ -761,6 +849,7 @@ struct MeshBuild {
         out["vertices"] = packed_vertices;
         out["normals"] = packed_normals;
         out["colors"] = packed_colors;
+        out["smooth_normals_xz"] = packed_smooth_normals_xz;
         out["indices"] = packed_indices;
         out["smooth_shadow_vertices"] = packed_smooth_shadow_vertices;
         out["smooth_shadow_normals"] = packed_smooth_shadow_normals;
@@ -783,14 +872,14 @@ struct MeshBuild {
             const int32_t collision_depth = size_voxels_z / collision_step_voxels + 1;
             PackedFloat32Array collision_heights;
             collision_heights.resize(static_cast<int64_t>(collision_width) * collision_depth);
+            float *collision_data_ptr = collision_heights.ptrw();
             for (int32_t cz = 0; cz < collision_depth; ++cz) {
                 const double global_z = static_cast<double>(start_voxel_z + cz * collision_step_voxels);
                 for (int32_t cx = 0; cx < collision_width; ++cx) {
                     const double global_x = static_cast<double>(start_voxel_x + cx * collision_step_voxels);
                     const int32_t height_voxels = cached_height_voxels(global_x, global_z);
-                    collision_heights.set(
-                        static_cast<int64_t>(cz) * collision_width + cx,
-                        static_cast<float>(height_voxels) * 0.5f);
+                    collision_data_ptr[static_cast<size_t>(cz) * collision_width + cx] =
+                        static_cast<float>(height_voxels) * 0.5f;
                 }
             }
             Dictionary collision_data;
