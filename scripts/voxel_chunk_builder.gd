@@ -88,11 +88,14 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
 
     var surface_types := PackedByteArray()
     surface_types.resize(cells_x * cells_z)
-    for z in range(cells_z):
-        for x in range(cells_x):
+    # One-cell colour halo keeps interpolated grass/rock blends continuous across chunk seams.
+    var rock_weight_width: int = cells_x + 2
+    var surface_rock_weights := PackedFloat32Array()
+    surface_rock_weights.resize((cells_x + 2) * (cells_z + 2))
+    for z in range(-1, cells_z + 1):
+        for x in range(-1, cells_x + 1):
             var gx: int = x + halo
             var gz: int = z + halo
-            var center_h: int = raw_heights[gz * grid_width + gx]
             var left_h: int = raw_heights[gz * grid_width + gx - macro_offset]
             var right_h: int = raw_heights[gz * grid_width + gx + macro_offset]
             var north_h: int = raw_heights[(gz - macro_offset) * grid_width + gx]
@@ -102,20 +105,24 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
             var slope: float = sqrt(dx * dx + dz * dz)
             var world_x: float = world_min_x + (float(start_voxel_x + x * step_voxels) + float(step_voxels) * 0.5) * VOXEL_SIZE
             var world_z: float = world_min_z + (float(start_voxel_z + z * step_voxels) + float(step_voxels) * 0.5) * VOXEL_SIZE
-            surface_types[z * cells_x + x] = generator.get_surface_material(float(center_h) * VOXEL_SIZE, slope, world_x, world_z)
+            var rock_weight: float = generator.get_surface_rock_weight(slope, world_x, world_z)
+            surface_rock_weights[(z + 1) * rock_weight_width + x + 1] = rock_weight
+            if x >= 0 and x < cells_x and z >= 0 and z < cells_z:
+                surface_types[z * cells_x + x] = VoxelTerrainGenerator.ROCK if rock_weight >= 0.5 else VoxelTerrainGenerator.GRASS
 
-    _build_greedy_top_faces(heights, surface_types, grid_width, halo, cells_x, cells_z, cell_size, step_voxels)
-    # Save only the coarse top surface for the hidden terrain-shadow layer. Capturing
-    # here (before vertical faces and skirts are appended) prevents side-face shadow bands
-    # from being reintroduced at distant LODs while preserving the landform silhouette.
-    var shadow_vertex_count: int = 0
-    var shadow_index_count: int = 0
-    if lod == 6:
-        shadow_vertex_count = _vertices.size()
-        shadow_index_count = _indices.size()
+    _build_greedy_top_faces(
+        heights, surface_types, surface_rock_weights,
+        grid_width, halo, cells_x, cells_z, cell_size, step_voxels
+    )
+    # Build separate shadow-only geometry for every LOD. Near/mid levels keep the same
+    # vertical faces as the original terrain caster; distant levels use only top surfaces.
+    var shadow_top_vertex_count: int = _vertices.size()
+    var shadow_top_index_count: int = _indices.size()
     _build_exposed_side_faces(
         heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels
     )
+    var shadow_full_vertex_count: int = _vertices.size()
+    var shadow_full_index_count: int = _indices.size()
     _build_lod_skirts(heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels, neighbor_lods)
 
     result = {
@@ -128,8 +135,10 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
         "normals": _normals,
         "colors": _colors,
         "indices": _indices,
-        "shadow_vertex_count": shadow_vertex_count,
-        "shadow_index_count": shadow_index_count,
+        "shadow_top_vertex_count": shadow_top_vertex_count,
+        "shadow_top_index_count": shadow_top_index_count,
+        "shadow_full_vertex_count": shadow_full_vertex_count,
+        "shadow_full_index_count": shadow_full_index_count,
         "position": Vector3(
             world_min_x + float(start_voxel_x) * VOXEL_SIZE,
             0.0,
@@ -167,6 +176,7 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
 func _build_greedy_top_faces(
     heights: PackedInt32Array,
     surface_types: PackedByteArray,
+    surface_rock_weights: PackedFloat32Array,
     grid_width: int,
     halo: int,
     cells_x: int,
@@ -186,6 +196,7 @@ func _build_greedy_top_faces(
             var grid_index: int = _grid_index(x, z, grid_width, halo)
             var height_voxels: int = heights[grid_index]
             var material_type: int = surface_types[cell_index]
+            var base_rock_weight: float = _surface_rock_weight(surface_rock_weights, cells_x, x, z)
             var run_x: int = 1
             while x + run_x < cells_x:
                 var next_cell: int = z * cells_x + x + run_x
@@ -193,6 +204,8 @@ func _build_greedy_top_faces(
                     break
                 var next_grid: int = _grid_index(x + run_x, z, grid_width, halo)
                 if heights[next_grid] != height_voxels or surface_types[next_cell] != material_type:
+                    break
+                if absf(_surface_rock_weight(surface_rock_weights, cells_x, x + run_x, z) - base_rock_weight) > 0.10:
                     break
                 run_x += 1
 
@@ -203,6 +216,9 @@ func _build_greedy_top_faces(
                     var test_cell: int = (z + run_z) * cells_x + x + dx
                     var test_grid: int = _grid_index(x + dx, z + run_z, grid_width, halo)
                     if visited[test_cell] != 0 or heights[test_grid] != height_voxels or surface_types[test_cell] != material_type:
+                        can_extend = false
+                        break
+                    if absf(_surface_rock_weight(surface_rock_weights, cells_x, x + dx, z + run_z) - base_rock_weight) > 0.10:
                         can_extend = false
                         break
                 if not can_extend:
@@ -218,11 +234,38 @@ func _build_greedy_top_faces(
             var z0: float = float(z * step_voxels) * VOXEL_SIZE
             var z1: float = float((z + run_z) * step_voxels) * VOXEL_SIZE
             var y: float = float(height_voxels) * VOXEL_SIZE
-            _add_quad(
+            var weight_0: float = _average_surface_rock_weight(surface_rock_weights, cells_x, x, z)
+            var weight_1: float = _average_surface_rock_weight(surface_rock_weights, cells_x, x, z + run_z)
+            var weight_2: float = _average_surface_rock_weight(surface_rock_weights, cells_x, x + run_x, z + run_z)
+            var weight_3: float = _average_surface_rock_weight(surface_rock_weights, cells_x, x + run_x, z)
+            _add_quad_vertex_colors(
                 Vector3(x0, y, z0), Vector3(x0, y, z1),
-                Vector3(x1, y, z1), Vector3(x1, y, z0),
-                Vector3.UP, _material_color(material_type)
+                Vector3(x1, y, z1), Vector3(x1, y, z0), Vector3.UP,
+                _top_face_color(material_type, weight_0),
+                _top_face_color(material_type, weight_1),
+                _top_face_color(material_type, weight_2),
+                _top_face_color(material_type, weight_3)
             )
+
+func _surface_rock_weight(weights: PackedFloat32Array, cells_x: int, cell_x: int, cell_z: int) -> float:
+    return weights[(cell_z + 1) * (cells_x + 2) + cell_x + 1]
+
+
+func _average_surface_rock_weight(weights: PackedFloat32Array, cells_x: int, corner_x: int, corner_z: int) -> float:
+    var total: float = 0.0
+    for dz in range(corner_z - 1, corner_z + 1):
+        for dx in range(corner_x - 1, corner_x + 1):
+            total += _surface_rock_weight(weights, cells_x, dx, dz)
+    return total * 0.25
+
+
+func _top_face_color(material_type: int, rock_weight: float) -> Color:
+    var color: Color = _material_color(material_type)
+    # Alpha 0.965–0.990 encodes the smoothly interpolated grass/rock weight.
+    # It is above the skirt-tag range; RGB remains usable for the debug LOD view.
+    color.a = 0.965 + clampf(rock_weight, 0.0, 1.0) * 0.025
+    return color
+
 
 func _build_exposed_side_faces(
     heights: PackedInt32Array,
@@ -365,9 +408,9 @@ func _add_segmented_side_face(
     var point_a := Vector3(p0.x, 0.0, p0.z)
     var point_b: Vector3 = Vector3(p3.x, 0.0, p3.z) if vertical_first else Vector3(p1.x, 0.0, p1.z)
 
-    # Rock faces must remain a continuous gray rock surface at every LOD. The soil band
-    # is retained for grassy terrain, but never inserted beneath a rocky top material.
-    if top_material == VoxelTerrainGenerator.ROCK:
+    # In main, near-vertical surface normals blend fully to rock regardless of elevation.
+    # Match that on exposed voxel walls. Keep segmented colours only on temporary skirts.
+    if edge_alpha >= 0.95 or top_material == VoxelTerrainGenerator.ROCK:
         _emit_side_segment(
             point_a, point_b, normal, low_height_voxels, high_height_voxels,
             VoxelTerrainGenerator.ROCK, vertical_first, edge_alpha
@@ -426,6 +469,29 @@ func _material_color(material_type: int) -> Color:
             return Color("#777973")
         _:
             return Color.WHITE
+
+func _add_quad_vertex_colors(
+    p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3, normal: Vector3,
+    color0: Color, color1: Color, color2: Color, color3: Color
+) -> void:
+    var base_index: int = _vertices.size()
+    _vertices.append(p0)
+    _vertices.append(p1)
+    _vertices.append(p2)
+    _vertices.append(p3)
+    for _i in range(4):
+        _normals.append(normal)
+    _colors.append(color0)
+    _colors.append(color1)
+    _colors.append(color2)
+    _colors.append(color3)
+    _indices.append(base_index)
+    _indices.append(base_index + 2)
+    _indices.append(base_index + 1)
+    _indices.append(base_index)
+    _indices.append(base_index + 3)
+    _indices.append(base_index + 2)
+
 
 func _add_quad(p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3, normal: Vector3, color: Color) -> void:
     var base_index: int = _vertices.size()
