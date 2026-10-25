@@ -213,7 +213,7 @@ func get_surface_rock_weight(gradient: float, x: float, z: float) -> float:
     # Main's shader evaluates slope as 1 - normal.y, not raw height-gradient magnitude.
     # Convert the gradient to that same normal-based slope before applying its 0.30–0.48
     # blend range. This keeps gentle high-altitude shelves grassy and avoids overly early rock.
-    var normal_slope: float = 1.0 - inversesqrt(1.0 + gradient * gradient)
+    var normal_slope: float = 1.0 - 1.0 / sqrt(1.0 + gradient * gradient)
     var transition_noise: float = _transition_noise.get_noise_2d(x, z) * 0.05
     return _smoothstep(0.30, 0.48, normal_slope + transition_noise)
 
