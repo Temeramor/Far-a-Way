@@ -109,8 +109,8 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     # Rebuilt chunks can remain logically inactive while hidden in the hierarchy.
     # New VisualInstances are visible by default, so inherit the chunk state immediately.
     mesh_instance.visible = _render_active
-    # The visible colour mesh never enters the shadow map; each active LOD has a separate
-    # invisible caster, so shadow complexity can change without changing material lighting.
+    # Blocky LOD0/LOD1 meshes use a separate smooth shadow caster. Continuous LOD2+ meshes
+    # cast from their own geometry to avoid duplicate far terrain and its shadow-map cost.
     mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if lod >= 2 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
     _skirt_visibility_cache = Vector4(-1.0, -1.0, -1.0, -1.0)
     add_child(mesh_instance)
