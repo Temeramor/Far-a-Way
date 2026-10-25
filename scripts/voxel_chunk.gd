@@ -105,11 +105,13 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     # Rebuilt chunks can remain logically inactive while hidden in the hierarchy.
     # New VisualInstances are visible by default, so inherit the chunk state immediately.
     mesh_instance.visible = _render_active
-    # Voxel terrain has thousands of flat faces and skirts; letting all of them cast
-    # directional shadows creates coarse shadow blocks, self-shadow speckling and expensive
-    # shadow-map passes. Disable casting for every voxel LOD, but keep this lit material:
-    # its face normals, direct sun/moon lighting and sky ambient illumination remain active.
-    mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    # Keep voxel relief and its shadows at near/mid distances. Far render meshes are
+    # excluded from shadow maps to avoid distant shadow noise and excess shadow-map work.
+    # A separate LOD6 shadow-only proxy still supplies the broad mountain silhouette.
+    if lod <= 3:
+        mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+    else:
+        mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
     _skirt_visibility_cache = Vector4(-1.0, -1.0, -1.0, -1.0)
     add_child(mesh_instance)
 
