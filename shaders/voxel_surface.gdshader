@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode diffuse_burley, cull_back;
+render_mode diffuse_burley, cull_back, specular_schlick_ggx;
 
 uniform float pixel_size : hint_range(0.1, 1.2, 0.05) = 0.1;
 uniform float seed_low = 240518.0;
@@ -90,18 +90,19 @@ vec3 grass_palette(float pick) {
 }
 
 vec3 grass_pixel(vec2 pixel_cell, vec2 pixel_world) {
+    // Main's wider palette variation, with continuous ramps to avoid hard boundaries
+    // between grass swatches or broad patches.
     float broad_tone = value_noise(pixel_world * 0.027 + vec2(seed_low * 0.0003, 4.2));
     float random_cell = hash21(pixel_cell + vec2(0.0, 7.7));
-    // Narrow random variation keeps adjacent 10 cm cells in a calmer colour range.
-    float pick = clamp(0.36 + random_cell * 0.28 + (broad_tone - 0.5) * 0.08, 0.001, 0.999);
+    float pick = clamp(random_cell + (broad_tone - 0.5) * 0.22, 0.001, 0.999);
     vec3 color = grass_palette(pick);
 
+    // Rare soft flecks add the fine colour variety from main without stark cell jumps.
     float fleck = hash21(pixel_cell + vec2(81.2, 18.4));
-    if (fleck > 0.996) {
-        color = mix(color, palette_color(vec3(0.741, 0.741, 0.467)), 0.24);
-    } else if (fleck < 0.008) {
-        color = mix(color, palette_color(vec3(0.275, 0.290, 0.173)), 0.22);
-    }
+    float light_fleck = smoothstep(0.986, 0.999, fleck) * 0.42;
+    float dark_fleck = (1.0 - smoothstep(0.002, 0.018, fleck)) * 0.36;
+    color = mix(color, palette_color(vec3(0.741, 0.741, 0.467)), light_fleck);
+    color = mix(color, palette_color(vec3(0.275, 0.290, 0.173)), dark_fleck);
     return color;
 }
 
@@ -153,12 +154,25 @@ vec3 rock_palette(float pick) {
 }
 
 vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world, float crack_weight) {
-    // Base rock remains the original Neverland pixel palette. No mineral bands,
-    // vertical fissure overlays, chips, pitting or broad warm/cool tint layers.
+    // Main's richer stochastic palette and broad, natural tonal drift. Directional mineral
+    // bands and extra fissure overlays are intentionally omitted; retain the current Voronoi cracks.
     float broad_tone = value_noise(pixel_world * 0.021 + vec2(13.8, seed_low * 0.0006));
     float random_cell = hash21(pixel_cell + vec2(0.0, 21.8));
-    float pick = clamp(random_cell + (broad_tone - 0.5) * 0.12, 0.001, 0.999);
+    float pick = clamp(random_cell + (broad_tone - 0.5) * 0.19, 0.001, 0.999);
     vec3 base_color = rock_palette(pick);
+    float broad_stone_tone = value_noise(pixel_world * 0.0019 + vec2(17.2, seed_high * 0.00015));
+    float mountain_macro_tone = value_noise(pixel_world * 0.00082 + vec2(
+        17.2 + seed_low * 0.00011, 8.4 + seed_high * 0.00019
+    ));
+    float stone_brightness = clamp(
+        0.82 + (broad_stone_tone - 0.5) * 0.25
+        + (mountain_macro_tone - 0.5) * 0.14, 0.68, 1.0
+    );
+    float stone_warmth = value_noise(pixel_world * vec2(0.0025, 0.0060) + vec2(31.3, 8.4));
+    vec3 cool_tint = mix(vec3(0.78, 0.84, 0.94), vec3(1.02, 1.02, 0.99), stone_warmth);
+    vec3 warm_tint = mix(vec3(0.88, 0.84, 0.77), vec3(1.08, 1.045, 0.98), stone_warmth);
+    vec3 smooth_tint = mix(cool_tint, warm_tint, smoothstep(0.18, 0.82, stone_warmth) * 0.62);
+    base_color *= smooth_tint * stone_brightness;
 
     // Gently warp the cellular field, so crack paths are irregular rather than straight
     // or aligned into bands. Both fields are continuous world-space functions.
@@ -200,6 +214,26 @@ vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world, float crack_weight) {
     return mix(base_color, crack_color, final_crack_strength);
 }
 
+
+vec3 distant_grass_color(vec2 world_xz) {
+    float broad = value_noise(world_xz * 0.0024 + vec2(seed_low * 0.00019, 9.1));
+    float medium = value_noise(world_xz * 0.0062 + vec2(5.3, seed_high * 0.00013));
+    float pick = clamp(0.18 + broad * 0.66 + (medium - 0.5) * 0.24, 0.001, 0.999);
+    return grass_palette(pick);
+}
+
+vec3 distant_rock_color(vec2 projected_world) {
+    float broad = value_noise(projected_world * 0.0015 + vec2(seed_low * 0.00011, 17.2));
+    float medium = value_noise(projected_world * vec2(0.0021, 0.0041)
+        + vec2(4.2, seed_high * 0.00015));
+    float pick = clamp(broad * 0.58 + medium * 0.42, 0.001, 0.999);
+    vec3 color = rock_palette(pick);
+    float broad_brightness = 0.84 + (broad - 0.5) * 0.16;
+    float stone_warmth = value_noise(projected_world * vec2(0.0025, 0.0060) + vec2(31.3, 8.4));
+    vec3 cool_tint = mix(vec3(0.82, 0.88, 0.96), vec3(1.0, 0.99, 0.96), stone_warmth);
+    return color * cool_tint * broad_brightness;
+}
+
 void vertex() {
     world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
     world_normal = normalize(MODEL_NORMAL_MATRIX * NORMAL);
@@ -221,23 +255,16 @@ void fragment() {
             discard;
         }
     }
+
     vec3 normal = normalize(world_normal);
-    // 0.1 m texel cells align with the voxel grid and remain world-locked across chunks.
-    // Quantise a point slightly inside the voxel, so top and side faces share one colour cell.
     vec3 voxel_cell_3d = floor((world_position - normal * 0.001) / max(pixel_size, 0.1));
     vec3 voxel_center_world = (voxel_cell_3d + vec3(0.5)) * max(pixel_size, 0.1);
-    // The packed 2D cell is only a deterministic hash key; spatial noise uses real X/Z metres.
     vec2 pixel_cell = vec2(voxel_cell_3d.x + voxel_cell_3d.y * 37.0,
                            voxel_cell_3d.z + voxel_cell_3d.y * 17.0);
     vec2 pixel_center = voxel_center_world.xz;
-    float broad_tone = value_noise(pixel_center * 0.035 + vec2(seed_low * 0.0002, 8.3));
     float pixel_variation = hash21(pixel_cell + vec2(0.0, 7.7));
-    float pick = clamp(0.40 + pixel_variation * 0.22 + (broad_tone - 0.5) * 0.08, 0.001, 0.999);
+    float broad_tone = value_noise(pixel_center * 0.035 + vec2(seed_low * 0.0002, 8.3));
 
-    // Screen-space filtering: estimate how many 10 cm voxel-colour cells fit into one
-    // pixel. Once cells become sub-pixel, fade their random colour toward the material's
-    // mean instead of changing to a spatially varying low-frequency patch pattern.
-    // MSAA cannot filter this shader-generated colour noise because it shades per pixel.
     float world_units_per_pixel = max(
         length(dFdx(world_position)),
         length(dFdy(world_position))
@@ -248,45 +275,58 @@ void fragment() {
         voxel_detail_weight = 1.0 - smoothstep(0.70, 1.55, voxel_footprint * voxel_detail_filter_multiplier);
     }
 
-    // Voronoi rock cracks have a larger 5.5 m cell size; fade them separately when that
-    // pattern itself becomes sub-pixel, even if the voxel-colour cells are still visible.
     float rock_crack_footprint = world_units_per_pixel / 5.5;
     float rock_crack_weight = 1.0;
     if (procedural_mipmap_enabled && rock_crack_filter_multiplier > 0.001) {
         rock_crack_weight = 1.0 - smoothstep(0.55, 1.25, rock_crack_footprint * rock_crack_filter_multiplier);
     }
-    float rock_detail_weight = voxel_detail_weight;
+
+    // Main's triplanar projection keeps rock colour coherent on steep faces as well as tops.
+    vec2 rock_world;
+    if (abs(normal.x) > abs(normal.y) && abs(normal.x) > abs(normal.z)) {
+        rock_world = world_position.zy;
+    } else if (abs(normal.z) > abs(normal.y)) {
+        rock_world = world_position.xy;
+    } else {
+        rock_world = world_position.xz;
+    }
+    vec2 rock_pixel_cell = floor(rock_world / max(pixel_size, 0.1));
+    vec2 rock_pixel_world = rock_pixel_cell * max(pixel_size, 0.1);
+
+    // Top-face alpha is a smoothly interpolated rock-weight channel (0.965–0.990).
+    // Ordinary vertical faces use alpha 1.0; stitching skirts use alpha below 0.95.
+    bool is_top_surface = COLOR.a >= 0.96 && COLOR.a < 0.995;
+    float top_rock_amount = clamp((COLOR.a - 0.965) / 0.025, 0.0, 1.0);
 
     if (debug_lod_colors) {
         float variation = mix(0.96, 1.04, pixel_variation);
         ALBEDO = clamp(COLOR.rgb * variation, vec3(0.0), vec3(1.0));
+        ROUGHNESS = 0.96;
+    } else if (is_top_surface) {
+        vec3 filtered_grass = distant_grass_color(world_position.xz);
+        vec3 filtered_rock = distant_rock_color(rock_world);
+        vec3 detailed_grass = grass_pixel(pixel_cell, pixel_center);
+        vec3 detailed_rock = rock_pixel(rock_pixel_cell, rock_pixel_world, rock_crack_weight);
+        vec3 filtered_color = mix(filtered_grass, filtered_rock, top_rock_amount);
+        vec3 detailed_color = mix(detailed_grass, detailed_rock, top_rock_amount);
+        // Blend weights are interpolated across the mesh, so transitions remain soft at every LOD.
+        ALBEDO = mix(filtered_color, detailed_color, voxel_detail_weight);
+        ROUGHNESS = mix(0.95, 0.84, top_rock_amount);
     } else if (COLOR.g > COLOR.r * 1.35) {
-        // Preserve the pixel material up close. At distance it converges to a stable
-        // average green, avoiding visible checkerboard and false colour islands.
-        vec3 filtered_grass = grass_palette(0.52);
-        if (voxel_detail_weight > 0.005) {
-            ALBEDO = mix(filtered_grass, grass_pixel(pixel_cell, pixel_center), voxel_detail_weight);
-        } else {
-            ALBEDO = filtered_grass;
-        }
+        vec3 filtered_grass = distant_grass_color(world_position.xz);
+        vec3 detailed_grass = grass_pixel(pixel_cell, pixel_center);
+        ALBEDO = mix(filtered_grass, detailed_grass, voxel_detail_weight);
+        ROUGHNESS = 0.95;
     } else if (COLOR.r > COLOR.g * 1.15) {
         vec3 filtered_soil = soil_palette(0.53);
-        if (voxel_detail_weight > 0.005) {
-            vec3 detailed_soil = soil_palette(pick) * mix(0.97, 1.03, broad_tone);
-            ALBEDO = mix(filtered_soil, detailed_soil, voxel_detail_weight);
-        } else {
-            ALBEDO = filtered_soil;
-        }
+        vec3 detailed_soil = soil_palette(0.40 + pixel_variation * 0.20 + (broad_tone - 0.5) * 0.08);
+        ALBEDO = mix(filtered_soil, detailed_soil, voxel_detail_weight);
+        ROUGHNESS = 0.91;
     } else {
-        vec3 filtered_rock = rock_palette(0.46);
-        if (rock_detail_weight > 0.005) {
-            ALBEDO = mix(filtered_rock, rock_pixel(pixel_cell, pixel_center, rock_crack_weight), rock_detail_weight);
-        } else {
-            ALBEDO = filtered_rock;
-        }
+        vec3 filtered_rock = distant_rock_color(rock_world);
+        vec3 detailed_rock = rock_pixel(rock_pixel_cell, rock_pixel_world, rock_crack_weight);
+        ALBEDO = mix(filtered_rock, detailed_rock, voxel_detail_weight);
+        ROUGHNESS = 0.84;
     }
-    // Keep Godot's interpolated mesh normal. Near voxel faces need their original
-    // directional light response to preserve the blocky relief; far shadow casting is
-    // controlled per LOD, with a separate top-only proxy preserving the broad terrain shadow.
-    ROUGHNESS = 0.96;
+    METALLIC = 0.0;
 }
