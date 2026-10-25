@@ -1,4 +1,4 @@
-name: Temporary Godot syntax validation
+name: Temporary Godot syntax validation latest
 on:
   push:
     branches:
