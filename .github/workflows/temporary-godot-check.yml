@@ -1,4 +1,4 @@
-name: Temporary Godot terrain validation
+name: Temporary Godot terrain validation latest
 on:
   push:
     branches:
