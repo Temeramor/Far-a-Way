@@ -17,19 +17,19 @@ const BuilderScript = preload("res://scripts/voxel_chunk_builder.gd")
 @export_category("Streaming and LOD")
 @export_range(512.0, 8192.0, 256.0) var render_distance_m: float = 4096.0
 @export_range(32.0, 256.0, 16.0) var lod0_distance_m: float = 64.0
-@export_range(0, 3, 1) var lod_detail_bias: int = 1
 @export_range(0.0, 24.0, 2.0) var lod_hysteresis_m: float = 12.0
-@export_range(1, 12, 1) var max_concurrent_mesh_jobs: int = 8
+@export_range(1, 8, 1) var max_concurrent_mesh_jobs: int = 4
 @export_range(1, 4, 1) var max_mesh_applies_per_frame: int = 4
 @export_range(1.0, 8.0, 0.5) var max_mesh_apply_time_ms: float = 4.0
-@export_range(0.01, 0.2, 0.01) var streaming_refresh_interval_s: float = 0.02
-@export_range(0.25, 4.0, 0.25) var streaming_refresh_distance_m: float = 0.5
+@export_range(0.03, 0.2, 0.01) var streaming_refresh_interval_s: float = 0.05
+@export_range(0.5, 8.0, 0.5) var streaming_refresh_distance_m: float = 2.0
 @export_range(0.5, 2.5, 0.1) var streaming_prediction_seconds: float = 1.4
 
 @export_category("Collision")
 @export_range(16.0, 128.0, 8.0) var collision_distance_m: float = 80.0
 
 var _generator: VoxelTerrainGenerator
+var _mountain_profile_cache: Array[Dictionary] = []
 var _voxel_material: ShaderMaterial
 var _player: CharacterBody3D
 var _chunks: Dictionary = {}
@@ -47,12 +47,11 @@ var _chunk_size_voxels: int
 var _world_min_x: float
 var _world_min_z: float
 var _chunks_per_axis: int
-var _lod_state_cache: Dictionary = {}
 var _retiring_chunks: Array[VoxelTerrainChunk] = []
 var _generation_epoch: int = 0
 var _startup_load_pending: bool = true
-var _build_usec_by_lod: Array = [[], [], [], [], [], [], []]
-var _build_p95_cached_usec: Array[float] = [80000.0, 30000.0, 12000.0, 6000.0, 3000.0, 1500.0, 800.0]
+var _build_usec_by_lod: Array = [[], [], [], [], [], [], [], []]
+var _build_p95_cached_usec: Array[float] = [80000.0, 40000.0, 25000.0, 12000.0, 6000.0, 3000.0, 1500.0, 900.0]
 var _refresh_usec_samples: Array[int] = []
 var _refresh_p95_cached_usec: float = 0.0
 var _queue_wait_usec_samples: Array[int] = []
@@ -72,16 +71,12 @@ func _ready() -> void:
     _chunks_per_axis = int(ceil(float(_world_size_voxels) / float(_chunk_size_voxels)))
     render_distance_m = clampf(GameSettings.view_distance_m, 512.0, 8192.0)
     _generator = GeneratorScript.new(seed_value, world_size_m)
+    _mountain_profile_cache = _generator.get_mountain_profile()
 
     var surface_shader := load("res://shaders/voxel_surface.gdshader") as Shader
     _voxel_material = ShaderMaterial.new()
     _voxel_material.shader = surface_shader
     _apply_seed_to_material()
-    set_surface_filter_settings(
-        GameSettings.get_voxel_detail_filter_multiplier(),
-        GameSettings.get_rock_crack_filter_multiplier(),
-        GameSettings.procedural_mip_filter_enabled
-    )
 
     _player = get_node_or_null(NodePath("../Player")) as CharacterBody3D
     if _player != null:
@@ -147,7 +142,6 @@ func regenerate_with_seed(new_seed: int) -> void:
     _queued.clear()
     _wanted.clear()
     _completed_jobs.clear()
-    _lod_state_cache.clear()
 
     # Hide the old world immediately; release mesh buffers gradually over later frames.
     # In-flight tasks finish, but their old epoch will reject their results.
@@ -160,6 +154,7 @@ func regenerate_with_seed(new_seed: int) -> void:
     _chunks.clear()
 
     _generator = GeneratorScript.new(seed_value, world_size_m)
+    _mountain_profile_cache = _generator.get_mountain_profile()
     _apply_seed_to_material()
     if _player != null:
         _player.set_physics_process(false)
@@ -179,12 +174,11 @@ func _prepare_world_for_epoch(epoch: int) -> void:
     _last_refresh_chunk = Vector2i(-2147483648, -2147483648)
     _refresh_streaming()
 
-func set_lod_settings(detail_bias: int, lod0_distance: float) -> void:
-    var safe_bias: int = clampi(detail_bias, 0, 3)
+func set_lod_settings(lod0_distance: float) -> void:
+    # At 1080p and 82-degree vertical FOV, a 10 cm cell is about one pixel at 62 m.
     var safe_distance: float = snappedf(clampf(lod0_distance, 32.0, 256.0), 16.0)
-    if lod_detail_bias == safe_bias and is_equal_approx(lod0_distance_m, safe_distance):
+    if is_equal_approx(lod0_distance_m, safe_distance):
         return
-    lod_detail_bias = safe_bias
     lod0_distance_m = safe_distance
     if _world_started:
         _refresh_streaming()
@@ -209,16 +203,15 @@ func set_shadow_mode(mode: int) -> void:
 
 
 func get_lod_boundary_m(lod_index: int) -> float:
-    if lod_index < 0 or lod_index > 5:
+    # Defaults: LOD0..LOD6 boundaries are 64, 128, 256, 512, 1024, 2048 and 4096 m.
+    if lod_index < 0 or lod_index > 6:
         return INF
     return lod0_distance_m * float(1 << lod_index)
 
 
 func get_mesh_step_voxels(lod_index: int) -> int:
-    var safe_lod: int = clampi(lod_index, 0, 6)
-    if safe_lod == 0:
-        return BASE_MESH_STEP_VOXELS
-    return BASE_MESH_STEP_VOXELS << (safe_lod + lod_detail_bias)
+    # 10 cm, 20 cm, 40 cm, 80 cm ... up to the existing 12.8 m far step.
+    return BASE_MESH_STEP_VOXELS << clampi(lod_index, 0, 7)
 
 
 func is_terrain_shadow_ready() -> bool:
@@ -226,11 +219,11 @@ func is_terrain_shadow_ready() -> bool:
     return is_world_coverage_ready()
 
 func is_world_coverage_ready() -> bool:
-    var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 64))
+    var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 128))
     var player_xz: Vector2 = _player_xz()
     for tz in range(root_tiles):
         for tx in range(root_tiles):
-            var root_key := _make_lod_key(6, tx, tz)
+            var root_key := _make_lod_key(7, tx, tz)
             if _distance_to_chunk_bounds(player_xz, _chunk_bounds(root_key)) > render_distance_m:
                 continue
             var root_chunk: VoxelTerrainChunk = _chunks.get(root_key) as VoxelTerrainChunk
@@ -251,31 +244,17 @@ func _apply_seed_to_material() -> void:
 func get_surface_height(x: float, z: float) -> float:
     if _generator == null:
         _generator = GeneratorScript.new(seed_value, world_size_m)
+    _mountain_profile_cache = _generator.get_mountain_profile()
     return float(_generator.get_surface_height_voxels(x, z)) * VOXEL_SIZE
-
-func set_surface_filter_settings(detail_multiplier: float, crack_multiplier: float, mip_filter_enabled: bool) -> void:
-    var safe_detail_multiplier: float = clampf(detail_multiplier, 0.0, 2.0)
-    var safe_crack_multiplier: float = clampf(crack_multiplier, 0.0, 2.0)
-    if _voxel_material != null:
-        _voxel_material.set_shader_parameter("voxel_detail_filter_multiplier", safe_detail_multiplier)
-        _voxel_material.set_shader_parameter("rock_crack_filter_multiplier", safe_crack_multiplier)
-        _voxel_material.set_shader_parameter("procedural_mipmap_enabled", mip_filter_enabled)
-    # Chunks use private material copies for skirt visibility; update all loaded chunks as well.
-    for chunk_value in _chunks.values():
-        var chunk: VoxelTerrainChunk = chunk_value as VoxelTerrainChunk
-        if chunk != null:
-            chunk.set_mesh_shader_parameter("voxel_detail_filter_multiplier", safe_detail_multiplier)
-            chunk.set_mesh_shader_parameter("rock_crack_filter_multiplier", safe_crack_multiplier)
-            chunk.set_mesh_shader_parameter("procedural_mipmap_enabled", mip_filter_enabled)
-
 
 func get_voxel_material(global_voxel: Vector3i) -> int:
     if _generator == null:
         _generator = GeneratorScript.new(seed_value, world_size_m)
+    _mountain_profile_cache = _generator.get_mountain_profile()
     return _generator.get_voxel_material(global_voxel, _world_min_x, _world_min_z, _world_size_voxels)
 
 func get_debug_text() -> String:
-    var lod_counts: Array[int] = [0, 0, 0, 0, 0, 0, 0]
+    var lod_counts: Array[int] = [0, 0, 0, 0, 0, 0, 0, 0]
     var collider_count: int = 0
     var near_pending: int = 0
     for coord_value in _chunks.keys():
@@ -300,8 +279,8 @@ func get_debug_text() -> String:
     var prediction_seconds: float = _effective_prediction_seconds()
     var estimated_work_seconds: float = _estimated_lod_pipeline_usec(0) / 1000000.0
     var lead_margin_m: float = planar_speed * (prediction_seconds - estimated_work_seconds)
-    return "VoxEn 0.3.5 | seed %d | chunks %d | LOD 0:%d 1:%d 2:%d 3:%d 4:%d 5:%d 6:%d | colliders %d | jobs %d+%d | near pending %d | stale %d\nBuild avg/p95 ms: L0 %.1f/%.1f L1 %.1f/%.1f | refresh p95 %.2f ms | queue p95/max %.0f/%.1f ms | apply p95 %.0f ms | L0 margin %.1f m (pred %.1fs)" % [
-        seed_value, _chunks.size(), lod_counts[0], lod_counts[1], lod_counts[2], lod_counts[3], lod_counts[4], lod_counts[5], lod_counts[6],
+    return "VoxEn 0.3.5 | seed %d | chunks %d | LOD 0:%d 1:%d 2:%d 3:%d 4:%d 5:%d 6:%d 7:%d | colliders %d | jobs %d+%d | near pending %d | stale %d\nBuild avg/p95 ms: L0 %.1f/%.1f L1 %.1f/%.1f | refresh p95 %.2f ms | queue p95/max %.0f/%.1f ms | apply p95 %.0f ms | L0 margin %.1f m (pred %.1fs)" % [
+        seed_value, _chunks.size(), lod_counts[0], lod_counts[1], lod_counts[2], lod_counts[3], lod_counts[4], lod_counts[5], lod_counts[6], lod_counts[7],
         collider_count, _running_tasks.size(), _queued.size(), near_pending, _stale_result_count,
         _avg_ms(l0), _build_p95_cached_usec[0] / 1000.0, _avg_ms(l1), _build_p95_cached_usec[1] / 1000.0,
         _refresh_p95_cached_usec / 1000.0, _queue_wait_p95_cached_usec / 1000.0,
@@ -318,13 +297,13 @@ func get_loaded_chunk_count() -> int:
 func get_startup_progress() -> float:
     if not _startup_load_pending:
         return 1.0
-    var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 64))
+    var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 128))
     var player_xz: Vector2 = _player_xz()
     var roots_total: int = 0
     var roots_ready: int = 0
     for tz in range(root_tiles):
         for tx in range(root_tiles):
-            var root_key := _make_lod_key(6, tx, tz)
+            var root_key := _make_lod_key(7, tx, tz)
             if _distance_to_chunk_bounds(player_xz, _chunk_bounds(root_key)) > render_distance_m:
                 continue
             roots_total += 1
@@ -349,6 +328,7 @@ func get_startup_progress() -> float:
 func surface_sample_at_world(world_x: float, world_z: float) -> Vector3:
     if _generator == null:
         _generator = GeneratorScript.new(seed_value, world_size_m)
+    _mountain_profile_cache = _generator.get_mountain_profile()
     return _generator.get_surface_sample(world_x, world_z)
 
 func _try_finish_startup_loading() -> void:
@@ -392,12 +372,12 @@ func _refresh_streaming() -> void:
     var heading: Vector2 = _get_streaming_heading()
     var planar_velocity := Vector2(_player.velocity.x, _player.velocity.z)
     var wanted: Dictionary = {}
-    # The 2048m LOD6 roots cover the complete finite world. Near roots split into
+    # The 4096m LOD7 roots cover the complete finite world. Near roots split into
     # smaller children, but parents stay visible as fallback until every child is ready.
-    var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 64))
+    var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 128))
     for tz in range(root_tiles):
         for tx in range(root_tiles):
-            _collect_lod_tiles(6, tx, tz, player_xz, heading, planar_velocity, wanted)
+            _collect_lod_tiles(7, tx, tz, player_xz, heading, planar_velocity, wanted
     _wanted = wanted
     for queued_coord in _queued.keys():
         if not wanted.has(queued_coord):
@@ -557,7 +537,7 @@ func _process_chunk_jobs() -> void:
             "coord": coord, "request": request.duplicate(true), "neighbor_lods": neighbors.duplicate(true),
             "seed": seed_value, "world_min_x": _world_min_x, "world_min_z": _world_min_z,
             "world_size_voxels": _world_size_voxels, "debug_lod_colors": _debug_lod_colors,
-            "terrain_world_size_m": world_size_m, "mountain_profile": _generator.get_mountain_profile(),
+            "terrain_world_size_m": world_size_m, "mountain_profile": _mountain_profile_cache,
             "build_collision": bool(request["collision"]) and not _chunk_has_collision_resource(coord)
         }
         var builder: Object = _create_mesh_builder()
@@ -605,7 +585,7 @@ func _poll_worker_tasks() -> void:
         # Treat the request as authoritative even if an older compiled native extension
         # does not return this metadata field yet. Both mesh builders receive the same stride.
         data["step_voxels"] = int(record["request"].get("step_voxels", BASE_MESH_STEP_VOXELS << int(record["request"]["lod"])))
-        var lod_index: int = clampi(int(data.get("lod", record["request"]["lod"])), 0, 6)
+        var lod_index: int = clampi(int(data.get("lod", record["request"]["lod"])), 0, 7)
         _record_timing(_build_usec_by_lod[lod_index], int(data.get("build_usec", 0)), 128)
         var queue_wait_usec: int = maxi(0, int(data.get("worker_started_usec", Time.get_ticks_usec())) - int(record.get("queued_usec", Time.get_ticks_usec())))
         _max_queue_wait_usec = maxi(_max_queue_wait_usec, queue_wait_usec)
@@ -743,13 +723,13 @@ func _make_lod_key(lod_index: int, tile_x: int, tile_z: int) -> Vector2i:
     return Vector2i(lod_index * LOD_KEY_STRIDE + tile_x, tile_z)
 
 func _decode_lod_key(coord: Vector2i) -> Dictionary:
-    var lod_index: int = clampi(floori(float(coord.x) / float(LOD_KEY_STRIDE)), 0, 6)
+    var lod_index: int = clampi(floori(float(coord.x) / float(LOD_KEY_STRIDE)), 0, 7)
     return {"lod": lod_index, "tile_x": coord.x - lod_index * LOD_KEY_STRIDE, "tile_z": coord.y}
 
 func _find_target_lod_key_at_point(point: Vector2) -> Vector2i:
     if point.x < _world_min_x or point.y < _world_min_z or point.x >= _world_min_x + world_size_m or point.y >= _world_min_z + world_size_m:
         return Vector2i(-1, -1)
-    for lod_index in range(7):
+    for lod_index in range(8):
         var tile_m: float = chunk_size_m * float(1 << lod_index)
         var tx: int = floori((point.x - _world_min_x) / tile_m)
         var tz: int = floori((point.y - _world_min_z) / tile_m)
@@ -761,7 +741,7 @@ func _find_target_lod_key_at_point(point: Vector2) -> Vector2i:
 func _find_visible_lod_key_at_point(point: Vector2) -> Vector2i:
     if point.x < _world_min_x or point.y < _world_min_z or point.x >= _world_min_x + world_size_m or point.y >= _world_min_z + world_size_m:
         return Vector2i(-1, -1)
-    for lod_index in range(7):
+    for lod_index in range(8):
         var tile_m: float = chunk_size_m * float(1 << lod_index)
         var tx: int = floori((point.x - _world_min_x) / tile_m)
         var tz: int = floori((point.y - _world_min_z) / tile_m)
@@ -800,10 +780,10 @@ func _all_lod_children_ready(children: Array[Vector2i]) -> bool:
     return true
 
 func _reconcile_hierarchy_visibility() -> void:
-    var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 64))
+    var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 128))
     for tz in range(root_tiles):
         for tx in range(root_tiles):
-            _update_lod_subtree_visibility(_make_lod_key(6, tx, tz), true)
+            _update_lod_subtree_visibility(_make_lod_key(7, tx, tz), true)
 
 func _update_lod_subtree_visibility(coord: Vector2i, ancestors_visible: bool) -> void:
     if not _wanted.has(coord):
@@ -833,8 +813,8 @@ func _collect_lod_tiles(lod_index: int, tile_x: int, tile_z: int, player_xz: Vec
     if nearest > render_distance_m:
         return
     var boundary: float = _lod_boundary_for(lod_index - 1) if lod_index > 0 else -1.0
-    if lod_index == 6:
-        boundary = get_lod_boundary_m(5)
+    if lod_index == 7:
+        boundary = get_lod_boundary_m(6)
     var previous: Dictionary = _wanted.get(key, {})
     var was_split: bool = bool(previous.get("fallback", false))
     var split: bool = false
@@ -881,7 +861,7 @@ func _deadline_priority(center: Vector2, request: Dictionary, player_xz: Vector2
     var offset: Vector2 = center - player_xz
     var speed: float = velocity.length()
     var lod_index: int = clampi(int(request["lod"]), 0, 6)
-    if lod_index == 6:
+    if lod_index == 7:
         return -100000.0 + center.distance_to(player_xz)
     if bool(request.get("fallback", false)):
         return -50000.0 - float(lod_index) * 1000.0 + center.distance_to(player_xz)
@@ -937,7 +917,7 @@ func _estimated_lod_pipeline_usec(lod_index: int) -> float:
     )
 
 func _estimated_build_usec(lod_index: int) -> float:
-    return _build_p95_cached_usec[clampi(lod_index, 0, 6)]
+    return _build_p95_cached_usec[clampi(lod_index, 0, 7)]
 
 func _record_timing(samples: Array, value_usec: int, limit: int) -> void:
     samples.append(maxi(0, value_usec))
@@ -1000,10 +980,10 @@ func _exit_tree() -> void:
     _retiring_chunks.clear()
 
 func _lod_for_distance(distance: float) -> int:
-    for lod_index in range(6):
+    for lod_index in range(7):
         if distance < get_lod_boundary_m(lod_index):
             return lod_index
-    return 6
+    return 7
 
 func _lod_boundary_for(lod_index: int) -> float:
     return get_lod_boundary_m(lod_index)

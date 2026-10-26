@@ -9,7 +9,7 @@ const BuilderScript = preload("res://scripts/voxel_chunk_builder.gd")
 
 var coord: Vector2i = Vector2i.ZERO
 var lod: int = -1
-var mesh_step_voxels: int = 2
+var mesh_step_voxels: int = 1
 var collision_enabled: bool = false # A collision shape is allocated for this chunk.
 var collision_active: bool = false # Its collision layer is currently enabled.
 var mesh_ready: bool = false
@@ -74,7 +74,7 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     coord = data.get("coord", Vector2i.ZERO)
     lod = int(data.get("lod", -1))
     _shadow_mode = clampi(GameSettings.shadow_mode, 0, 1)
-    mesh_step_voxels = int(data.get("step_voxels", 2 << clampi(lod, 0, 6)))
+    mesh_step_voxels = int(data.get("step_voxels", 1 << clampi(lod, 0, 7)))
     debug_lod_colors = bool(data.get("debug_lod_colors", false))
     neighbor_lods_used = data.get("neighbor_lods_used", {}).duplicate(true)
     collision_enabled = false
@@ -98,6 +98,7 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
         _mesh_shader_material = (material as ShaderMaterial).duplicate() as ShaderMaterial
         _mesh_shader_material.set_shader_parameter("skirt_visibility", Vector4(1.0, 1.0, 1.0, 1.0))
         _mesh_shader_material.set_shader_parameter("lod_shadow_strength", _shadow_receive_strength())
+        _mesh_shader_material.set_shader_parameter("lod_index", lod)
         mesh_material = _mesh_shader_material
 
     var mesh := _make_array_mesh(data, mesh_material)
@@ -199,7 +200,7 @@ func _should_proxy_cast_shadow() -> bool:
     # Keep it at every active LOD so distant mountains always occlude the sun and
     # cast relief shadows onto nearer chunks. The LOD mode controls how much shadow
     # the visible surface receives; LOD4+ receives none in either mode.
-    return lod >= 0 and lod <= 6
+    return lod >= 0 and lod <= 7
 
 func set_mesh_shader_parameter(parameter_name: StringName, value: Variant) -> void:
     if _mesh_shader_material != null:
