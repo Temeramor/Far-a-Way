@@ -19,11 +19,12 @@ The terrain is a height-column landscape: each horizontal position has a generat
 - **Mouse:** look around.
 - **Esc:** pause or resume. The pause menu includes Continue, Settings and Return to Menu.
 - **Double-tap Space:** toggle flight.
+- **M:** open or close the weather and time-of-day menu.
 - **R:** regenerate the landscape with a new seed.
 - **F3:** toggle debug colours for terrain LOD levels.
 - **VOXEN DEBUG:** show terrain streaming, LOD, collision and worker-task diagnostics.
 
-The world HUD also provides weather and time-of-day controls. Available weather presets are Clear, Cloudy and Overcast; time can be adjusted with the available controls and presets. The sky system animates the sun, moon, stars and cloud layers and manages atmospheric fog and environmental lighting.
+The world HUD also provides weather and time-of-day controls. Available weather presets are Clear, Cloudy and Overcast; time can be adjusted with the available controls and presets. The sky system animates the sun, moon, stars and cloud layers and manages atmospheric fog and environmental lighting. The Settings page in the pause menu is currently informational; adjustable graphics options have not been added yet.
 
 ## Procedural terrain
 
