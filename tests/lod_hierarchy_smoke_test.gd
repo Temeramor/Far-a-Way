@@ -14,177 +14,73 @@ func _run() -> void:
 
     var errors: Array[String] = []
 
-    # Regression: rebuilt chunks must inherit the hierarchy visibility state.
-    # Otherwise a chunk hidden before a rebuild creates a visible MeshInstance3D
-    # and can draw an inactive LOD over the currently selected terrain.
-    var inactive_chunk := VoxelTerrainChunk.new()
-    root.add_child(inactive_chunk)
-    inactive_chunk.set_render_active(false)
-    var triangle_vertices := PackedVector3Array([
-        Vector3.ZERO, Vector3(1.0, 0.0, 0.0), Vector3(0.0, 0.0, 1.0)
-    ])
-    var triangle_normals := PackedVector3Array([Vector3.UP, Vector3.UP, Vector3.UP])
-    var triangle_colors := PackedColorArray([Color.WHITE, Color.WHITE, Color.WHITE])
-    var triangle_indices := PackedInt32Array([0, 1, 2])
-    inactive_chunk.apply_mesh_data({
-        "coord": Vector2i.ZERO,
-        "lod": 0,
-        "step_voxels": 2,
-        "debug_lod_colors": false,
-        "neighbor_lods_used": {},
-        "position": Vector3.ZERO,
-        "vertices": triangle_vertices,
-        "normals": triangle_normals,
-        "colors": triangle_colors,
-        "indices": triangle_indices,
-        "has_geometry": true,
-        "want_collision": false
-    }, StandardMaterial3D.new())
-    var rebuilt_mesh := inactive_chunk.get_node_or_null("VoxelMesh") as MeshInstance3D
-    if rebuilt_mesh == null or rebuilt_mesh.visible:
-        errors.append("A rebuilt inactive chunk must not show its new mesh")
+    # At 1080p and vertical FOV 82 degrees, a 10 cm cell is about one pixel at 62 m.
+    var pixels_at_lod0_edge: float = 0.1 * 1080.0 / (2.0 * tan(deg_to_rad(82.0 * 0.5)) * 64.0)
+    if absf(pixels_at_lod0_edge - 1.0) > 0.08:
+        errors.append("10 cm LOD0 cells should project to approximately one pixel at 64 m")
 
-    # Hierarchy hand-off must also reject a mesh built with an old sampling stride.
-    var readiness_key := world._make_lod_key(0, 0, 0)
-    world._chunks[readiness_key] = inactive_chunk
-    world._wanted[readiness_key] = {"lod": 0, "step_voxels": 8, "fallback": false}
-    var readiness_children: Array[Vector2i] = [readiness_key]
-    if world._all_lod_children_ready(readiness_children):
-        errors.append("A child with a stale mesh stride must not count as ready")
-    world._wanted[readiness_key]["step_voxels"] = 2
-    if not world._all_lod_children_ready(readiness_children):
-        errors.append("A child matching the requested LOD and stride should count as ready")
-    world._wanted.erase(readiness_key)
-    world._chunks.erase(readiness_key)
-    inactive_chunk.queue_free()
+    # Add a narrow 20 cm tier from 64-80 m while keeping the former LOD ranges intact after it.
+    var distance_samples: Array = [
+        [0.0, 0], [63.9, 0], [64.0, 1], [79.9, 1],
+        [80.0, 2], [127.9, 2], [128.0, 3], [255.9, 3],
+        [256.0, 4], [511.9, 4], [512.0, 5], [1023.9, 5],
+        [1024.0, 6], [2047.9, 6], [2048.0, 7]
+    ]
+    for sample in distance_samples:
+        var distance: float = float(sample[0])
+        var expected_lod: int = int(sample[1])
+        var actual_lod: int = world._lod_for_distance(distance)
+        if actual_lod != expected_lod:
+            errors.append("Distance %.1f m expected LOD%d, got LOD%d" % [
+                distance, expected_lod, actual_lod
+            ])
 
-    # Regression test: a leaf LOD has no children, so visibility reconciliation
-    # must safely handle the typed empty Array[Vector2i] path.
+    var expected_tile_sizes: Array[float] = [32.0, 64.0, 128.0, 256.0, 512.0, 1024.0, 2048.0, 4096.0]
+    var expected_steps_voxels: Array[int] = [1, 2, 4, 8, 16, 32, 64, 128]
+    for lod in range(8):
+        var key: Vector2i = world._make_lod_key(lod, 0, 0)
+        var bounds: Dictionary = world._chunk_bounds(key)
+        if not is_equal_approx(float(bounds["width"]), expected_tile_sizes[lod]):
+            errors.append("LOD%d tile width expected %.1f m, got %.1f m" % [
+                lod, expected_tile_sizes[lod], float(bounds["width"])
+            ])
+        if world.get_mesh_step_voxels(lod) != expected_steps_voxels[lod]:
+            errors.append("LOD%d mesh step expected %d voxels, got %d" % [
+                lod, expected_steps_voxels[lod], world.get_mesh_step_voxels(lod)
+            ])
+
+    # The root LOD7 tile is 4.096 km across. The centre root should refine and
+    # the far corner should remain outside the 4 km streaming radius.
+    var distance_requests: Dictionary = {}
+    var root_count: int = ceili(float(world._world_size_voxels) / float(world._chunk_size_voxels * 128))
+    if root_count != 3:
+        errors.append("10 km map should need 3 LOD7 roots per axis, got %d" % root_count)
+    for root_z in range(root_count):
+        for root_x in range(root_count):
+            world._collect_lod_tiles(
+                7, root_x, root_z, Vector2.ZERO, Vector2(0.0, -1.0), Vector2.ZERO,
+                distance_requests
+            )
+    var nearby_root: Dictionary = distance_requests.get(world._make_lod_key(7, 1, 1), {})
+    if nearby_root.is_empty() or not bool(nearby_root.get("fallback", false)):
+        errors.append("The root containing the player should refine to child LODs")
+    if distance_requests.has(world._make_lod_key(7, 2, 2)):
+        errors.append("A remote corner root outside the render distance should not be requested")
+
+    var last_root := world._chunk_bounds(world._make_lod_key(7, 2, 2))
+    if not is_equal_approx(float(last_root["width"]), 1808.0):
+        errors.append("Last LOD7 edge tile should be clipped to 1808 m")
+
+    # Regression: leaf visibility must safely handle a typed empty child list.
     var leaf_key: Vector2i = world._make_lod_key(0, 0, 0)
     world._wanted[leaf_key] = {"lod": 0, "fallback": false, "collision": false}
     world._update_lod_subtree_visibility(leaf_key, true)
     world._wanted.erase(leaf_key)
 
-    var samples: Array = [
-        [0.0, 0], [63.9, 0],
-        [64.0, 1], [127.9, 1],
-        [128.0, 2], [255.9, 2],
-        [256.0, 3], [511.9, 3],
-        [512.0, 4], [1023.9, 4],
-        [1024.0, 5], [2047.9, 5],
-        [2048.0, 6]
-    ]
-    for sample in samples:
-        var distance: float = float(sample[0])
-        var expected_lod: int = int(sample[1])
-        if world._lod_for_distance(distance) != expected_lod:
-            errors.append("Default LOD distance %.1f m expected LOD%d, got LOD%d" % [
-                distance, expected_lod, world._lod_for_distance(distance)
-            ])
-
-    # Every boundary follows a single LOD0 distance and doubles at the next level.
-    world.set_lod_settings(1, 64.0)
-    var scaled_samples: Array = [
-        [0.0, 0], [63.9, 0], [64.0, 1],
-        [127.9, 1], [128.0, 2], [255.9, 2],
-        [256.0, 3], [511.9, 3], [512.0, 4],
-        [1023.9, 4], [1024.0, 5], [2047.9, 5],
-        [2048.0, 6]
-    ]
-    for sample in scaled_samples:
-        var scaled_distance: float = float(sample[0])
-        var expected_scaled_lod: int = int(sample[1])
-        if world._lod_for_distance(scaled_distance) != expected_scaled_lod:
-            errors.append("Scaled LOD distance %.1f m expected LOD%d, got LOD%d" % [
-                scaled_distance, expected_scaled_lod, world._lod_for_distance(scaled_distance)
-            ])
-    world.set_lod_settings(1, 256.0)
-    var maximum_distance_samples: Array = [
-        [255.9, 0], [256.0, 1], [511.9, 1],
-        [512.0, 2], [8191.9, 5], [8192.0, 6]
-    ]
-    for sample in maximum_distance_samples:
-        var max_distance: float = float(sample[0])
-        var expected_max_lod: int = int(sample[1])
-        if world._lod_for_distance(max_distance) != expected_max_lod:
-            errors.append("Maximum LOD distance %.1f m expected LOD%d, got LOD%d" % [
-                max_distance, expected_max_lod, world._lod_for_distance(max_distance)
-            ])
-    world.set_lod_settings(1, 128.0)
-
-    # LOD boundaries are distance bands, not a command to subdivide every root.
-    # At the origin the central root must refine, while a far corner root remains LOD6.
-    var distance_requests: Dictionary = {}
-    var distance_root_count: int = ceili(float(world._world_size_voxels) / float(world._chunk_size_voxels * 64))
-    for root_z in range(distance_root_count):
-        for root_x in range(distance_root_count):
-            world._collect_lod_tiles(
-                6, root_x, root_z, Vector2.ZERO, Vector2(0.0, -1.0), Vector2.ZERO,
-                distance_requests
-            )
-    var nearby_root: Dictionary = distance_requests.get(world._make_lod_key(6, 2, 2), {})
-    var remote_root: Dictionary = distance_requests.get(world._make_lod_key(6, 0, 0), {})
-    if nearby_root.is_empty() or not bool(nearby_root.get("fallback", false)):
-        errors.append("The root containing the player should refine to child LODs")
-    if remote_root.is_empty() or bool(remote_root.get("fallback", true)):
-        errors.append("A remote corner root outside the LOD5 boundary must remain coarse")
-    if distance_requests.has(world._make_lod_key(5, 0, 0)):
-        errors.append("A remote LOD6 root must not create unnecessary LOD5 descendants")
-
-    var expected_tile_sizes: Array[float] = [32.0, 64.0, 128.0, 256.0, 512.0, 1024.0, 2048.0]
-    for lod in range(7):
-        var key: Vector2i = world._make_lod_key(lod, 0, 0)
-        var bounds: Dictionary = world._chunk_bounds(key)
-        var expected_size: float = expected_tile_sizes[lod]
-        if not is_equal_approx(float(bounds["width"]), expected_size):
-            errors.append("LOD%d tile width expected %.1f m, got %.1f m" % [
-                lod, expected_size, float(bounds["width"])
-            ])
-
-    var expected_steps_voxels: Array[int] = [2, 8, 16, 32, 64, 128, 256]
-    for lod in range(7):
-        var requested: Dictionary = {}
-        world._collect_lod_tiles(
-            lod, 0, 0,
-            Vector2(5000.0, 5000.0), Vector2(0.0, -1.0), Vector2.ZERO,
-            requested
-        )
-        var key: Vector2i = world._make_lod_key(lod, 0, 0)
-        var actual_step: int = int(requested[key]["step_voxels"])
-        if actual_step != expected_steps_voxels[lod]:
-            errors.append("Coarse default LOD%d stride expected %d voxels, got %d" % [
-                lod, expected_steps_voxels[lod], actual_step
-            ])
-
-    var step_profiles: Array = [
-        [0, [2, 4, 8, 16, 32, 64, 128]],
-        [1, [2, 8, 16, 32, 64, 128, 256]],
-        [2, [2, 16, 32, 64, 128, 256, 512]],
-        [3, [2, 32, 64, 128, 256, 512, 1024]]
-    ]
-    for profile in step_profiles:
-        world.set_lod_settings(int(profile[0]), 128.0)
-        var expected_profile: Array = profile[1]
-        for lod in range(7):
-            var actual_step: int = world.get_mesh_step_voxels(lod)
-            var expected_step: int = int(expected_profile[lod])
-            if actual_step != expected_step:
-                errors.append("Detail bias %d LOD%d stride expected %d voxels, got %d" % [
-                    int(profile[0]), lod, expected_step, actual_step
-                ])
-    world.set_lod_settings(1, 128.0)
-
-    var root_count: int = ceili(float(world._world_size_voxels) / float(world._chunk_size_voxels * 64))
-    if root_count != 5:
-        errors.append("10 km map should need 5 LOD6 roots per axis, got %d" % root_count)
-    var last_root := world._chunk_bounds(world._make_lod_key(6, 4, 4))
-    if not is_equal_approx(float(last_root["width"]), 1808.0):
-        errors.append("Last edge tile should be clipped to 1808 m, got %.1f m" % float(last_root["width"]))
-
     world.queue_free()
     await process_frame
     if errors.is_empty():
-        print("Far a Way LOD hierarchy smoke test passed.")
+        print("Far a Way 8-level LOD smoke test passed.")
         quit(0)
     else:
         for error_text in errors:

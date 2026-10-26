@@ -2,7 +2,15 @@
 
 All notable changes are recorded here. The current version is defined by `project.godot` and `VERSION`.
 
-## 0.1.0.10 — 2026-10-25
+## 0.1.0.10 — 2026-10-26
+
+- Inserted a 20 cm LOD tier between the 10 cm LOD0 and the former 40 cm LOD1. The new tier occupies a short 64–80 m ring, preserving the previous distance ranges for the larger mesh steps and retaining 12.8 m cells at the farthest level.
+- Calculated the default LOD0 boundary for a 1080p view: with vertical FOV 82°, a 10 cm cell projects to approximately one pixel at about 62 m, so the 64 m boundary remains appropriate.
+- Kept visible voxel surfaces out of the shadow map and retained smooth continuous-heightfield shadow proxies for landform silhouettes. Shadow proxy sampling is coarser at distant LODs, and directional shadow distance is capped at 1,024 m independently of the 4,096 m terrain view.
+- Added screen-space softening for sub-pixel 10 cm risers so their horizontal-normal walls produce fewer dark contour/Moiré strips without enabling expensive MSAA ×4. Vertical voxel walls do not receive terrain shadow attenuation.
+- Added a cheaper distant material path from LOD3 onward, skipping fine per-cell colours and Voronoi crack searches; near material functions also skip detail work when the projected contribution is negligible.
+- Reduced the default number of concurrent mesh jobs from eight to four, slowed redundant stream refreshes, cached the immutable mountain profile rather than rebuilding dictionaries for each chunk, coarsened far shadow proxies, and bulk-copied native geometry into packed arrays.
+- Removed unused shadow-mesh count metadata and experimental graphics controls. Legacy saved graphics/LOD override sections are cleared on upgrade; the pause menu keeps its styling but no longer exposes AA, shadow-mode or view-distance controls. Default MSAA and screen-space AA are disabled.
 
 - Removed the brown soil band beneath gray mountain rock. Both mesh builders now make visible walls and rock-topped slopes solid gray stone; grass-topped ground retains a shallow soil layer.
 - Simplified the graphics menu to one anti-aliasing selector; added strict/gradual shadow modes and a live view-distance slider from 512 to 8192 m.
