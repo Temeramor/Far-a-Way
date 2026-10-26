@@ -1,0 +1,117 @@
+name: Extract uploaded project archive
+
+on:
+  push:
+    branches:
+      - update
+    paths:
+      - Far-a-Way-update.zip
+      - .github/workflows/extract-far-away-archive.yml
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/update'
+    steps:
+      - name: Check out update
+        uses: actions/checkout@v4
+        with:
+          ref: update
+          fetch-depth: 1
+
+      - name: Extract archive and synchronize branch files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path, PurePosixPath
+          from zipfile import ZipFile
+          import shutil
+          import stat
+          import tempfile
+
+          repo = Path.cwd()
+          archive = repo / "Far-a-Way-update.zip"
+          if not archive.is_file():
+              raise SystemExit("Archive Far-a-Way-update.zip was not found.")
+
+          with ZipFile(archive) as zf:
+              members = []
+              for info in zf.infolist():
+                  name = PurePosixPath(info.filename)
+                  if info.is_dir() or not name.parts:
+                      continue
+                  if name.is_absolute() or ".." in name.parts:
+                      raise SystemExit(f"Unsafe archive path rejected: {info.filename}")
+                  if ".git" in name.parts or "__MACOSX" in name.parts:
+                      continue
+                  members.append((info, name))
+              if not members:
+                  raise SystemExit("The archive contains no usable files.")
+
+              roots = {name.parts[0] for _, name in members}
+              strip_root = len(roots) == 1 and all(len(name.parts) > 1 for _, name in members)
+              extracted = Path(tempfile.mkdtemp(prefix="far-away-archive-"))
+              expected = set()
+              for info, name in members:
+                  rel = PurePosixPath(*name.parts[1:]) if strip_root else name
+                  if not rel.parts:
+                      continue
+                  target = extracted.joinpath(*rel.parts)
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  target.write_bytes(zf.read(info))
+                  mode = (info.external_attr >> 16) & 0o777
+                  if mode:
+                      target.chmod(mode)
+                  expected.add(rel.as_posix())
+
+          if not (extracted / "project.godot").is_file():
+              raise SystemExit(
+                  "Extraction stopped without changing the branch: project.godot was not found "
+                  "at the archive root. The ZIP may not be a full project archive."
+              )
+          if len(expected) < 10:
+              raise SystemExit(
+                  f"Extraction stopped without changing the branch: only {len(expected)} files found."
+              )
+
+          # Remove repository files absent from the archive, but never touch Git internals.
+          for path in sorted(repo.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+              if path == archive or ".git" in path.relative_to(repo).parts:
+                  continue
+              rel = path.relative_to(repo)
+              if path.is_file() or path.is_symlink():
+                  if rel.as_posix() not in expected:
+                      path.unlink()
+              elif path.is_dir():
+                  try:
+                      path.rmdir()
+                  except OSError:
+                      pass
+
+          for source in extracted.rglob("*"):
+              if not source.is_file():
+                  continue
+              rel = source.relative_to(extracted)
+              destination = repo / rel
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(source, destination)
+
+          print(f"Archive validated and extracted: {len(expected)} files.")
+          print("Project version file:", (repo / "VERSION").read_text().strip() if (repo / "VERSION").is_file() else "not present")
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "Restore project files from uploaded archive"
+          git push origin HEAD:update
