@@ -14,7 +14,7 @@
 - Added a stylised terrain material with slope-based grass/rock blending, pixel colour variation, varied Voronoi-style rock cracks, consistent top/side surface treatment and reduced-cost distant shading.
 - Added separate smooth terrain-shadow proxy meshes so landform silhouettes can cast shadows without visible voxel surfaces casting individual block shadows.
 - Added screen-space-aware distant shading simplification, softer lighting on sub-pixel voxel risers and a default MSAA ×2 profile.
-- Added a first-person player controller with mouse look, keyboard movement, flight-mode toggle, flight speed/FOV settings and return-to-ground placement.
+- Added a first-person player controller with mouse look, keyboard movement, a double-tap Space flight-mode toggle, flight speed/FOV settings and spawn placement on generated terrain.
 - Added the main menu, world loading screen, pause menu, settings page and return-to-menu flow.
 - Added an animated sky system with time-of-day progression, sun, moon, stars, cloud layers, atmospheric fog and environmental lighting controls.
 - Added Clear, Cloudy and Overcast weather presets, plus in-game time controls and presets.
