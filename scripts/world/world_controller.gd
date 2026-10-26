@@ -8,9 +8,9 @@ const PauseMenuScript = preload("res://scripts/ui/pause_menu.gd")
 @onready var player: PlayerController = $Player
 @onready var touch_controls: TouchControls = $CanvasLayer/TouchControls
 @onready var loading_screen: LoadingScreen = $CanvasLayer/LoadingScreen
-@onready var sky_system: WorldEnvironment = $Sky3D
-@onready var sky_dome: Node = $Sky3D/SkyDome
-@onready var time_of_day: Node = $Sky3D/TimeOfDay
+@onready var sky_system: WorldEnvironment = $Sky
+@onready var sky_dome: Node = $Sky/SkyDome
+@onready var time_of_day: Node = $Sky/TimeOfDay
 
 const WEATHER_CLEAR: int = 0
 const WEATHER_CLOUDY: int = 1
