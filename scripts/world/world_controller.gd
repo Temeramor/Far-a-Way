@@ -644,7 +644,6 @@ func _toggle_voxen_debug() -> void:
 func _build_pause_menu_ui() -> void:
 
     _pause_menu = PauseMenuScript.new() as PauseMenu
-    _pause_menu.configure(voxel_world, self)
     _pause_menu.opened.connect(_on_pause_menu_opened)
     _pause_menu.closed.connect(_on_pause_menu_closed)
     _pause_menu.quit_to_menu_requested.connect(_return_to_menu)
