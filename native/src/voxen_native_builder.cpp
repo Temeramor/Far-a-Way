@@ -827,23 +827,20 @@ struct MeshBuild {
         cells_z = static_cast<int32_t>(std::ceil(static_cast<double>(size_voxels_z) / step_voxels));
 
         noise.configure_from_job(job_data, static_cast<double>(world_size_voxels) * VOXEL_SIZE);
-        build_cache_and_heights();
-        build_surface_types();
-
-        // Reserve only the shared grid size for smooth LOD7; ordinary tiers reserve
-        // space for greedy top faces, side faces and stitching skirts.
-        const size_t base_cells = static_cast<size_t>(cells_x) * cells_z;
-        const size_t vertex_reserve = lod == 7
-            ? static_cast<size_t>(cells_x + 1) * (cells_z + 1)
-            : base_cells * 8;
-        vertices.reserve(vertex_reserve);
-        normals.reserve(vertex_reserve);
-        colors.reserve(vertex_reserve);
-        indices.reserve(base_cells * (lod == 7 ? 6 : 12));
 
         if (lod == 7) {
+            // Smooth far tier does not need the quantized height cache or categorical voxel map.
             build_smooth_far_surface();
         } else {
+            build_cache_and_heights();
+            build_surface_types();
+
+            const size_t base_cells = static_cast<size_t>(cells_x) * cells_z;
+            vertices.reserve(base_cells * 8);
+            normals.reserve(base_cells * 8);
+            colors.reserve(base_cells * 8);
+            indices.reserve(base_cells * 12);
+
             build_greedy_top_faces();
             build_exposed_side_faces();
             build_lod_skirts();

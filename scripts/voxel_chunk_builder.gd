@@ -56,6 +56,42 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
     var cell_size: float = float(step_voxels) * VOXEL_SIZE
     var cells_x: int = int(ceil(float(size_voxels_x) / float(step_voxels)))
     var cells_z: int = int(ceil(float(size_voxels_z) / float(step_voxels)))
+    if p_lod == 7:
+        # The farthest level has no collisions or visible voxel risers. Build only the
+        # smooth, shared-vertex surface and its lower-density landform-shadow proxy.
+        _build_smooth_far_surface(
+            generator, world_min_x, world_min_z, world_size_voxels,
+            start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z, step_voxels, cells_x, cells_z
+        )
+        var far_shadow_data: Dictionary = _build_smooth_shadow_surface(
+            generator, p_lod, world_min_x, world_min_z,
+            start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z
+        )
+        result = {
+            "coord": coord,
+            "lod": lod,
+            "step_voxels": step_voxels,
+            "neighbor_lods_used": neighbor_lods.duplicate(true),
+            "debug_lod_colors": debug_lod_colors,
+            "vertices": _vertices,
+            "normals": _normals,
+            "colors": _colors,
+            "indices": _indices,
+            "smooth_shadow_vertices": far_shadow_data["vertices"],
+            "smooth_shadow_normals": far_shadow_data["normals"],
+            "smooth_shadow_indices": far_shadow_data["indices"],
+            "position": Vector3(
+                world_min_x + float(start_voxel_x) * VOXEL_SIZE,
+                0.0,
+                world_min_z + float(start_voxel_z) * VOXEL_SIZE
+            ),
+            "has_geometry": not _indices.is_empty(),
+            "want_collision": false,
+            "worker_started_usec": worker_started_usec,
+            "build_usec": Time.get_ticks_usec() - build_started_usec
+        }
+        return result
+
     var macro_offset: int = maxi(1, int(round(1.0 / cell_size)))
     var halo: int = macro_offset + 1
     var grid_width: int = cells_x + halo * 2
@@ -111,20 +147,14 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
             if x >= 0 and x < cells_x and z >= 0 and z < cells_z:
                 surface_types[z * cells_x + x] = VoxelTerrainGenerator.ROCK if rock_weight >= 0.5 else VoxelTerrainGenerator.GRASS
 
-    if p_lod == 7:
-        _build_smooth_far_surface(
-            generator, world_min_x, world_min_z, world_size_voxels,
-            start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z, step_voxels, cells_x, cells_z
-        )
-    else:
-        _build_greedy_top_faces(
-            heights, surface_types, surface_rock_weights,
-            grid_width, halo, cells_x, cells_z, cell_size, step_voxels
-        )
-        _build_exposed_side_faces(
-            heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels
-        )
-        _build_lod_skirts(heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels, neighbor_lods)
+    _build_greedy_top_faces(
+        heights, surface_types, surface_rock_weights,
+        grid_width, halo, cells_x, cells_z, cell_size, step_voxels
+    )
+    _build_exposed_side_faces(
+        heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels
+    )
+    _build_lod_skirts(heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels, neighbor_lods)
     var smooth_shadow_data: Dictionary = _build_smooth_shadow_surface(
         generator, p_lod, world_min_x, world_min_z,
         start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z
