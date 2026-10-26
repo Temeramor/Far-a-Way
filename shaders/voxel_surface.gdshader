@@ -7,9 +7,7 @@ uniform float seed_high = 0.0;
 uniform bool debug_lod_colors = false;
 uniform vec4 skirt_visibility = vec4(1.0);
 uniform float lod_shadow_strength : hint_range(0.0, 1.0, 0.05) = 1.0;
-uniform float voxel_detail_filter_multiplier : hint_range(0.0, 2.0, 0.1) = 1.0;
-uniform float rock_crack_filter_multiplier : hint_range(0.0, 2.0, 0.1) = 1.0;
-uniform bool procedural_mipmap_enabled = true;
+uniform int lod_index = 0;
 
 varying vec3 world_position;
 varying vec3 world_normal;
@@ -174,6 +172,7 @@ vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world, float crack_weight) {
     vec3 warm_tint = mix(vec3(0.88, 0.84, 0.77), vec3(1.08, 1.045, 0.98), stone_warmth);
     vec3 smooth_tint = mix(cool_tint, warm_tint, smoothstep(0.18, 0.82, stone_warmth) * 0.62);
     base_color *= smooth_tint * stone_brightness;
+    if (crack_weight <= 0.001) return base_color;
 
     // Gently warp the cellular field, so crack paths are irregular rather than straight
     // or aligned into bands. Both fields are continuous world-space functions.
@@ -241,7 +240,6 @@ void vertex() {
 }
 
 void fragment() {
-    // Skirt faces use special vertex alpha tags; hide them only when the neighbour is ready at the same LOD.
     if (COLOR.a < 0.95) {
         float edge_code = floor((COLOR.a - 0.80) * 25.0 + 0.5);
         float edge_visible = skirt_visibility.x;
@@ -252,102 +250,129 @@ void fragment() {
         } else if (edge_code > 2.5) {
             edge_visible = skirt_visibility.w;
         }
-        if (edge_visible < 0.5) {
-            discard;
-        }
+        if (edge_visible < 0.5) discard;
     }
 
     vec3 normal = normalize(world_normal);
-    vec3 voxel_cell_3d = floor((world_position - normal * 0.001) / max(pixel_size, 0.1));
-    vec3 voxel_center_world = (voxel_cell_3d + vec3(0.5)) * max(pixel_size, 0.1);
-    vec2 pixel_cell = vec2(voxel_cell_3d.x + voxel_cell_3d.y * 37.0,
-                           voxel_cell_3d.z + voxel_cell_3d.y * 17.0);
-    vec2 pixel_center = voxel_center_world.xz;
-    float pixel_variation = hash21(pixel_cell + vec2(0.0, 7.7));
-    float broad_tone = value_noise(pixel_center * 0.035 + vec2(seed_low * 0.0002, 8.3));
-
-    float world_units_per_pixel = max(
-        length(dFdx(world_position)),
-        length(dFdy(world_position))
-    );
-    float voxel_footprint = world_units_per_pixel / max(pixel_size, 0.1);
-    float voxel_detail_weight = 1.0;
-    if (procedural_mipmap_enabled && voxel_detail_filter_multiplier > 0.001) {
-        voxel_detail_weight = 1.0 - smoothstep(0.70, 1.55, voxel_footprint * voxel_detail_filter_multiplier);
-    }
-
-    float rock_crack_footprint = world_units_per_pixel / 5.5;
-    float rock_crack_weight = 1.0;
-    if (procedural_mipmap_enabled && rock_crack_filter_multiplier > 0.001) {
-        rock_crack_weight = 1.0 - smoothstep(0.55, 1.25, rock_crack_footprint * rock_crack_filter_multiplier);
-    }
-
-    // Main's triplanar projection keeps rock colour coherent on steep faces as well as tops.
-    vec2 rock_world;
+    bool is_top_surface = COLOR.a >= 0.96 && COLOR.a < 0.995;
+    float top_rock_amount = clamp((COLOR.a - 0.965) / 0.025, 0.0, 1.0);
+    vec2 rock_world = world_position.xz;
     if (abs(normal.x) > abs(normal.y) && abs(normal.x) > abs(normal.z)) {
         rock_world = world_position.zy;
     } else if (abs(normal.z) > abs(normal.y)) {
         rock_world = world_position.xy;
-    } else {
-        rock_world = world_position.xz;
     }
-    vec2 rock_pixel_cell = floor(rock_world / max(pixel_size, 0.1));
-    vec2 rock_pixel_world = rock_pixel_cell * max(pixel_size, 0.1);
-
-    // Top-face alpha is a smoothly interpolated rock-weight channel (0.965–0.990).
-    // Ordinary vertical faces use alpha 1.0; stitching skirts use alpha below 0.95.
-    bool is_top_surface = COLOR.a >= 0.96 && COLOR.a < 0.995;
-    float top_rock_amount = clamp((COLOR.a - 0.965) / 0.025, 0.0, 1.0);
 
     if (debug_lod_colors) {
-        float variation = mix(0.96, 1.04, pixel_variation);
-        ALBEDO = clamp(COLOR.rgb * variation, vec3(0.0), vec3(1.0));
+        ALBEDO = clamp(COLOR.rgb, vec3(0.0), vec3(1.0));
         ROUGHNESS = 0.96;
-    } else if (is_top_surface) {
-        vec3 filtered_grass = distant_grass_color(world_position.xz);
-        vec3 filtered_rock = distant_rock_color(rock_world);
-        vec3 detailed_grass = grass_pixel(pixel_cell, pixel_center);
-        vec3 detailed_rock = rock_pixel(rock_pixel_cell, rock_pixel_world, rock_crack_weight);
-        vec3 filtered_color = mix(filtered_grass, filtered_rock, top_rock_amount);
-        vec3 detailed_color = mix(detailed_grass, detailed_rock, top_rock_amount);
-        // Blend weights are interpolated across the mesh, so transitions remain soft at every LOD.
-        ALBEDO = mix(filtered_color, detailed_color, voxel_detail_weight);
-        ROUGHNESS = mix(0.95, 0.84, top_rock_amount);
-    } else if (COLOR.g > COLOR.r * 1.35) {
-        vec3 filtered_grass = distant_grass_color(world_position.xz);
-        vec3 detailed_grass = grass_pixel(pixel_cell, pixel_center);
-        ALBEDO = mix(filtered_grass, detailed_grass, voxel_detail_weight);
-        ROUGHNESS = 0.95;
-    } else if (COLOR.r > COLOR.g * 1.15) {
-        vec3 filtered_soil = soil_palette(0.53);
-        vec3 detailed_soil = soil_palette(0.40 + pixel_variation * 0.20 + (broad_tone - 0.5) * 0.08);
-        ALBEDO = mix(filtered_soil, detailed_soil, voxel_detail_weight);
-        ROUGHNESS = 0.91;
+    } else if (lod_index >= 3) {
+        // Distant tiers skip per-cell hashes, fine colour variation and Voronoi crack searches.
+        if (is_top_surface) {
+            ALBEDO = mix(distant_grass_color(world_position.xz), distant_rock_color(rock_world), top_rock_amount);
+            ROUGHNESS = mix(0.95, 0.84, top_rock_amount);
+        } else if (COLOR.g > COLOR.r * 1.35) {
+            ALBEDO = distant_grass_color(world_position.xz);
+            ROUGHNESS = 0.95;
+        } else if (COLOR.r > COLOR.g * 1.15) {
+            ALBEDO = soil_palette(0.48);
+            ROUGHNESS = 0.91;
+        } else {
+            ALBEDO = distant_rock_color(rock_world);
+            ROUGHNESS = 0.84;
+        }
     } else {
-        vec3 filtered_rock = distant_rock_color(rock_world);
-        vec3 detailed_rock = rock_pixel(rock_pixel_cell, rock_pixel_world, rock_crack_weight);
-        ALBEDO = mix(filtered_rock, detailed_rock, voxel_detail_weight);
-        ROUGHNESS = 0.84;
+        float world_units_per_pixel = max(length(dFdx(world_position)), length(dFdy(world_position)));
+        float voxel_footprint = world_units_per_pixel / max(pixel_size, 0.1);
+        float voxel_detail_weight = 1.0 - smoothstep(0.70, 1.55, voxel_footprint);
+        float rock_crack_footprint = world_units_per_pixel / 5.5;
+        float rock_crack_weight = 1.0 - smoothstep(0.55, 1.25, rock_crack_footprint);
+
+        if (is_top_surface) {
+            vec3 filtered_color = mix(distant_grass_color(world_position.xz), distant_rock_color(rock_world), top_rock_amount);
+            if (voxel_detail_weight > 0.02) {
+                vec3 voxel_cell_3d = floor((world_position - normal * 0.001) / max(pixel_size, 0.1));
+                vec3 voxel_center_world = (voxel_cell_3d + vec3(0.5)) * max(pixel_size, 0.1);
+                vec2 pixel_cell = vec2(voxel_cell_3d.x + voxel_cell_3d.y * 37.0,
+                                       voxel_cell_3d.z + voxel_cell_3d.y * 17.0);
+                vec2 rock_pixel_cell = floor(rock_world / max(pixel_size, 0.1));
+                vec2 rock_pixel_world = rock_pixel_cell * max(pixel_size, 0.1);
+                vec3 detailed_color = mix(grass_pixel(pixel_cell, voxel_center_world.xz),
+                                          rock_pixel(rock_pixel_cell, rock_pixel_world, rock_crack_weight),
+                                          top_rock_amount);
+                ALBEDO = mix(filtered_color, detailed_color, voxel_detail_weight);
+            } else {
+                ALBEDO = filtered_color;
+            }
+            ROUGHNESS = mix(0.95, 0.84, top_rock_amount);
+        } else if (COLOR.g > COLOR.r * 1.35) {
+            vec3 filtered_color = distant_grass_color(world_position.xz);
+            if (voxel_detail_weight > 0.02) {
+                vec3 voxel_cell_3d = floor((world_position - normal * 0.001) / max(pixel_size, 0.1));
+                vec3 voxel_center_world = (voxel_cell_3d + vec3(0.5)) * max(pixel_size, 0.1);
+                vec2 pixel_cell = vec2(voxel_cell_3d.x + voxel_cell_3d.y * 37.0,
+                                       voxel_cell_3d.z + voxel_cell_3d.y * 17.0);
+                ALBEDO = mix(filtered_color, grass_pixel(pixel_cell, voxel_center_world.xz), voxel_detail_weight);
+            } else {
+                ALBEDO = filtered_color;
+            }
+            ROUGHNESS = 0.95;
+        } else if (COLOR.r > COLOR.g * 1.15) {
+            vec3 filtered_color = soil_palette(0.53);
+            if (voxel_detail_weight > 0.02) {
+                vec2 pixel_cell = floor(world_position.xz / max(pixel_size, 0.1));
+                float pixel_variation = hash21(pixel_cell);
+                float broad_tone = value_noise(world_position.xz * 0.035);
+                vec3 detailed_color = soil_palette(0.40 + pixel_variation * 0.20 + (broad_tone - 0.5) * 0.08);
+                ALBEDO = mix(filtered_color, detailed_color, voxel_detail_weight);
+            } else {
+                ALBEDO = filtered_color;
+            }
+            ROUGHNESS = 0.91;
+        } else {
+            vec3 filtered_color = distant_rock_color(rock_world);
+            if (voxel_detail_weight > 0.02) {
+                vec2 rock_pixel_cell = floor(rock_world / max(pixel_size, 0.1));
+                vec2 rock_pixel_world = rock_pixel_cell * max(pixel_size, 0.1);
+                ALBEDO = mix(filtered_color, rock_pixel(rock_pixel_cell, rock_pixel_world, rock_crack_weight), voxel_detail_weight);
+            } else {
+                ALBEDO = filtered_color;
+            }
+            ROUGHNESS = 0.84;
+        }
     }
     METALLIC = 0.0;
 }
 
 // Blend directional shadow attenuation per LOD while preserving the base albedo.
 void light() {
+    vec3 light_normal = normalize(NORMAL);
+    float side_face_weight = 1.0 - smoothstep(0.15, 0.45, abs(normalize(world_normal).y));
+    float world_units_per_pixel = max(length(dFdx(world_position)), length(dFdy(world_position)));
+    // Subpixel 10 cm risers create dark contour strips. Soften their lighting rather than
+    // enabling costly MSAA across the entire frame.
+    float riser_pixels = 0.1 / max(world_units_per_pixel, 0.001);
+    float subpixel_riser_weight = 1.0 - smoothstep(0.65, 1.35, riser_pixels);
+    vec3 up_view = normalize((VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+    light_normal = normalize(mix(light_normal, up_view, side_face_weight * subpixel_riser_weight * 0.85));
+
     float direct_attenuation = ATTENUATION;
     if (LIGHT_IS_DIRECTIONAL) {
-        direct_attenuation = mix(1.0, ATTENUATION, clamp(lod_shadow_strength, 0.0, 1.0));
+        // The smooth heightfield proxy casts landform shadows. Vertical voxel risers don't
+        // receive shadow attenuation, preventing dark checkerboard bands at long distance.
+        direct_attenuation = side_face_weight > 0.5
+            ? 1.0
+            : mix(1.0, ATTENUATION, clamp(lod_shadow_strength, 0.0, 1.0));
     }
     if (LIGHT_IS_AREA) {
         DIFFUSE_LIGHT += LIGHT_AREA_DIFFUSE_MULTIPLIER * direct_attenuation * LIGHT_COLOR;
         SPECULAR_LIGHT += LIGHT_AREA_SPECULAR_MULTIPLIER * direct_attenuation * LIGHT_COLOR * SPECULAR_AMOUNT;
     } else {
-        float ndotl = clamp(dot(NORMAL, LIGHT), 0.0, 1.0);
+        float ndotl = clamp(dot(light_normal, LIGHT), 0.0, 1.0);
         DIFFUSE_LIGHT += ndotl * direct_attenuation * LIGHT_COLOR / PI;
         vec3 half_vector = normalize(LIGHT + VIEW);
         float roughness = clamp(ROUGHNESS, 0.04, 1.0);
-        float specular_power = mix(128.0, 4.0, roughness);
-        float specular_lobe = pow(max(dot(NORMAL, half_vector), 0.0), specular_power);
+        float specular_lobe = pow(max(dot(light_normal, half_vector), 0.0), mix(128.0, 4.0, roughness));
         SPECULAR_LIGHT += specular_lobe * direct_attenuation * LIGHT_COLOR
             * SPECULAR_AMOUNT * (1.0 - roughness) * 0.08;
     }

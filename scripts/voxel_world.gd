@@ -203,10 +203,14 @@ func set_shadow_mode(mode: int) -> void:
 
 
 func get_lod_boundary_m(lod_index: int) -> float:
-    # Defaults: LOD0..LOD6 boundaries are 64, 128, 256, 512, 1024, 2048 and 4096 m.
+    # Insert a short 20 cm ring from 64 to 80 m, then preserve the former LOD distance bands.
     if lod_index < 0 or lod_index > 6:
         return INF
-    return lod0_distance_m * float(1 << lod_index)
+    if lod_index == 0:
+        return lod0_distance_m
+    if lod_index == 1:
+        return lod0_distance_m * 1.25
+    return lod0_distance_m * float(1 << (lod_index - 1))
 
 
 func get_mesh_step_voxels(lod_index: int) -> int:

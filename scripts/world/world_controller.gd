@@ -63,7 +63,7 @@ func _ready() -> void:
     touch_controls.visible = false
     touch_controls.process_mode = Node.PROCESS_MODE_DISABLED
     loading_screen.visible = false
-    voxel_world.set_lod_settings(GameSettings.lod_detail_bias, GameSettings.lod0_distance_m)
+    voxel_world.set_lod_settings(GameSettings.lod0_distance_m)
     voxel_world.set_shadow_mode(GameSettings.shadow_mode)
     voxel_world.set_render_distance_m(GameSettings.view_distance_m)
     _configure_sky_system()
@@ -105,7 +105,7 @@ func _apply_view_distance_environment(distance_m: float) -> void:
             directional_light.shadow_enabled = true
             directional_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
             directional_light.directional_shadow_blend_splits = true
-            directional_light.directional_shadow_max_distance = safe_distance
+            directional_light.directional_shadow_max_distance = minf(safe_distance, 1024.0)
             directional_light.directional_shadow_fade_start = 0.92
 
 
