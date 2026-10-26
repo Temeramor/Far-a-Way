@@ -1,40 +1,42 @@
 # Far a Way 0.1.0.1
 
-Far a Way is a first-person exploration prototype focused on a large procedural voxel landscape. The project uses **Godot 4.7.2**, the **Forward+ renderer**, and a native C++ GDExtension for the expensive per-chunk terrain mesh work.
+Far a Way is a first-person exploration prototype focused on a large procedural voxel landscape. The project uses **Godot 4.7.2**, the **Forward+ renderer**, and a native C++ GDExtension for the CPU-intensive terrain chunk builder.
 
 ## Project status
 
 - **Platform:** Windows x86-64.
 - **Renderer:** Forward+.
 - **World:** seeded landscape with a default area of 10 × 10 km.
-- **Terrain resolution:** 10 cm base voxel height steps.
-- **Default view distance:** 4,096 m.
-- **Project version:** `0.1.0.1`.
+- **Base terrain resolution:** 10 cm voxel height steps.
+- **Default terrain view distance:** 4,096 m.
+- **Version:** `0.1.0.1`.
 
-The terrain is a height-column landscape: each horizontal position has a generated surface height. It is not a fully editable 3D voxel volume.
+The terrain is generated as height columns: each horizontal position has one generated surface height. Meshes and collisions are streamed around the player instead of creating a node for each voxel.
 
-## Controls
+## Main menu and controls
+
+The main menu contains **New Game**, **Settings** and **Exit**. New Game lets you enter a seed as a number or any text string; arbitrary text is converted to a deterministic integer, so the same input recreates the same landscape. The loading screen reports progress while the initial spawn terrain and collision are prepared.
+
+The main-menu Settings page contains persistent controls for flight speed (**×1–×20**) and flight field of view (**82°–120°**), with Save, Cancel and Defaults actions.
+
+In the world:
 
 - **WASD / arrow keys:** move.
-- **Mouse:** look around.
-- **Esc:** pause or resume. The pause menu includes Continue, Settings and Return to Menu.
-- **Double-tap Space:** toggle flight.
-- **M:** open or close the weather and time-of-day menu.
-- **R:** regenerate the landscape with a new seed.
-- **F3:** toggle debug colours for terrain LOD levels.
-- **VOXEN DEBUG:** show terrain streaming, LOD, collision and worker-task diagnostics.
-
-The world HUD also provides weather and time-of-day controls. Available weather presets are Clear, Cloudy and Overcast; time can be adjusted with the available controls and presets. The sky system animates the sun, moon, stars and cloud layers and manages atmospheric fog and environmental lighting. The Settings page in the pause menu is currently informational; adjustable graphics options have not been added yet.
+- **Mouse:** look around. Click to capture the mouse; pressing **Esc** releases it when the pause menu is opened.
+- **Double-tap Space:** enable or disable flight. Flight follows the camera direction and uses the configured speed multiplier and FOV.
+- **Esc:** open or close pause. The pause menu has Continue, Settings and Return to Menu actions. Its current Settings page shows the Forward+ / MSAA baseline notice.
+- **M:** open or close the weather selector.
+- **VOXEN DEBUG:** the on-screen debug control opens streaming, LOD, collision and worker-task diagnostics.
 
 ## Procedural terrain
 
-The landscape is generated from a seed using several noise fields and seeded mountain chains. Mountain height and width scale with the chosen world size, and the terrain surface stays continuous until interpolation is complete and the final height is quantised to the voxel grid.
+The landscape uses a seed-controlled set of layered noise fields and seeded mountain chains. Mountain height and width scale with world size. Height samples remain continuous while cached/interpolated and are quantised to the 10 cm voxel grid at the final mesh-sampling stage.
 
-The surface material blends grass and rock according to terrain slope. Rock regions use a stylised pixel palette and varied Voronoi-style cracks. The blend is continuous across chunk borders, and the upper voxel's side faces use the same grass/rock surface treatment as the top face. Distant LOD levels use a cheaper material path that skips fine per-cell variation and crack calculations when they contribute little to the final image.
+The surface material blends grass and rock according to slope. The stylised palette uses pixel-scale colour variation and varied Voronoi-style cracks on nearer terrain; fine per-cell variation and crack calculations are reduced at distance. The upper voxel's vertical faces use the same grass/rock surface treatment as its top face, and material transitions are smoothed across chunk borders.
 
-## Streaming and level of detail
+## Chunk streaming and level of detail
 
-Terrain is split into chunks and streamed around the player. Eight sampling tiers progressively reduce mesh density with distance:
+The world is divided into terrain chunks, generated in the background and prioritised as the player moves. Eight mesh sampling tiers progressively reduce geometry detail with distance:
 
 | LOD | Sampling step |
 |---|---:|
@@ -47,40 +49,42 @@ Terrain is split into chunks and streamed around the player. Eight sampling tier
 | LOD6 | 6.4 m |
 | LOD7 | 12.8 m |
 
-The nearest tier extends to roughly 64 m, with a short intermediate 20 cm ring between 64 and 80 m; larger rings handle successively more distant terrain out to the default view distance. The farthest tier uses a smooth shared-vertex surface to preserve large landform silhouettes without distant block-shaped risers.
+The default LOD0 boundary is 64 m, followed by a short 20 cm ring from 64 to 80 m; the later boundaries expand by powers of two to cover the distant landscape. The farthest tier uses a smooth shared-vertex heightfield surface, preserving broad mountain silhouettes without distant block-shaped risers.
 
-The hierarchy keeps a parent tile visible until the required child tiles are ready, avoiding holes during LOD refinement. A one-cell border halo, stitching skirts and neighbour-aware visibility help keep adjacent chunks visually connected. Streaming requests are prioritised by distance, view direction and predicted movement. Build-time estimates and queue/apply timings feed the priority model, while a bounded worker-task queue preserves time for rendering and main-thread scene work.
+Parent tiles remain visible until the required child tiles are ready, helping prevent temporary holes during refinement. A border halo, stitching skirts and neighbour-aware visibility keep adjacent chunks connected. The stream manager prioritises jobs using distance, view direction, velocity prediction and measured build/queue/apply timings. The worker-task limit adjusts to available CPU cores so scene management and rendering retain processing time.
 
-## Lighting and shadows
+## Lighting, weather and time of day
 
-Visible voxel meshes do not cast individual block shadows. Instead, each streamed LOD can provide a separate, smoother terrain-shadow proxy, allowing broad mountain silhouettes and landform shading without the checkerboard effect of dense block-step shadows. Proxy density is reduced with distance, the directional shadow range is capped independently of the terrain view distance, and fine surface shadow attenuation fades at distant LOD levels.
+The sky system animates the sun, moon, stars and cloud layers, controls atmospheric fog and environmental lighting, and advances the in-game clock. The world HUD provides three weather presets — **Clear**, **Cloudy** and **Overcast** — plus time selection and the **Dawn**, **Day**, **Dusk** and **Night** presets.
 
-The project uses a baseline MSAA ×2 profile with screen-space AA disabled. Forward+ is selected as the desktop renderer. Additional advanced rendering effects are not currently enabled by default.
+Visible voxel meshes do not cast individual block shadows. Separate smooth terrain-shadow proxies cast the broader landform silhouettes, reducing the block-step shadow checkerboard. Proxy sampling is coarsened with distance; the directional shadow range is limited independently of terrain view distance, and visible surface shadowing fades at distant LODs.
+
+The Forward+ renderer is selected with a baseline **MSAA ×2** profile and screen-space AA disabled. The pause-menu Settings page currently reports that baseline rather than exposing advanced graphics sliders.
 
 ## Native terrain builder
 
-The native extension is registered as `VoxEnNativeBuilder` and is preferred whenever the Windows DLL is available. It handles the CPU-intensive per-chunk operations in C++:
+The Windows extension registers `VoxEnNativeBuilder` and is the production path for per-chunk CPU work. The C++ implementation includes:
 
-- procedural height and slope sampling for mesh generation;
+- procedural terrain height and slope sampling from the world seed and mountain profile;
 - continuous height caching, cubic interpolation and final voxel-height quantisation;
-- greedy merging of top faces and generation of exposed side faces;
-- terrain material weights, chunk-border halo handling and LOD stitching skirts;
-- smooth far-surface and terrain-shadow proxy geometry;
+- greedy merging of top faces and creation of exposed side geometry;
+- per-surface material weights, neighbour data, border halo handling and LOD stitching skirts;
+- the smooth far-distance surface and separate terrain-shadow proxy meshes;
 - collision height-map data;
-- bulk preparation of vertex, normal, colour and index arrays for Godot.
+- bulk vertex, normal, colour and index-array preparation for Godot.
 
-Chunk jobs run through `WorkerThreadPool`. GDScript remains responsible for high-level world streaming, hierarchy/visibility decisions, job scheduling, attaching mesh and physics resources, player/gameplay orchestration, UI, and the sky/weather controls. A GDScript mesh builder remains available as a compatibility fallback if the native extension is missing; normal performance should be evaluated with the native Windows build installed.
+Chunk build jobs are dispatched through Godot's `WorkerThreadPool`. GDScript manages world lifecycle, LOD coverage/visibility, job scheduling and priorities, attachment/retirement of render and physics nodes, player controls, menus, weather and time-of-day UI. A similarly structured GDScript mesh builder remains as a fallback for a project run without the native DLL; it is slower and should not be used to assess normal terrain-generation performance.
 
-The repository does not include compiled native binaries. Rebuild the extension after changing C++ sources.
+Compiled native binaries are not included in the repository. Build the extension for Windows after cloning and whenever its C++ sources change.
 
-### Build requirements
+### Native build requirements
 
 - Windows x86-64 and Visual Studio C++ Build Tools.
 - Python 3.12+ and SCons.
 - Godot 4.7.2 C++ bindings (`godot-cpp` tag `10.0.0-stable`).
 - Godot 4.7.2 using Forward+ and a compatible graphics driver.
 
-From the project root:
+Run from the project root:
 
 ```powershell
 git clone --depth 1 --branch 10.0.0-stable https://github.com/godotengine/godot-cpp.git native/godot-cpp
@@ -92,23 +96,24 @@ scons platform=windows target=template_release arch=x86_64
 
 The extension descriptor is `bin/voxen_native.gdextension`; output DLLs belong under `bin/windows/`.
 
-## Code layout
+## Project layout
 
-- `scripts/world/`: world controller and terrain-generation lifecycle adapter.
-- `scripts/voxel_world.gd`: chunk streaming, LOD hierarchy, task scheduling and diagnostics.
-- `scripts/voxel_chunk.gd`: attaches and retires render and collision resources for a chunk.
-- `scripts/voxel_generator.gd`: deterministic terrain profile and surface queries used by gameplay and fallback paths.
-- `scripts/voxel_chunk_mesh_builder_fallback.gd`: CPU mesh-builder fallback for when the native extension is unavailable.
-- `native/src/`: native C++ mesh builder and GDExtension registration.
-- `scripts/sky/` and `shaders/sky/`: sky, time-of-day, cloud and atmospheric-fog systems.
-- `scripts/player/` and `scripts/ui/`: player controller and menus/HUD.
-- `shaders/voxel_surface.gdshader`: procedural terrain surface material.
+- `scripts/menu/`: main menu, seed input and persistent flight settings.
+- `scripts/world/`: world lifecycle, startup loading, weather/time controls and world HUD.
+- `scripts/voxel_world.gd`: streamed chunk coverage, hierarchical LOD, job scheduling and diagnostics.
+- `scripts/voxel_chunk.gd`: render/collision resource application and retirement for each chunk.
+- `scripts/voxel_generator.gd`: deterministic terrain profile and surface-height queries.
+- `scripts/voxel_chunk_mesh_builder_fallback.gd`: CPU mesh-builder fallback.
+- `native/src/`: native C++ terrain builder and GDExtension registration.
+- `scripts/sky/` and `shaders/sky/`: sky, clock, cloud and atmospheric-fog systems.
+- `scripts/player/` and `scripts/ui/`: player control, loading screen and pause menu.
+- `shaders/voxel_surface.gdshader`: procedural terrain material.
 
-## Current limits and checks
+## Current limits and verification
 
-The current landscape does not provide arbitrary voxel editing, persistent terrain modification, enclosed caves or overhangs. Chunk collision uses height-map data, matching the height-column terrain model.
+The terrain is a height-column model rather than a full 3D voxel volume. It does not currently support arbitrary voxel editing, persistent terrain modification, enclosed caves or overhangs. Chunk collision uses height-map data consistent with this terrain model.
 
-With Godot 4.7.2 installed, check that resources import and scripts parse:
+With Godot 4.7.2 installed, check resource import and script parsing:
 
 ```powershell
 godot --headless --editor --path . --quit
@@ -116,6 +121,4 @@ godot --headless --path . --script res://tests/terrain_smoke_test.gd
 godot --headless --path . --script res://tests/lod_hierarchy_smoke_test.gd
 ```
 
-Rendering and native performance should also be verified by running the project with the rebuilt Windows extension on the target GPU.
-
-See [CHANGELOG.md](CHANGELOG.md) for the current baseline feature set.
+Then run the project with the rebuilt Windows extension and check rendering and streaming on the target GPU.
