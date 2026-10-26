@@ -152,10 +152,14 @@ struct NoiseSet {
         return std::max<int32_t>(1, static_cast<int32_t>(std::llround(surface_height(x, z) / VOXEL_SIZE)));
     }
 
-    int32_t surface_material(double height_m, double slope, double x, double z) const {
+    double surface_rock_weight(double slope, double x, double z) const {
         const double transition_noise = transition->get_noise_2d(x * 0.008, z * 0.008) * 0.05;
         const double normal_slope = 1.0 - 1.0 / std::sqrt(1.0 + slope * slope);
-        return normal_slope + transition_noise >= 0.39 ? ROCK : GRASS;
+        return smoothstep(0.30, 0.48, normal_slope + transition_noise);
+    }
+
+    int32_t surface_material(double height_m, double slope, double x, double z) const {
+        return surface_rock_weight(slope, x, z) >= 0.5 ? ROCK : GRASS;
     }
 };
 
@@ -622,6 +626,126 @@ struct MeshBuild {
         }
     }
 
+    void build_smooth_far_surface() {
+        // LOD7 keeps the old 12.8 m sampling interval, but connects continuous heights
+        // with shared vertices and smooth normals instead of flat voxel tops and risers.
+        const int32_t width = cells_x + 1;
+        const int32_t depth = cells_z + 1;
+        const size_t sample_count = static_cast<size_t>(width) * depth;
+        std::vector<double> smooth_heights(sample_count, 0.0);
+        std::vector<double> local_x(static_cast<size_t>(width), 0.0);
+        std::vector<double> local_z(static_cast<size_t>(depth), 0.0);
+        vertices.clear();
+        normals.clear();
+        colors.clear();
+        indices.clear();
+        vertices.reserve(sample_count);
+        normals.reserve(sample_count);
+        colors.reserve(sample_count);
+        indices.reserve(static_cast<size_t>(cells_x) * cells_z * 6);
+
+        for (int32_t x = 0; x < width; ++x) {
+            local_x[static_cast<size_t>(x)] =
+                static_cast<double>(std::min(x * step_voxels, size_voxels_x)) * VOXEL_SIZE;
+        }
+        for (int32_t z = 0; z < depth; ++z) {
+            local_z[static_cast<size_t>(z)] =
+                static_cast<double>(std::min(z * step_voxels, size_voxels_z)) * VOXEL_SIZE;
+        }
+
+        for (int32_t z = 0; z < depth; ++z) {
+            const double world_z = world_min_z + static_cast<double>(start_voxel_z) * VOXEL_SIZE
+                + local_z[static_cast<size_t>(z)];
+            for (int32_t x = 0; x < width; ++x) {
+                const double world_x = world_min_x + static_cast<double>(start_voxel_x) * VOXEL_SIZE
+                    + local_x[static_cast<size_t>(x)];
+                const size_t index = static_cast<size_t>(z) * width + x;
+                const double height = noise.surface_height(world_x, world_z);
+                smooth_heights[index] = height;
+                vertices.emplace_back(local_x[static_cast<size_t>(x)], height, local_z[static_cast<size_t>(z)]);
+            }
+        }
+
+        const double world_max_x = world_min_x + static_cast<double>(world_size_voxels) * VOXEL_SIZE;
+        const double world_max_z = world_min_z + static_cast<double>(world_size_voxels) * VOXEL_SIZE;
+        const double spacing = static_cast<double>(step_voxels) * VOXEL_SIZE;
+        for (int32_t z = 0; z < depth; ++z) {
+            const double world_z = world_min_z + static_cast<double>(start_voxel_z) * VOXEL_SIZE
+                + local_z[static_cast<size_t>(z)];
+            for (int32_t x = 0; x < width; ++x) {
+                const double world_x = world_min_x + static_cast<double>(start_voxel_x) * VOXEL_SIZE
+                    + local_x[static_cast<size_t>(x)];
+                const size_t index = static_cast<size_t>(z) * width + x;
+                const double center_height = smooth_heights[index];
+
+                double left_height = center_height;
+                double right_height = center_height;
+                double left_x = world_x;
+                double right_x = world_x;
+                if (x > 0) {
+                    left_height = smooth_heights[index - 1];
+                    left_x = world_min_x + static_cast<double>(start_voxel_x) * VOXEL_SIZE
+                        + local_x[static_cast<size_t>(x - 1)];
+                } else if (world_x > world_min_x + 0.001) {
+                    left_x = world_x - spacing;
+                    left_height = noise.surface_height(left_x, world_z);
+                }
+                if (x < cells_x) {
+                    right_height = smooth_heights[index + 1];
+                    right_x = world_min_x + static_cast<double>(start_voxel_x) * VOXEL_SIZE
+                        + local_x[static_cast<size_t>(x + 1)];
+                } else if (world_x < world_max_x - 0.001) {
+                    right_x = world_x + spacing;
+                    right_height = noise.surface_height(right_x, world_z);
+                }
+
+                double north_height = center_height;
+                double south_height = center_height;
+                double north_z = world_z;
+                double south_z = world_z;
+                if (z > 0) {
+                    north_height = smooth_heights[index - static_cast<size_t>(width)];
+                    north_z = world_min_z + static_cast<double>(start_voxel_z) * VOXEL_SIZE
+                        + local_z[static_cast<size_t>(z - 1)];
+                } else if (world_z > world_min_z + 0.001) {
+                    north_z = world_z - spacing;
+                    north_height = noise.surface_height(world_x, north_z);
+                }
+                if (z < cells_z) {
+                    south_height = smooth_heights[index + static_cast<size_t>(width)];
+                    south_z = world_min_z + static_cast<double>(start_voxel_z) * VOXEL_SIZE
+                        + local_z[static_cast<size_t>(z + 1)];
+                } else if (world_z < world_max_z - 0.001) {
+                    south_z = world_z + spacing;
+                    south_height = noise.surface_height(world_x, south_z);
+                }
+
+                const double dx = (right_height - left_height) / std::max(0.001, right_x - left_x);
+                const double dz = (south_height - north_height) / std::max(0.001, south_z - north_z);
+                normals.emplace_back(Vector3(-dx, 1.0, -dz).normalized());
+                const double rock_weight = noise.surface_rock_weight(std::sqrt(dx * dx + dz * dz), world_x, world_z);
+                Color color = material_color(rock_weight >= 0.5 ? ROCK : GRASS);
+                color.a = 0.965 + std::clamp(rock_weight, 0.0, 1.0) * 0.025;
+                colors.push_back(color);
+            }
+        }
+
+        for (int32_t z = 0; z < cells_z; ++z) {
+            for (int32_t x = 0; x < cells_x; ++x) {
+                const int32_t top_left = z * width + x;
+                const int32_t top_right = top_left + 1;
+                const int32_t bottom_left = top_left + width;
+                const int32_t bottom_right = bottom_left + 1;
+                indices.push_back(top_left);
+                indices.push_back(bottom_right);
+                indices.push_back(bottom_left);
+                indices.push_back(top_left);
+                indices.push_back(top_right);
+                indices.push_back(bottom_right);
+            }
+        }
+    }
+
     void build_smooth_shadow_surface() {
         // A continuous (non-voxelized) heightfield casts the terrain silhouette.
         // Bound each chunk to 256x256 cells while scaling physical sampling with LOD.
@@ -706,16 +830,24 @@ struct MeshBuild {
         build_cache_and_heights();
         build_surface_types();
 
-        // Conservative reserve avoids repeated growth in the geometry hot loop.
+        // Reserve only the shared grid size for smooth LOD7; ordinary tiers reserve
+        // space for greedy top faces, side faces and stitching skirts.
         const size_t base_cells = static_cast<size_t>(cells_x) * cells_z;
-        vertices.reserve(base_cells * 8);
-        normals.reserve(base_cells * 8);
-        colors.reserve(base_cells * 8);
-        indices.reserve(base_cells * 12);
+        const size_t vertex_reserve = lod == 7
+            ? static_cast<size_t>(cells_x + 1) * (cells_z + 1)
+            : base_cells * 8;
+        vertices.reserve(vertex_reserve);
+        normals.reserve(vertex_reserve);
+        colors.reserve(vertex_reserve);
+        indices.reserve(base_cells * (lod == 7 ? 6 : 12));
 
-        build_greedy_top_faces();
-        build_exposed_side_faces();
-        build_lod_skirts();
+        if (lod == 7) {
+            build_smooth_far_surface();
+        } else {
+            build_greedy_top_faces();
+            build_exposed_side_faces();
+            build_lod_skirts();
+        }
         build_smooth_shadow_surface();
 
         PackedVector3Array packed_vertices;
