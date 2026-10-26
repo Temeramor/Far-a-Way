@@ -15,9 +15,7 @@ signal flight_mode_changed(enabled: bool)
 @onready var camera_pivot: Node3D = $CameraPivot
 @onready var camera: Camera3D = $CameraPivot/Camera3D
 
-var touch_move: Vector2 = Vector2.ZERO
 var is_flying: bool = false
-var _mouse_look_active: bool = false
 var mouse_capture_paused: bool = false
 var _camera_yaw: float = 0.0
 var _camera_pitch: float = 0.0
@@ -27,14 +25,6 @@ var _last_space_tap_msec: int = -10000
 func _ready() -> void:
     camera_pivot.rotation = Vector3(_camera_pitch, _camera_yaw, 0.0)
     camera.fov = base_camera_fov
-
-
-func set_touch_move(value: Vector2) -> void:
-    touch_move = value.limit_length(1.0)
-
-
-func apply_look_delta(delta: Vector2) -> void:
-    _rotate_camera(delta)
 
 
 func reset_camera() -> void:
@@ -62,9 +52,9 @@ func _physics_process(delta: float) -> void:
         move_and_slide()
         return
 
-    var input_vector := touch_move
+    var input_vector := Vector2.ZERO
 
-    # Keyboard fallback for testing in the editor (WASD or arrows).
+    # Keyboard movement input.
     if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
         input_vector.x -= 1.0
     if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
@@ -115,8 +105,7 @@ func _input(event: InputEvent) -> void:
     if mouse_capture_paused:
         return
 
-    # Double-space toggles flight on desktop; touch controls emit the same toggle
-    # after a double tap on the right half of the screen.
+    # Double-space toggles flight mode.
     if event is InputEventKey and event.pressed and not event.echo:
         if event.keycode == KEY_SPACE:
             var now_msec: int = Time.get_ticks_msec()
@@ -132,7 +121,6 @@ func _unhandled_input(event: InputEvent) -> void:
         return
 
     if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-        _mouse_look_active = true
         Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
     elif event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
         _rotate_camera(event.relative)
