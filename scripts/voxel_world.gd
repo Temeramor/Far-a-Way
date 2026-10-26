@@ -377,7 +377,7 @@ func _refresh_streaming() -> void:
     var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 128))
     for tz in range(root_tiles):
         for tx in range(root_tiles):
-            _collect_lod_tiles(7, tx, tz, player_xz, heading, planar_velocity, wanted
+            _collect_lod_tiles(7, tx, tz, player_xz, heading, planar_velocity, wanted)
     _wanted = wanted
     for queued_coord in _queued.keys():
         if not wanted.has(queued_coord):
@@ -860,7 +860,7 @@ func _get_streaming_heading() -> Vector2:
 func _deadline_priority(center: Vector2, request: Dictionary, player_xz: Vector2, heading: Vector2, velocity: Vector2) -> float:
     var offset: Vector2 = center - player_xz
     var speed: float = velocity.length()
-    var lod_index: int = clampi(int(request["lod"]), 0, 6)
+    var lod_index: int = clampi(int(request["lod"]), 0, 7)
     if lod_index == 7:
         return -100000.0 + center.distance_to(player_xz)
     if bool(request.get("fallback", false)):

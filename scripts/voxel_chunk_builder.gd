@@ -117,13 +117,9 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
     )
     # Build separate shadow-only geometry for every LOD. Near/mid levels keep the same
     # vertical faces as the original terrain caster; distant levels use only top surfaces.
-    var shadow_top_vertex_count: int = _vertices.size()
-    var shadow_top_index_count: int = _indices.size()
     _build_exposed_side_faces(
         heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels
     )
-    var shadow_full_vertex_count: int = _vertices.size()
-    var shadow_full_index_count: int = _indices.size()
     _build_lod_skirts(heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels, neighbor_lods)
     var smooth_shadow_data: Dictionary = _build_smooth_shadow_surface(
         generator, p_lod, world_min_x, world_min_z,
@@ -140,10 +136,6 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
         "normals": _normals,
         "colors": _colors,
         "indices": _indices,
-        "shadow_top_vertex_count": shadow_top_vertex_count,
-        "shadow_top_index_count": shadow_top_index_count,
-        "shadow_full_vertex_count": shadow_full_vertex_count,
-        "shadow_full_index_count": shadow_full_index_count,
         "smooth_shadow_vertices": smooth_shadow_data["vertices"],
         "smooth_shadow_normals": smooth_shadow_data["normals"],
         "smooth_shadow_indices": smooth_shadow_data["indices"],
@@ -195,7 +187,7 @@ func _build_smooth_shadow_surface(
     # This is a continuous heightfield sampled independently of the visible voxel grid.
     # Keep the shadow mesh bounded to 256x256 cells per chunk: at distance its spacing
     # increases with LOD, while remaining finer than the visible voxel silhouette.
-    var shadow_step_voxels: int = 5 << maxi(0, p_lod - 2)
+    var shadow_step_voxels: int = 5 if p_lod <= 1 else (10 << maxi(0, p_lod - 3))
     var shadow_cells_x: int = ceili(float(size_voxels_x) / float(shadow_step_voxels))
     var shadow_cells_z: int = ceili(float(size_voxels_z) / float(shadow_step_voxels))
     var shadow_width: int = shadow_cells_x + 1
