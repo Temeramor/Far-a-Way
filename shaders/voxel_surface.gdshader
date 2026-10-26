@@ -239,14 +239,6 @@ vec3 distant_rock_color(vec2 projected_world) {
 void vertex() {
     world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
     world_normal = normalize(MODEL_NORMAL_MATRIX * NORMAL);
-
-    // Estimate world-space pixel footprint in the vertex stage so the light() function
-    // doesn't rely on dFdx/dFdy, which are only valid in fragment processing.
-    vec3 view_position = (VIEW_MATRIX * vec4(world_position, 1.0)).xyz;
-    float view_depth = max(-view_position.z, 0.001);
-    float pixel_world_size = (2.0 * view_depth)
-        / (max(VIEWPORT_SIZE.y, 1.0) * max(PROJECTION_MATRIX[1][1], 0.001));
-    riser_pixels_estimate = 0.1 / max(pixel_world_size, 0.001);
     view_up_direction = normalize((VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
 }
 
@@ -262,6 +254,16 @@ void fragment() {
             edge_visible = skirt_visibility.w;
         }
         if (edge_visible < 0.5) discard;
+    }
+
+    // Derivatives are available in fragment processing, not in light(). Reuse this
+    // footprint for near/mid materials and pass the riser estimate to the light function.
+    float world_units_per_pixel = 0.0;
+    if (lod_index < 3) {
+        world_units_per_pixel = max(length(dFdx(world_position)), length(dFdy(world_position)));
+        riser_pixels_estimate = 0.1 / max(world_units_per_pixel, 0.001);
+    } else {
+        riser_pixels_estimate = 1000.0;
     }
 
     vec3 normal = normalize(world_normal);
@@ -293,7 +295,6 @@ void fragment() {
             ROUGHNESS = 0.84;
         }
     } else {
-        float world_units_per_pixel = max(length(dFdx(world_position)), length(dFdy(world_position)));
         float voxel_footprint = world_units_per_pixel / max(pixel_size, 0.1);
         float voxel_detail_weight = 1.0 - smoothstep(0.70, 1.55, voxel_footprint);
         float rock_crack_footprint = world_units_per_pixel / 5.5;
@@ -359,8 +360,8 @@ void fragment() {
 void light() {
     vec3 light_normal = normalize(NORMAL);
     float side_face_weight = 1.0 - smoothstep(0.15, 0.45, abs(normalize(world_normal).y));
-    // Subpixel 10 cm risers create dark contour strips. Use the precomputed, interpolated
-    // pixel-size estimate rather than a costly MSAA pass or fragment derivatives in light().
+    // Subpixel 10 cm risers create dark contour strips. Use the fragment-computed estimate
+    // rather than a costly MSAA pass or unsupported derivatives in light().
     float subpixel_riser_weight = 1.0 - smoothstep(0.65, 1.35, riser_pixels_estimate);
     light_normal = normalize(mix(light_normal, view_up_direction,
         side_face_weight * subpixel_riser_weight * 0.85));
