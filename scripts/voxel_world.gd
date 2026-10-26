@@ -248,13 +248,13 @@ func _apply_seed_to_material() -> void:
 func get_surface_height(x: float, z: float) -> float:
     if _generator == null:
         _generator = GeneratorScript.new(seed_value, world_size_m)
-    _mountain_profile_cache = _generator.get_mountain_profile()
+        _mountain_profile_cache = _generator.get_mountain_profile()
     return float(_generator.get_surface_height_voxels(x, z)) * VOXEL_SIZE
 
 func get_voxel_material(global_voxel: Vector3i) -> int:
     if _generator == null:
         _generator = GeneratorScript.new(seed_value, world_size_m)
-    _mountain_profile_cache = _generator.get_mountain_profile()
+        _mountain_profile_cache = _generator.get_mountain_profile()
     return _generator.get_voxel_material(global_voxel, _world_min_x, _world_min_z, _world_size_voxels)
 
 func get_debug_text() -> String:
@@ -332,7 +332,7 @@ func get_startup_progress() -> float:
 func surface_sample_at_world(world_x: float, world_z: float) -> Vector3:
     if _generator == null:
         _generator = GeneratorScript.new(seed_value, world_size_m)
-    _mountain_profile_cache = _generator.get_mountain_profile()
+        _mountain_profile_cache = _generator.get_mountain_profile()
     return _generator.get_surface_sample(world_x, world_z)
 
 func _try_finish_startup_loading() -> void:
