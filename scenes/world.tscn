@@ -1,9 +1,8 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/world_controller.gd" id="1_world"]
 [ext_resource type="Script" path="res://scripts/world/terrain_generator.gd" id="2_terrain"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="3_player"]
-[ext_resource type="Script" path="res://scripts/ui/touch_controls.gd" id="4_touch"]
 [ext_resource type="PackedScene" path="res://scenes/loading_screen.tscn" id="5_loading"]
 [ext_resource type="Script" path="res://scripts/sky/Sky.gd" id="6_sky"]
 [ext_resource type="Script" path="res://scripts/voxel_world.gd" id="7_voxen_world"]
@@ -29,15 +28,5 @@ script = ExtResource("2_terrain")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 layer = 10
-
-[node name="TouchControls" type="Control" parent="CanvasLayer"]
-layout_mode = 3
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-script = ExtResource("4_touch")
 
 [node name="LoadingScreen" parent="CanvasLayer" instance=ExtResource("5_loading")]
