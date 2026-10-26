@@ -11,7 +11,6 @@ uniform int lod_index = 0;
 
 varying vec3 world_position;
 varying vec3 world_normal;
-varying float riser_pixels_estimate;
 varying vec3 view_up_direction;
 
 vec3 palette_color(vec3 srgb) {
@@ -256,14 +255,16 @@ void fragment() {
         if (edge_visible < 0.5) discard;
     }
 
-    // Derivatives are available in fragment processing, not in light(). Reuse this
-    // footprint for near/mid materials and pass the riser estimate to the light function.
+    // Derivatives are valid here. Estimate the 10 cm riser footprint once and smooth
+    // its lighting normal before the light pass, without any MSAA 4x full-screen cost.
     float world_units_per_pixel = 0.0;
     if (lod_index < 3) {
         world_units_per_pixel = max(length(dFdx(world_position)), length(dFdy(world_position)));
-        riser_pixels_estimate = 0.1 / max(world_units_per_pixel, 0.001);
-    } else {
-        riser_pixels_estimate = 1000.0;
+        float riser_pixels = 0.1 / max(world_units_per_pixel, 0.001);
+        float subpixel_riser_weight = 1.0 - smoothstep(0.65, 1.35, riser_pixels);
+        float side_face_weight = 1.0 - smoothstep(0.15, 0.45, abs(normalize(world_normal).y));
+        NORMAL = normalize(mix(normalize(NORMAL), view_up_direction,
+            side_face_weight * subpixel_riser_weight * 0.85));
     }
 
     vec3 normal = normalize(world_normal);
@@ -360,12 +361,6 @@ void fragment() {
 void light() {
     vec3 light_normal = normalize(NORMAL);
     float side_face_weight = 1.0 - smoothstep(0.15, 0.45, abs(normalize(world_normal).y));
-    // Subpixel 10 cm risers create dark contour strips. Use the fragment-computed estimate
-    // rather than a costly MSAA pass or unsupported derivatives in light().
-    float subpixel_riser_weight = 1.0 - smoothstep(0.65, 1.35, riser_pixels_estimate);
-    light_normal = normalize(mix(light_normal, view_up_direction,
-        side_face_weight * subpixel_riser_weight * 0.85));
-
     float direct_attenuation = ATTENUATION;
     if (LIGHT_IS_DIRECTIONAL) {
         // The smooth heightfield proxy casts landform shadows. Vertical voxel risers don't
