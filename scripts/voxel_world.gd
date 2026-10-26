@@ -1,12 +1,14 @@
 extends Node3D
 class_name VoxelWorld
 
+var _native_fallback_warning_shown: bool = false
+
 const VOXEL_SIZE: float = 0.1
 const LOD_KEY_STRIDE: int = 100000
 const BASE_MESH_STEP_VOXELS: int = 1
 const GeneratorScript = preload("res://scripts/voxel_generator.gd")
 const ChunkScript = preload("res://scripts/voxel_chunk.gd")
-const BuilderScript = preload("res://scripts/voxel_chunk_builder.gd")
+const FallbackBuilderScript = preload("res://scripts/voxel_chunk_mesh_builder_fallback.gd")
 
 @export_category("Voxel world")
 @export_range(256.0, 20000.0, 256.0) var world_size_m: float = 10000.0
@@ -559,13 +561,16 @@ func _process_chunk_jobs() -> void:
         started_jobs += 1
 
 func _create_mesh_builder() -> Object:
-    # Use the native CPU-only mesher when its library is installed; otherwise keep the
-    # proven GDScript path so source-only checkouts remain usable.
+    # The native C++ builder is the production path; the GDScript version is a fallback.
     if ClassDB.class_exists("VoxEnNativeBuilder"):
         var native_builder: Object = ClassDB.instantiate("VoxEnNativeBuilder")
         if native_builder != null:
             return native_builder
-    return BuilderScript.new()
+
+    if not _native_fallback_warning_shown:
+        push_warning("VoxEn native extension is unavailable; using the slower GDScript mesh-builder fallback. Build the Windows x86-64 extension for normal performance.")
+        _native_fallback_warning_shown = true
+    return FallbackBuilderScript.new()
 
 func _poll_worker_tasks() -> void:
     for task_key in _running_tasks.keys():
