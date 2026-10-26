@@ -1,7 +1,7 @@
 extends RefCounted
 class_name VoxelTerrainGenerator
 
-## Neverland terrain profile sampled as 10 cm voxel columns.
+## Seeded terrain profile sampled as 10 cm voxel columns.
 ## Chunk meshing is streamed; no world-sized height array or per-voxel Node allocation is used.
 
 const VOXEL_SIZE: float = 0.1
@@ -85,7 +85,7 @@ func _create_mountain_ranges() -> void:
             center + direction * half_length + side * rng.randf_range(-600.0, 600.0)
         ]
         # The source project defines these dimensions in world metres, not voxel counts.
-        # The 10 km reference keeps Neverland/main's exact mountain scale; smaller maps
+        # The 10 km reference defines the intended mountain scale; smaller maps
         # proportionally shrink mountain height and width instead of producing huge peaks.
         var mountain_scale: float = world_size_m / REFERENCE_WORLD_SIZE_M
         var range_height: float = rng.randf_range(850.0, 1320.0) * mountain_scale
