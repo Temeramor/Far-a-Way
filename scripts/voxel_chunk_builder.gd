@@ -111,16 +111,20 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
             if x >= 0 and x < cells_x and z >= 0 and z < cells_z:
                 surface_types[z * cells_x + x] = VoxelTerrainGenerator.ROCK if rock_weight >= 0.5 else VoxelTerrainGenerator.GRASS
 
-    _build_greedy_top_faces(
-        heights, surface_types, surface_rock_weights,
-        grid_width, halo, cells_x, cells_z, cell_size, step_voxels
-    )
-    # Build separate shadow-only geometry for every LOD. Near/mid levels keep the same
-    # vertical faces as the original terrain caster; distant levels use only top surfaces.
-    _build_exposed_side_faces(
-        heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels
-    )
-    _build_lod_skirts(heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels, neighbor_lods)
+    if p_lod == 7:
+        _build_smooth_far_surface(
+            generator, world_min_x, world_min_z, world_size_voxels,
+            start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z, step_voxels, cells_x, cells_z
+        )
+    else:
+        _build_greedy_top_faces(
+            heights, surface_types, surface_rock_weights,
+            grid_width, halo, cells_x, cells_z, cell_size, step_voxels
+        )
+        _build_exposed_side_faces(
+            heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels
+        )
+        _build_lod_skirts(heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels, neighbor_lods)
     var smooth_shadow_data: Dictionary = _build_smooth_shadow_surface(
         generator, p_lod, world_min_x, world_min_z,
         start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z
@@ -172,6 +176,118 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
         }
     result["build_usec"] = Time.get_ticks_usec() - build_started_usec
     return result
+
+
+func _build_smooth_far_surface(
+    generator: VoxelTerrainGenerator,
+    world_min_x: float,
+    world_min_z: float,
+    world_size_voxels: int,
+    start_voxel_x: int,
+    start_voxel_z: int,
+    size_voxels_x: int,
+    size_voxels_z: int,
+    step_voxels: int,
+    cells_x: int,
+    cells_z: int
+) -> void:
+    # Preserve the old 12.8 m sampling interval, but connect continuous heights with smooth normals.
+    var width: int = cells_x + 1
+    var depth: int = cells_z + 1
+    var sample_count: int = width * depth
+    var smooth_heights := PackedFloat32Array()
+    var local_x_m := PackedFloat32Array()
+    var local_z_m := PackedFloat32Array()
+    smooth_heights.resize(sample_count)
+    local_x_m.resize(width)
+    local_z_m.resize(depth)
+    _vertices.resize(sample_count)
+    _normals.resize(sample_count)
+    _colors.resize(sample_count)
+    _indices.resize(cells_x * cells_z * 6)
+
+    for x in range(width):
+        local_x_m[x] = float(mini(x * step_voxels, size_voxels_x)) * VOXEL_SIZE
+    for z in range(depth):
+        local_z_m[z] = float(mini(z * step_voxels, size_voxels_z)) * VOXEL_SIZE
+
+    for z in range(depth):
+        var world_z: float = world_min_z + float(start_voxel_z) * VOXEL_SIZE + local_z_m[z]
+        for x in range(width):
+            var world_x: float = world_min_x + float(start_voxel_x) * VOXEL_SIZE + local_x_m[x]
+            var index: int = z * width + x
+            var height: float = generator.get_surface_height(world_x, world_z)
+            smooth_heights[index] = height
+            _vertices[index] = Vector3(local_x_m[x], height, local_z_m[z])
+
+    var world_max_x: float = world_min_x + float(world_size_voxels) * VOXEL_SIZE
+    var world_max_z: float = world_min_z + float(world_size_voxels) * VOXEL_SIZE
+    var spacing: float = float(step_voxels) * VOXEL_SIZE
+    for z in range(depth):
+        var world_z: float = world_min_z + float(start_voxel_z) * VOXEL_SIZE + local_z_m[z]
+        for x in range(width):
+            var world_x: float = world_min_x + float(start_voxel_x) * VOXEL_SIZE + local_x_m[x]
+            var index: int = z * width + x
+            var center_height: float = smooth_heights[index]
+
+            var left_height: float = center_height
+            var right_height: float = center_height
+            var left_x: float = world_x
+            var right_x: float = world_x
+            if x > 0:
+                left_height = smooth_heights[index - 1]
+                left_x = world_min_x + float(start_voxel_x) * VOXEL_SIZE + local_x_m[x - 1]
+            elif world_x > world_min_x + 0.001:
+                left_x = world_x - spacing
+                left_height = generator.get_surface_height(left_x, world_z)
+            if x < cells_x:
+                right_height = smooth_heights[index + 1]
+                right_x = world_min_x + float(start_voxel_x) * VOXEL_SIZE + local_x_m[x + 1]
+            elif world_x < world_max_x - 0.001:
+                right_x = world_x + spacing
+                right_height = generator.get_surface_height(right_x, world_z)
+
+            var north_height: float = center_height
+            var south_height: float = center_height
+            var north_z: float = world_z
+            var south_z: float = world_z
+            if z > 0:
+                north_height = smooth_heights[index - width]
+                north_z = world_min_z + float(start_voxel_z) * VOXEL_SIZE + local_z_m[z - 1]
+            elif world_z > world_min_z + 0.001:
+                north_z = world_z - spacing
+                north_height = generator.get_surface_height(world_x, north_z)
+            if z < cells_z:
+                south_height = smooth_heights[index + width]
+                south_z = world_min_z + float(start_voxel_z) * VOXEL_SIZE + local_z_m[z + 1]
+            elif world_z < world_max_z - 0.001:
+                south_z = world_z + spacing
+                south_height = generator.get_surface_height(world_x, south_z)
+
+            var dx: float = (right_height - left_height) / maxf(right_x - left_x, 0.001)
+            var dz: float = (south_height - north_height) / maxf(south_z - north_z, 0.001)
+            _normals[index] = Vector3(-dx, 1.0, -dz).normalized()
+            var rock_weight: float = generator.get_surface_rock_weight(sqrt(dx * dx + dz * dz), world_x, world_z)
+            var color: Color = _material_color(
+                VoxelTerrainGenerator.ROCK if rock_weight >= 0.5 else VoxelTerrainGenerator.GRASS
+            )
+            color.a = 0.965 + clampf(rock_weight, 0.0, 1.0) * 0.025
+            _colors[index] = color
+
+    var cursor: int = 0
+    for z in range(cells_z):
+        for x in range(cells_x):
+            var top_left: int = z * width + x
+            var top_right: int = top_left + 1
+            var bottom_left: int = top_left + width
+            var bottom_right: int = bottom_left + 1
+            _indices[cursor] = top_left
+            _indices[cursor + 1] = bottom_right
+            _indices[cursor + 2] = bottom_left
+            _indices[cursor + 3] = top_left
+            _indices[cursor + 4] = top_right
+            _indices[cursor + 5] = bottom_right
+            cursor += 6
 
 
 func _build_smooth_shadow_surface(
