@@ -19,11 +19,6 @@ var _settings_panel: PanelContainer
 var _mouse_mode_before_pause: int = Input.MOUSE_MODE_VISIBLE
 
 
-func configure(_voxel_world: Node, _world_controller: Node = null) -> void:
-    # Keep the scene setup API while Windows graphics options are prepared.
-    pass
-
-
 func _ready() -> void:
     process_mode = Node.PROCESS_MODE_ALWAYS
     set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
