@@ -60,7 +60,11 @@ func build(
         "world_size_voxels": world_size_voxels,
         "debug_lod_colors": p_debug_lod_colors
     }
-    var builder = FallbackBuilderScript.new()
+    var builder: Object = null
+    if ClassDB.class_exists("VoxEnNativeBuilder"):
+        builder = ClassDB.instantiate("VoxEnNativeBuilder")
+    if builder == null:
+        builder = FallbackBuilderScript.new()
     apply_mesh_data(builder.build_mesh_data(job_data), material)
 
 func apply_mesh_data(data: Dictionary, material: Material) -> void:
