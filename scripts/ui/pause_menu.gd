@@ -14,23 +14,14 @@ const COLOR_GREEN: Color = Color("#6D8B45")
 const COLOR_TEXT: Color = Color("#E8D7B3")
 const COLOR_MUTED: Color = Color("#B8A986")
 
-var _voxel_world: Node
 var _main_panel: PanelContainer
 var _settings_panel: PanelContainer
-var _settings_scroll: ScrollContainer
-
-var _aa_selector: OptionButton
-var _shadow_mode_selector: OptionButton
-var _view_distance_slider: HSlider
-var _view_distance_label: Label
-var _world_controller: Node
-var _view_distance_drag_active: bool = false
 var _mouse_mode_before_pause: int = Input.MOUSE_MODE_VISIBLE
 
 
-func configure(voxel_world: Node, world_controller: Node = null) -> void:
-    _voxel_world = voxel_world
-    _world_controller = world_controller
+func configure(_voxel_world: Node, _world_controller: Node = null) -> void:
+    # Keep the scene setup API. Graphics now use the fixed automatic profile.
+    pass
 
 
 func _ready() -> void:
@@ -128,13 +119,12 @@ func _build_ui() -> void:
 
     _settings_panel = _make_panel("GraphicsSettingsPanel")
     center.add_child(_settings_panel)
-
     var settings_stack := VBoxContainer.new()
-    settings_stack.add_theme_constant_override("separation", 8)
+    settings_stack.add_theme_constant_override("separation", 10)
     _settings_panel.add_child(settings_stack)
 
     var settings_title := Label.new()
-    settings_title.text = "НАСТРОЙКИ ГРАФИКИ"
+    settings_title.text = "НАСТРОЙКИ"
     settings_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     settings_title.add_theme_font_size_override("font_size", 22)
     settings_title.add_theme_color_override("font_color", COLOR_GOLD)
@@ -143,75 +133,17 @@ func _build_ui() -> void:
     settings_stack.add_child(settings_title)
     settings_stack.add_child(_make_divider())
 
-    _settings_scroll = ScrollContainer.new()
-    _settings_scroll.name = "SettingsScroll"
-    _settings_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    _settings_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    settings_stack.add_child(_settings_scroll)
-
-    var settings_content := VBoxContainer.new()
-    settings_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    settings_content.add_theme_constant_override("separation", 8)
-    _settings_scroll.add_child(settings_content)
-
-    settings_content.add_child(_make_label("СГЛАЖИВАНИЕ", true))
-    var aa_description := _make_label("Выбери один способ сглаживания. Настройка применяется сразу.", false)
-    aa_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    settings_content.add_child(aa_description)
-    _aa_selector = _make_option_row(settings_content, "Режим сглаживания",
-        ["Выкл.", "FXAA", "SMAA", "MSAA ×2", "MSAA ×4", "MSAA ×8"], GameSettings.anti_aliasing_mode)
-    _aa_selector.item_selected.connect(_on_anti_aliasing_selected)
-
-    settings_content.add_child(_make_divider())
-    settings_content.add_child(_make_label("ТЕНИ РЕЛЬЕФА", true))
-    var shadow_description := _make_label(
-        "Видимые поверхности LOD4+ не получают прямых теней. Невидимый силуэт рельефа на любой дистанции сохраняет перекрытие солнечного света и тени гор на ближней местности.",
+    var settings_notice := _make_label(
+        "Графика настраивается автоматически для стабильной работы. "
+        + "Детализация и тени рельефа упрощаются с расстоянием; тяжёлое MSAA отключено.",
         false
     )
-    shadow_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    settings_content.add_child(shadow_description)
-    _shadow_mode_selector = _make_option_row(settings_content, "Режим теней",
-        ["Строгий (LOD0–LOD3)", "Постепенное осветление"], GameSettings.shadow_mode)
-    _shadow_mode_selector.item_selected.connect(_on_shadow_mode_selected)
-
-    settings_content.add_child(_make_divider())
-    settings_content.add_child(_make_label("ДАЛЬНОСТЬ ПРОРИСОВКИ", true))
-    var distance_description := _make_label("Мягкий туман скрывает край обзора, не выбеливая дальний рельеф.", false)
-    distance_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    settings_content.add_child(distance_description)
-    var distance_row := HBoxContainer.new()
-    distance_row.add_theme_constant_override("separation", 8)
-    var distance_caption := _make_label("Дальность", true)
-    distance_caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    distance_row.add_child(distance_caption)
-    _view_distance_label = _make_label("%d м" % int(GameSettings.view_distance_m), true)
-    _view_distance_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-    distance_row.add_child(_view_distance_label)
-    settings_content.add_child(distance_row)
-
-    _view_distance_slider = HSlider.new()
-    _view_distance_slider.name = "ViewDistanceSlider"
-    _view_distance_slider.min_value = 512.0
-    _view_distance_slider.max_value = 8192.0
-    _view_distance_slider.step = 256.0
-    _view_distance_slider.value = GameSettings.view_distance_m
-    _view_distance_slider.custom_minimum_size = Vector2(0.0, 34.0)
-    _view_distance_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    var slider_track := StyleBoxFlat.new()
-    slider_track.bg_color = COLOR_BG
-    slider_track.set_corner_radius_all(3)
-    slider_track.content_margin_top = 5.0
-    slider_track.content_margin_bottom = 5.0
-    _view_distance_slider.add_theme_stylebox_override("slider", slider_track)
-    var slider_fill := StyleBoxFlat.new()
-    slider_fill.bg_color = COLOR_GOLD
-    slider_fill.set_corner_radius_all(3)
-    _view_distance_slider.add_theme_stylebox_override("grabber_area", slider_fill)
-    _view_distance_slider.add_theme_stylebox_override("grabber_area_highlight", slider_fill)
-    _view_distance_slider.value_changed.connect(_on_view_distance_changed)
-    _view_distance_slider.drag_started.connect(_on_view_distance_drag_started)
-    _view_distance_slider.drag_ended.connect(_on_view_distance_drag_ended)
-    settings_content.add_child(_view_distance_slider)
+    settings_notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    settings_notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    settings_notice.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    settings_notice.custom_minimum_size = Vector2(0.0, 110.0)
+    settings_stack.add_child(settings_notice)
+    settings_stack.add_child(_make_divider())
 
     var settings_buttons := HBoxContainer.new()
     settings_buttons.add_theme_constant_override("separation", 8)
@@ -227,7 +159,6 @@ func _build_ui() -> void:
     done_button.pressed.connect(_show_main_page)
     settings_buttons.add_child(done_button)
 
-    _sync_graphics_controls()
     _show_main_page()
 
 
@@ -318,61 +249,6 @@ func _make_button(caption: String, primary: bool = false) -> Button:
     return button
 
 
-func _make_option_row(parent: VBoxContainer, caption: String, options: Array, selected_index: int) -> OptionButton:
-    var row := HBoxContainer.new()
-    row.add_theme_constant_override("separation", 8)
-    row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    parent.add_child(row)
-    var label := _make_label(caption, true)
-    label.custom_minimum_size = Vector2(125.0, 0.0)
-    label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    row.add_child(label)
-    var selector := OptionButton.new()
-    selector.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    for option_value in options:
-        selector.add_item(str(option_value))
-    selector.select(clampi(selected_index, 0, maxi(0, options.size() - 1)))
-    _style_option_button(selector)
-    row.add_child(selector)
-    return selector
-
-
-func _make_check_button(caption: String, checked: bool) -> CheckButton:
-    var toggle := CheckButton.new()
-    toggle.text = caption
-    toggle.custom_minimum_size = Vector2(0.0, 42.0)
-    toggle.button_pressed = checked
-    _style_check_button(toggle)
-    return toggle
-
-
-func _style_option_button(selector: OptionButton) -> void:
-    selector.add_theme_stylebox_override("normal", _button_style_texture("res://assets/ui/button_secondary.png"))
-    selector.add_theme_stylebox_override("hover", _button_style_texture("res://assets/ui/button_hover.png"))
-    selector.add_theme_stylebox_override("pressed", _button_style_texture("res://assets/ui/button_pressed.png"))
-    selector.add_theme_stylebox_override("focus", _button_style_texture("res://assets/ui/button_hover.png"))
-    selector.add_theme_color_override("font_color", COLOR_TEXT)
-    selector.add_theme_color_override("font_hover_color", COLOR_GOLD)
-    selector.add_theme_color_override("font_pressed_color", COLOR_TEXT)
-    selector.add_theme_font_size_override("font_size", 14)
-    selector.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-    var popup := selector.get_popup()
-    popup.add_theme_color_override("font_color", COLOR_TEXT)
-    popup.add_theme_color_override("font_hover_color", COLOR_GOLD)
-    popup.add_theme_stylebox_override("panel", _button_style_texture("res://assets/ui/button_secondary.png"))
-
-
-func _style_check_button(toggle: CheckButton) -> void:
-    toggle.add_theme_stylebox_override("normal", _button_style_texture("res://assets/ui/button_secondary.png"))
-    toggle.add_theme_stylebox_override("hover", _button_style_texture("res://assets/ui/button_hover.png"))
-    toggle.add_theme_stylebox_override("pressed", _button_style_texture("res://assets/ui/button_pressed.png"))
-    toggle.add_theme_color_override("font_color", COLOR_TEXT)
-    toggle.add_theme_color_override("font_hover_color", COLOR_GOLD)
-    toggle.add_theme_color_override("font_pressed_color", COLOR_GOLD)
-    toggle.add_theme_font_size_override("font_size", 14)
-    toggle.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-
-
 func _fit_to_viewport() -> void:
     if _main_panel == null or _settings_panel == null:
         return
@@ -381,8 +257,6 @@ func _fit_to_viewport() -> void:
     var panel_height: float = minf(680.0, maxf(300.0, view_size.y - 24.0))
     _main_panel.custom_minimum_size = Vector2(minf(panel_width, 430.0), 0.0)
     _settings_panel.custom_minimum_size = Vector2(panel_width, panel_height)
-    if _settings_scroll != null:
-        _settings_scroll.custom_minimum_size = Vector2(0.0, maxf(140.0, panel_height - 180.0))
 
 
 func _show_main_page() -> void:
@@ -391,50 +265,8 @@ func _show_main_page() -> void:
 
 
 func _show_settings_page() -> void:
-    _sync_graphics_controls()
     _main_panel.visible = false
     _settings_panel.visible = true
-
-
-func _sync_graphics_controls() -> void:
-    _aa_selector.select(GameSettings.anti_aliasing_mode)
-    _shadow_mode_selector.select(GameSettings.shadow_mode)
-    _view_distance_slider.set_value_no_signal(GameSettings.view_distance_m)
-    _view_distance_label.text = "%d м" % int(GameSettings.view_distance_m)
-
-
-func _on_anti_aliasing_selected(index: int) -> void:
-    GameSettings.update_anti_aliasing_mode(index, true)
-
-
-func _on_shadow_mode_selected(index: int) -> void:
-    GameSettings.update_shadow_mode(index, true)
-    if _voxel_world != null and is_instance_valid(_voxel_world):
-        _voxel_world.call("set_shadow_mode", GameSettings.shadow_mode)
-
-
-func _on_view_distance_drag_started() -> void:
-    _view_distance_drag_active = true
-
-
-func _on_view_distance_changed(value: float) -> void:
-    _view_distance_label.text = "%d м" % int(roundf(value))
-    _apply_view_distance(value, not _view_distance_drag_active)
-
-
-func _on_view_distance_drag_ended(value_changed: bool) -> void:
-    _view_distance_drag_active = false
-    if value_changed:
-        _apply_view_distance(_view_distance_slider.value, true)
-
-
-func _apply_view_distance(value: float, persist: bool) -> void:
-    if _world_controller != null and is_instance_valid(_world_controller):
-        _world_controller.call("set_view_distance_m", value, persist)
-        return
-    GameSettings.update_view_distance_m(value, persist)
-    if _voxel_world != null and is_instance_valid(_voxel_world):
-        _voxel_world.call("set_render_distance_m", GameSettings.view_distance_m)
 
 
 func _quit_to_menu() -> void:
