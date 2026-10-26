@@ -73,7 +73,8 @@ func _run() -> void:
 
     # LOD7 should use shared vertices for a smooth heightfield rather than flat voxel quads.
     var far_generator := VoxelTerrainGenerator.new(1337, 10000.0)
-    var far_builder := VoxelChunkMeshBuilder.new()
+    var fallback_builder_script = load("res://scripts/voxel_chunk_mesh_builder_fallback.gd")
+    var far_builder = fallback_builder_script.new()
     var far_data: Dictionary = far_builder.build_mesh_data({
         "coord": Vector2i.ZERO,
         "request": {
