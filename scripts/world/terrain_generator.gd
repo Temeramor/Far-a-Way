@@ -1,7 +1,7 @@
 extends Node3D
 class_name TerrainGenerator
 
-## Compatibility adapter for Neverland's existing world controller.
+## Coordinates world startup generation, delegates chunk streaming and reports progress.
 ## VoxEn prepares the spawn chunk/collider first; all other terrain chunks stream during play.
 
 signal generation_started(seed_value: int)
@@ -29,7 +29,7 @@ func generate(new_seed: int = 1337) -> void:
     if _voxel_world == null:
         _voxel_world = get_parent().get_node_or_null("VoxelWorld") as VoxelWorld
     if _voxel_world == null:
-        push_error("Neverland: VoxEn VoxelWorld node is missing from world.tscn.")
+        push_error("TerrainGenerator: VoxelWorld node is missing from world.tscn.")
         return
     world_seed = new_seed
     _generation_active = true
@@ -57,7 +57,7 @@ func _process(delta: float) -> void:
 
 
 func set_weather(mode: int) -> void:
-    # Weather still drives Neverland's sky and lighting; vegetation is intentionally disabled.
+    # Weather settings are forwarded to the sky and lighting system.
     _weather_mode = clampi(mode, 0, 2)
 
 
