@@ -51,10 +51,7 @@ func close_pause() -> void:
         return
     visible = false
     get_tree().paused = false
-    if OS.has_feature("android"):
-        Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-    else:
-        Input.mouse_mode = _mouse_mode_before_pause
+    Input.mouse_mode = _mouse_mode_before_pause
     closed.emit()
 
 
