@@ -2,6 +2,13 @@
 
 All notable changes are recorded here. The current version is defined by `project.godot` and `VERSION`.
 
+## 0.1.0.11 — 2026-10-26
+
+- Fixed upper grass voxel side faces so they use the same grass/rock texture blend and XZ material projection as their top faces, instead of using a stone-like side treatment. Lower exposed voxels retain their own soil/rock layers.
+- Changed both mesh builders to cache continuous height samples and quantise only after cubic interpolation to the 10 cm voxel grid, reducing the repeating contour pattern inherited from the 50 cm cache lattice.
+- Brought native C++ and GDScript material handling into parity: native top faces now encode per-corner blend weights, and upper side faces carry the matching material weight across chunk borders.
+- Updated the project version and documentation. Rebuild the platform-specific Android/Windows native extension before evaluating these C++ changes; compiled libraries remain intentionally excluded from the repository.
+
 ## 0.1.0.10 — 2026-10-26
 
 - Added a 20 cm intermediate LOD step after the 10 cm near tier. The eight mesh steps are now 10 cm, 20 cm, 40 cm, 80 cm, 1.6 m, 3.2 m, 6.4 m and 12.8 m. The 20 cm tier occupies a short 64–80 m ring so the existing farther LOD rings and 4 km viewing distance remain in place.

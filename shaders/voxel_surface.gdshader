@@ -269,12 +269,21 @@ void fragment() {
 
     vec3 normal = normalize(world_normal);
     bool is_top_surface = COLOR.a >= 0.96 && COLOR.a < 0.995;
-    float top_rock_amount = clamp((COLOR.a - 0.965) / 0.025, 0.0, 1.0);
+    bool is_surface_side = COLOR.a >= 0.95 && COLOR.a < 0.96;
+    float top_rock_amount = 0.0;
+    if (is_top_surface) {
+        top_rock_amount = clamp((COLOR.a - 0.965) / 0.025, 0.0, 1.0);
+    } else if (is_surface_side) {
+        top_rock_amount = clamp((COLOR.a - 0.951) / 0.007, 0.0, 1.0);
+    }
     vec2 rock_world = world_position.xz;
-    if (abs(normal.x) > abs(normal.y) && abs(normal.x) > abs(normal.z)) {
-        rock_world = world_position.zy;
-    } else if (abs(normal.z) > abs(normal.y)) {
-        rock_world = world_position.xy;
+    // Upper voxel sides reuse the same XZ material coordinates as their top faces.
+    if (!is_surface_side) {
+        if (abs(normal.x) > abs(normal.y) && abs(normal.x) > abs(normal.z)) {
+            rock_world = world_position.zy;
+        } else if (abs(normal.z) > abs(normal.y)) {
+            rock_world = world_position.xy;
+        }
     }
 
     if (debug_lod_colors) {
@@ -282,7 +291,7 @@ void fragment() {
         ROUGHNESS = 0.96;
     } else if (lod_index >= 3) {
         // Distant tiers skip per-cell hashes, fine colour variation and Voronoi crack searches.
-        if (is_top_surface) {
+        if (is_top_surface || is_surface_side) {
             ALBEDO = mix(distant_grass_color(world_position.xz), distant_rock_color(rock_world), top_rock_amount);
             ROUGHNESS = mix(0.95, 0.84, top_rock_amount);
         } else if (COLOR.g > COLOR.r * 1.35) {
@@ -301,7 +310,7 @@ void fragment() {
         float rock_crack_footprint = world_units_per_pixel / 5.5;
         float rock_crack_weight = 1.0 - smoothstep(0.55, 1.25, rock_crack_footprint);
 
-        if (is_top_surface) {
+        if (is_top_surface || is_surface_side) {
             vec3 filtered_color = mix(distant_grass_color(world_position.xz), distant_rock_color(rock_world), top_rock_amount);
             if (voxel_detail_weight > 0.02) {
                 vec3 voxel_cell_3d = floor((world_position - normal * 0.001) / max(pixel_size, 0.1));

@@ -195,7 +195,7 @@ struct MeshBuild {
     double cell_size = VOXEL_SIZE;
 
     Dictionary neighbor_lods;
-    std::vector<int32_t> height_cache;
+    std::vector<double> height_cache;
     int32_t cache_width = 0;
     int32_t cache_depth = 0;
     int32_t cache_origin_x = 0;
@@ -203,6 +203,7 @@ struct MeshBuild {
     std::vector<int32_t> raw_heights;
     std::vector<int32_t> heights;
     std::vector<uint8_t> surface_types;
+    std::vector<double> surface_rock_weights;
 
     std::vector<Vector3> vertices;
     std::vector<Vector3> normals;
@@ -218,20 +219,40 @@ struct MeshBuild {
         return p1 + 0.5 * t * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 +
             4.0 * p2 - p3 + t * (3.0 * (p1 - p2) + p3 - p0)));
     }
+    double surface_rock_weight_at(int32_t x, int32_t z) const {
+        return surface_rock_weights[static_cast<size_t>(z + 1) * (cells_x + 2) + x + 1];
+    }
+
+    double average_surface_rock_weight(int32_t corner_x, int32_t corner_z) const {
+        double total = 0.0;
+        for (int32_t z = corner_z - 1; z < corner_z + 1; ++z) {
+            for (int32_t x = corner_x - 1; x < corner_x + 1; ++x) {
+                total += surface_rock_weight_at(x, z);
+            }
+        }
+        return total * 0.25;
+    }
+
+    Color top_face_color(int32_t material_type, double rock_weight) const {
+        Color color = material_color(material_type);
+        color.a = 0.965 + std::clamp(rock_weight, 0.0, 1.0) * 0.025;
+        return color;
+    }
 
     static int32_t floor_to_int(double value) {
         return static_cast<int32_t>(std::floor(value));
     }
 
-    int32_t sample_height_voxels(double gx, double gz) const {
+    double sample_height_voxel_units(double gx, double gz) const {
         if (gx < 0.0 || gz < 0.0 ||
             gx >= static_cast<double>(world_size_voxels) ||
             gz >= static_cast<double>(world_size_voxels)) {
-            return 0;
+            return 0.0;
         }
         const double world_x = world_min_x + gx * VOXEL_SIZE;
         const double world_z = world_min_z + gz * VOXEL_SIZE;
-        return noise.surface_height_voxels(world_x, world_z);
+        // Keep continuous heights until the interpolated mesh sample is quantised.
+        return std::max(1.0, noise.surface_height(world_x, world_z) / VOXEL_SIZE);
     }
 
     int32_t cached_height_voxels(double gx, double gz) const {
@@ -319,10 +340,33 @@ struct MeshBuild {
         indices.push_back(base_index + 3);
         indices.push_back(base_index + 2);
     }
+    void add_quad_vertex_colors(const Vector3 &p0, const Vector3 &p1,
+            const Vector3 &p2, const Vector3 &p3, const Vector3 &normal,
+            const Color &color0, const Color &color1, const Color &color2, const Color &color3) {
+        const int32_t base_index = static_cast<int32_t>(vertices.size());
+        vertices.push_back(p0);
+        vertices.push_back(p1);
+        vertices.push_back(p2);
+        vertices.push_back(p3);
+        for (int i = 0; i < 4; ++i) {
+            normals.push_back(normal);
+        }
+        colors.push_back(color0);
+        colors.push_back(color1);
+        colors.push_back(color2);
+        colors.push_back(color3);
+        indices.push_back(base_index);
+        indices.push_back(base_index + 2);
+        indices.push_back(base_index + 1);
+        indices.push_back(base_index);
+        indices.push_back(base_index + 3);
+        indices.push_back(base_index + 2);
+    }
 
     void emit_side_segment(const Vector3 &point_a, const Vector3 &point_b,
                            const Vector3 &normal, int32_t low_y, int32_t high_y,
-                           int32_t material_type, bool vertical_first, double edge_alpha = 1.0) {
+                           int32_t material_type, bool vertical_first,
+                           double edge_alpha = 1.0, double encoded_alpha = -1.0) {
         if (high_y <= low_y) {
             return;
         }
@@ -333,7 +377,9 @@ struct MeshBuild {
         const Vector3 b_low(point_b.x, low_m, point_b.z);
         const Vector3 b_high(point_b.x, high_m, point_b.z);
         Color side_color = material_color(material_type);
-        if (edge_alpha < 0.95) {
+        if (encoded_alpha >= 0.0) {
+            side_color.a = encoded_alpha;
+        } else if (edge_alpha < 0.95) {
             side_color.a = edge_alpha;
         }
         if (vertical_first) {
@@ -346,7 +392,8 @@ struct MeshBuild {
     void add_segmented_side_face(const Vector3 &p0, const Vector3 &p1,
             const Vector3 &p2, const Vector3 &p3, const Vector3 &normal,
             int32_t low_height_voxels, int32_t high_height_voxels,
-            int32_t top_material, bool vertical_first, double edge_alpha = 1.0) {
+            int32_t top_material, bool vertical_first, double edge_alpha = 1.0,
+            double surface_rock_weight = -1.0) {
         (void)p2;
         if (high_height_voxels <= low_height_voxels) {
             return;
@@ -355,18 +402,43 @@ struct MeshBuild {
         const Vector3 point_b = vertical_first
             ? Vector3(p3.x, 0.0, p3.z)
             : Vector3(p1.x, 0.0, p1.z);
-        // Visible terrain walls and rock-topped slopes are solid gray rock.
-        // Only thin stitching skirts preserve the three-material transition.
-        if (edge_alpha >= 0.95 || top_material == ROCK) {
+
+        if (edge_alpha >= 0.95) {
+            // The upper exposed voxel carries the same blend as its top face.
+            const int32_t top_start = std::max(low_height_voxels, high_height_voxels - 1);
+            if (top_material == ROCK) {
+                emit_side_segment(point_a, point_b, normal, low_height_voxels, top_start,
+                    ROCK, vertical_first, edge_alpha);
+            } else {
+                const int32_t soil_start = std::max(low_height_voxels, high_height_voxels - 5);
+                emit_side_segment(point_a, point_b, normal, low_height_voxels, soil_start,
+                    ROCK, vertical_first, edge_alpha);
+                emit_side_segment(point_a, point_b, normal, soil_start, top_start,
+                    SOIL, vertical_first, edge_alpha);
+            }
+            double encoded_alpha = -1.0;
+            if (surface_rock_weight >= 0.0) {
+                encoded_alpha = 0.951 + std::clamp(surface_rock_weight, 0.0, 1.0) * 0.007;
+            }
+            emit_side_segment(point_a, point_b, normal, top_start, high_height_voxels,
+                top_material, vertical_first, edge_alpha, encoded_alpha);
+            return;
+        }
+
+        // Stitching skirts keep their original layer colours and edge-mask alpha.
+        if (top_material == ROCK) {
             emit_side_segment(point_a, point_b, normal, low_height_voxels, high_height_voxels,
                 ROCK, vertical_first, edge_alpha);
             return;
         }
-        const int32_t top_start = std::max(low_height_voxels, high_height_voxels - 1);
-        const int32_t soil_start = std::max(low_height_voxels, high_height_voxels - 5);
-        emit_side_segment(point_a, point_b, normal, low_height_voxels, soil_start, ROCK, vertical_first, edge_alpha);
-        emit_side_segment(point_a, point_b, normal, soil_start, top_start, SOIL, vertical_first, edge_alpha);
-        emit_side_segment(point_a, point_b, normal, top_start, high_height_voxels, top_material, vertical_first, edge_alpha);
+        const int32_t skirt_top_start = std::max(low_height_voxels, high_height_voxels - 1);
+        const int32_t skirt_soil_start = std::max(low_height_voxels, high_height_voxels - 5);
+        emit_side_segment(point_a, point_b, normal, low_height_voxels, skirt_soil_start,
+            ROCK, vertical_first, edge_alpha);
+        emit_side_segment(point_a, point_b, normal, skirt_soil_start, skirt_top_start,
+            SOIL, vertical_first, edge_alpha);
+        emit_side_segment(point_a, point_b, normal, skirt_top_start, high_height_voxels,
+            top_material, vertical_first, edge_alpha);
     }
 
     void build_cache_and_heights() {
@@ -394,7 +466,7 @@ struct MeshBuild {
             const double cache_z = static_cast<double>(cache_origin_z + cz * cache_step_voxels);
             for (int32_t cx = 0; cx < cache_width; ++cx) {
                 const double cache_x = static_cast<double>(cache_origin_x + cx * cache_step_voxels);
-                height_cache[static_cast<size_t>(cz) * cache_width + cx] = sample_height_voxels(cache_x, cache_z);
+                height_cache[static_cast<size_t>(cz) * cache_width + cx] = sample_height_voxel_units(cache_x, cache_z);
             }
         }
 
@@ -415,12 +487,13 @@ struct MeshBuild {
     void build_surface_types() {
         const int32_t macro_offset = std::max<int32_t>(1, static_cast<int32_t>(std::llround(1.0 / cell_size)));
         surface_types.resize(static_cast<size_t>(cells_x) * cells_z);
+        surface_rock_weights.resize(static_cast<size_t>(cells_x + 2) * (cells_z + 2));
 
-        for (int32_t z = 0; z < cells_z; ++z) {
-            for (int32_t x = 0; x < cells_x; ++x) {
+        // A one-cell halo keeps the grass/rock blend continuous across chunk borders.
+        for (int32_t z = -1; z <= cells_z; ++z) {
+            for (int32_t x = -1; x <= cells_x; ++x) {
                 const int32_t gx = x + halo;
                 const int32_t gz = z + halo;
-                const int32_t center_h = raw_heights[static_cast<size_t>(gz) * grid_width + gx];
                 const int32_t left_h = raw_heights[static_cast<size_t>(gz) * grid_width + gx - macro_offset];
                 const int32_t right_h = raw_heights[static_cast<size_t>(gz) * grid_width + gx + macro_offset];
                 const int32_t north_h = raw_heights[static_cast<size_t>(gz - macro_offset) * grid_width + gx];
@@ -434,9 +507,12 @@ struct MeshBuild {
                     (static_cast<double>(start_voxel_x + x * step_voxels) + step_voxels * 0.5) * VOXEL_SIZE;
                 const double world_z = world_min_z +
                     (static_cast<double>(start_voxel_z + z * step_voxels) + step_voxels * 0.5) * VOXEL_SIZE;
-                surface_types[static_cast<size_t>(z) * cells_x + x] =
-                    static_cast<uint8_t>(noise.surface_material(
-                        static_cast<double>(center_h) * VOXEL_SIZE, slope, world_x, world_z));
+                const double weight = noise.surface_rock_weight(slope, world_x, world_z);
+                surface_rock_weights[static_cast<size_t>(z + 1) * (cells_x + 2) + x + 1] = weight;
+                if (x >= 0 && x < cells_x && z >= 0 && z < cells_z) {
+                    surface_types[static_cast<size_t>(z) * cells_x + x] =
+                        static_cast<uint8_t>(weight >= 0.5 ? ROCK : GRASS);
+                }
             }
         }
     }
@@ -452,14 +528,14 @@ struct MeshBuild {
                 }
                 const int32_t height_voxels = heights[grid_index(x, z)];
                 const uint8_t material_type = surface_types[cell_index];
+                const double base_weight = surface_rock_weight_at(x, z);
                 int32_t run_x = 1;
                 while (x + run_x < cells_x) {
                     const size_t next_cell = static_cast<size_t>(z) * cells_x + x + run_x;
-                    if (visited[next_cell] != 0) {
-                        break;
-                    }
-                    if (heights[grid_index(x + run_x, z)] != height_voxels ||
-                        surface_types[next_cell] != material_type) {
+                    if (visited[next_cell] != 0 ||
+                        heights[grid_index(x + run_x, z)] != height_voxels ||
+                        surface_types[next_cell] != material_type ||
+                        std::abs(surface_rock_weight_at(x + run_x, z) - base_weight) > 0.10) {
                         break;
                     }
                     ++run_x;
@@ -472,7 +548,8 @@ struct MeshBuild {
                         const size_t test_cell = static_cast<size_t>(z + run_z) * cells_x + x + dx;
                         if (visited[test_cell] != 0 ||
                             heights[grid_index(x + dx, z + run_z)] != height_voxels ||
-                            surface_types[test_cell] != material_type) {
+                            surface_types[test_cell] != material_type ||
+                            std::abs(surface_rock_weight_at(x + dx, z + run_z) - base_weight) > 0.10) {
                             can_extend = false;
                             break;
                         }
@@ -494,9 +571,13 @@ struct MeshBuild {
                 const double z0 = static_cast<double>(z * step_voxels) * VOXEL_SIZE;
                 const double z1 = static_cast<double>((z + run_z) * step_voxels) * VOXEL_SIZE;
                 const double y = static_cast<double>(height_voxels) * VOXEL_SIZE;
-                add_quad(Vector3(x0, y, z0), Vector3(x0, y, z1),
-                         Vector3(x1, y, z1), Vector3(x1, y, z0),
-                         Vector3(0.0, 1.0, 0.0), material_color(material_type));
+                add_quad_vertex_colors(
+                    Vector3(x0, y, z0), Vector3(x0, y, z1),
+                    Vector3(x1, y, z1), Vector3(x1, y, z0), Vector3(0.0, 1.0, 0.0),
+                    top_face_color(material_type, average_surface_rock_weight(x, z)),
+                    top_face_color(material_type, average_surface_rock_weight(x, z + run_z)),
+                    top_face_color(material_type, average_surface_rock_weight(x + run_x, z + run_z)),
+                    top_face_color(material_type, average_surface_rock_weight(x + run_x, z)));
             }
         }
     }
@@ -509,6 +590,7 @@ struct MeshBuild {
                     continue;
                 }
                 const int32_t top_material = surface_types[static_cast<size_t>(z) * cells_x + x];
+                const double surface_weight = surface_rock_weight_at(x, z);
                 const double x0 = static_cast<double>(x * step_voxels) * VOXEL_SIZE;
                 const double x1 = static_cast<double>((x + 1) * step_voxels) * VOXEL_SIZE;
                 const double z0 = static_cast<double>(z * step_voxels) * VOXEL_SIZE;
@@ -521,7 +603,7 @@ struct MeshBuild {
                         Vector3(x0, static_cast<double>(h) * VOXEL_SIZE, z1),
                         Vector3(x0, static_cast<double>(h) * VOXEL_SIZE, z0),
                         Vector3(x0, static_cast<double>(h_left) * VOXEL_SIZE, z0),
-                        Vector3(-1.0, 0.0, 0.0), h_left, h, top_material, true);
+                        Vector3(-1.0, 0.0, 0.0), h_left, h, top_material, true, 1.0, surface_weight);
                 }
 
                 const int32_t h_right = heights[grid_index(x + 1, z)];
@@ -531,7 +613,7 @@ struct MeshBuild {
                         Vector3(x1, static_cast<double>(h) * VOXEL_SIZE, z0),
                         Vector3(x1, static_cast<double>(h) * VOXEL_SIZE, z1),
                         Vector3(x1, static_cast<double>(h_right) * VOXEL_SIZE, z1),
-                        Vector3(1.0, 0.0, 0.0), h_right, h, top_material, true);
+                        Vector3(1.0, 0.0, 0.0), h_right, h, top_material, true, 1.0, surface_weight);
                 }
 
                 const int32_t h_north = heights[grid_index(x, z - 1)];
@@ -541,7 +623,7 @@ struct MeshBuild {
                         Vector3(x0, static_cast<double>(h_north) * VOXEL_SIZE, z0),
                         Vector3(x0, static_cast<double>(h) * VOXEL_SIZE, z0),
                         Vector3(x1, static_cast<double>(h) * VOXEL_SIZE, z0),
-                        Vector3(0.0, 0.0, -1.0), h_north, h, top_material, false);
+                        Vector3(0.0, 0.0, -1.0), h_north, h, top_material, false, 1.0, surface_weight);
                 }
 
                 const int32_t h_south = heights[grid_index(x, z + 1)];
@@ -551,7 +633,7 @@ struct MeshBuild {
                         Vector3(x1, static_cast<double>(h_south) * VOXEL_SIZE, z1),
                         Vector3(x1, static_cast<double>(h) * VOXEL_SIZE, z1),
                         Vector3(x0, static_cast<double>(h) * VOXEL_SIZE, z1),
-                        Vector3(0.0, 0.0, 1.0), h_south, h, top_material, false);
+                        Vector3(0.0, 0.0, 1.0), h_south, h, top_material, false, 1.0, surface_weight);
                 }
             }
         }

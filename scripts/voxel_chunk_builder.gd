@@ -104,16 +104,16 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
     var cache_end_z: int = start_voxel_z + size_voxels_z + halo * step_voxels + cache_step_voxels * 2
     var cache_width: int = ceili(float(cache_end_x - cache_origin_x) / float(cache_step_voxels)) + 1
     var cache_depth: int = ceili(float(cache_end_z - cache_origin_z) / float(cache_step_voxels)) + 1
-    var height_cache := PackedInt32Array()
+    var height_cache := PackedFloat32Array()
     height_cache.resize(cache_width * cache_depth)
     for cz in range(cache_depth):
         var cache_z: float = float(cache_origin_z + cz * cache_step_voxels)
         for cx in range(cache_width):
             var cache_x: float = float(cache_origin_x + cx * cache_step_voxels)
-            height_cache[cz * cache_width + cx] = _sample_height_voxels(cache_x, cache_z, generator, world_min_x, world_min_z, world_size_voxels)
+            height_cache[cz * cache_width + cx] = _sample_height_voxel_units(cache_x, cache_z, generator, world_min_x, world_min_z, world_size_voxels)
 
-    # The height-cache spacing follows the requested mesh stride (at least the 0.5 m base).
-    # Sampled heights stay quantised to the 10 cm logical voxel grid.
+    # Cache continuous heights in voxel units. Quantise only after cubic
+    # interpolation so contours are not locked to the repeated 0.5 m cache pattern.
     var raw_heights := PackedInt32Array()
     raw_heights.resize(total_samples)
     for gz in range(grid_depth):
@@ -152,7 +152,8 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
         grid_width, halo, cells_x, cells_z, cell_size, step_voxels
     )
     _build_exposed_side_faces(
-        heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels
+        heights, surface_types, surface_rock_weights,
+        grid_width, halo, cells_x, cells_z, step_voxels
     )
     _build_lod_skirts(heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels, neighbor_lods)
     var smooth_shadow_data: Dictionary = _build_smooth_shadow_surface(
@@ -480,38 +481,41 @@ func _top_face_color(material_type: int, rock_weight: float) -> Color:
 func _build_exposed_side_faces(
     heights: PackedInt32Array,
     surface_types: PackedByteArray,
+    surface_rock_weights: PackedFloat32Array,
     grid_width: int,
     halo: int,
     cells_x: int,
     cells_z: int,
     step_voxels: int
 ) -> void:
-    # Side faces always read this job's own halo heights. They do not snap or branch
-    # on neighbouring LOD, so a target LOD change cannot invalidate otherwise valid work.
+    # The upper exposed voxel uses the same grass/rock blend as its top face.
+    # Lower exposed voxels retain their own soil/rock layers.
     for z in range(cells_z):
         for x in range(cells_x):
             var h: int = heights[_grid_index(x, z, grid_width, halo)]
             if h <= 0:
                 continue
             var top_material: int = surface_types[z * cells_x + x]
+            var surface_weight: float = _surface_rock_weight(surface_rock_weights, cells_x, x, z)
             var x0: float = float(x * step_voxels) * VOXEL_SIZE
             var x1: float = float((x + 1) * step_voxels) * VOXEL_SIZE
             var z0: float = float(z * step_voxels) * VOXEL_SIZE
             var z1: float = float((z + 1) * step_voxels) * VOXEL_SIZE
             var h_left: int = heights[_grid_index(x - 1, z, grid_width, halo)]
             if h > h_left:
-                _add_segmented_side_face(Vector3(x0, float(h_left) * VOXEL_SIZE, z1), Vector3(x0, float(h) * VOXEL_SIZE, z1), Vector3(x0, float(h) * VOXEL_SIZE, z0), Vector3(x0, float(h_left) * VOXEL_SIZE, z0), Vector3.LEFT, h_left, h, top_material, true)
+                _add_segmented_side_face(Vector3(x0, float(h_left) * VOXEL_SIZE, z1), Vector3(x0, float(h) * VOXEL_SIZE, z1), Vector3(x0, float(h) * VOXEL_SIZE, z0), Vector3(x0, float(h_left) * VOXEL_SIZE, z0), Vector3.LEFT, h_left, h, top_material, true, 1.0, surface_weight)
             var h_right: int = heights[_grid_index(x + 1, z, grid_width, halo)]
             if h > h_right:
-                _add_segmented_side_face(Vector3(x1, float(h_right) * VOXEL_SIZE, z0), Vector3(x1, float(h) * VOXEL_SIZE, z0), Vector3(x1, float(h) * VOXEL_SIZE, z1), Vector3(x1, float(h_right) * VOXEL_SIZE, z1), Vector3.RIGHT, h_right, h, top_material, true)
+                _add_segmented_side_face(Vector3(x1, float(h_right) * VOXEL_SIZE, z0), Vector3(x1, float(h) * VOXEL_SIZE, z0), Vector3(x1, float(h) * VOXEL_SIZE, z1), Vector3(x1, float(h_right) * VOXEL_SIZE, z1), Vector3.RIGHT, h_right, h, top_material, true, 1.0, surface_weight)
             var h_north: int = heights[_grid_index(x, z - 1, grid_width, halo)]
             if h > h_north:
-                _add_segmented_side_face(Vector3(x1, float(h_north) * VOXEL_SIZE, z0), Vector3(x0, float(h_north) * VOXEL_SIZE, z0), Vector3(x0, float(h) * VOXEL_SIZE, z0), Vector3(x1, float(h) * VOXEL_SIZE, z0), Vector3(0.0, 0.0, -1.0), h_north, h, top_material, false)
+                _add_segmented_side_face(Vector3(x1, float(h_north) * VOXEL_SIZE, z0), Vector3(x0, float(h_north) * VOXEL_SIZE, z0), Vector3(x0, float(h) * VOXEL_SIZE, z0), Vector3(x1, float(h) * VOXEL_SIZE, z0), Vector3(0.0, 0.0, -1.0), h_north, h, top_material, false, 1.0, surface_weight)
             var h_south: int = heights[_grid_index(x, z + 1, grid_width, halo)]
             if h > h_south:
-                _add_segmented_side_face(Vector3(x0, float(h_south) * VOXEL_SIZE, z1), Vector3(x1, float(h_south) * VOXEL_SIZE, z1), Vector3(x1, float(h) * VOXEL_SIZE, z1), Vector3(x0, float(h) * VOXEL_SIZE, z1), Vector3(0.0, 0.0, 1.0), h_south, h, top_material, false)
+                _add_segmented_side_face(Vector3(x0, float(h_south) * VOXEL_SIZE, z1), Vector3(x1, float(h_south) * VOXEL_SIZE, z1), Vector3(x1, float(h) * VOXEL_SIZE, z1), Vector3(x0, float(h) * VOXEL_SIZE, z1), Vector3(0.0, 0.0, 1.0), h_south, h, top_material, false, 1.0, surface_weight)
 
-func _cached_height_voxels(gx: float, gz: float, cache: PackedInt32Array, cache_width: int, cache_depth: int, origin_x: int, origin_z: int, cache_step_voxels: int, world_size_voxels: int) -> int:
+
+func _cached_height_voxels(gx: float, gz: float, cache: PackedFloat32Array, cache_width: int, cache_depth: int, origin_x: int, origin_z: int, cache_step_voxels: int, world_size_voxels: int) -> int:
     if gx < 0.0 or gz < 0.0 or gx >= float(world_size_voxels) or gz >= float(world_size_voxels):
         return 0
     var fx: float = (gx - float(origin_x)) / float(cache_step_voxels)
@@ -591,19 +595,19 @@ func _build_lod_skirts(heights: PackedInt32Array, surface_types: PackedByteArray
             var low: int = maxi(0, top - skirt_depth_voxels)
             _add_segmented_side_face(Vector3(float(x) * step_voxels * VOXEL_SIZE, float(low) * VOXEL_SIZE, z1), Vector3(float(x + 1) * step_voxels * VOXEL_SIZE, float(low) * VOXEL_SIZE, z1), Vector3(float(x + 1) * step_voxels * VOXEL_SIZE, float(top) * VOXEL_SIZE, z1), Vector3(float(x) * step_voxels * VOXEL_SIZE, float(top) * VOXEL_SIZE, z1), Vector3(0.0, 0.0, 1.0), low, top, int(surface_types[(cells_z - 1) * cells_x + x]), false, SKIRT_ALPHA_SOUTH)
 
-func _sample_height_voxels(
+func _sample_height_voxel_units(
     global_voxel_x: float,
     global_voxel_z: float,
     generator: VoxelTerrainGenerator,
     world_min_x: float,
     world_min_z: float,
     world_size_voxels: int
-) -> int:
+) -> float:
     if global_voxel_x < 0.0 or global_voxel_z < 0.0 or global_voxel_x >= float(world_size_voxels) or global_voxel_z >= float(world_size_voxels):
-        return 0
+        return 0.0
     var world_x: float = world_min_x + global_voxel_x * VOXEL_SIZE
     var world_z: float = world_min_z + global_voxel_z * VOXEL_SIZE
-    return generator.get_surface_height_voxels(world_x, world_z)
+    return maxf(1.0, generator.get_surface_height(world_x, world_z) / VOXEL_SIZE)
 
 func _grid_index(x: int, z: int, grid_width: int, halo: int) -> int:
     return (z + halo) * grid_width + x + halo
@@ -611,31 +615,45 @@ func _grid_index(x: int, z: int, grid_width: int, halo: int) -> int:
 func _add_segmented_side_face(
     p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3,
     normal: Vector3, low_height_voxels: int, high_height_voxels: int,
-    top_material: int, vertical_first: bool, edge_alpha: float = 1.0
+    top_material: int, vertical_first: bool, edge_alpha: float = 1.0,
+    surface_rock_weight: float = -1.0
 ) -> void:
     if high_height_voxels <= low_height_voxels:
         return
     var point_a := Vector3(p0.x, 0.0, p0.z)
     var point_b: Vector3 = Vector3(p3.x, 0.0, p3.z) if vertical_first else Vector3(p1.x, 0.0, p1.z)
 
-    # In main, near-vertical surface normals blend fully to rock regardless of elevation.
-    # Match that on exposed voxel walls. Keep segmented colours only on temporary skirts.
-    if edge_alpha >= 0.95 or top_material == VoxelTerrainGenerator.ROCK:
-        _emit_side_segment(
-            point_a, point_b, normal, low_height_voxels, high_height_voxels,
-            VoxelTerrainGenerator.ROCK, vertical_first, edge_alpha
-        )
+    if edge_alpha >= 0.95:
+        # The upper exposed voxel carries the same blend as its top face.
+        var top_start: int = maxi(low_height_voxels, high_height_voxels - 1)
+        if top_material == VoxelTerrainGenerator.ROCK:
+            _emit_side_segment(point_a, point_b, normal, low_height_voxels, top_start, VoxelTerrainGenerator.ROCK, vertical_first, edge_alpha)
+        else:
+            var soil_start: int = maxi(low_height_voxels, high_height_voxels - 5)
+            _emit_side_segment(point_a, point_b, normal, low_height_voxels, soil_start, VoxelTerrainGenerator.ROCK, vertical_first, edge_alpha)
+            _emit_side_segment(point_a, point_b, normal, soil_start, top_start, VoxelTerrainGenerator.SOIL, vertical_first, edge_alpha)
+        var encoded_alpha: float = -1.0
+        if surface_rock_weight >= 0.0:
+            # 0.951–0.958 identifies the upper voxel side without colliding with skirt tags.
+            encoded_alpha = 0.951 + clampf(surface_rock_weight, 0.0, 1.0) * 0.007
+        _emit_side_segment(point_a, point_b, normal, top_start, high_height_voxels, top_material, vertical_first, edge_alpha, encoded_alpha)
         return
 
-    var top_start: int = maxi(low_height_voxels, high_height_voxels - 1)
-    var soil_start: int = maxi(low_height_voxels, high_height_voxels - 5)
-    _emit_side_segment(point_a, point_b, normal, low_height_voxels, soil_start, VoxelTerrainGenerator.ROCK, vertical_first, edge_alpha)
-    _emit_side_segment(point_a, point_b, normal, soil_start, top_start, VoxelTerrainGenerator.SOIL, vertical_first, edge_alpha)
-    _emit_side_segment(point_a, point_b, normal, top_start, high_height_voxels, top_material, vertical_first, edge_alpha)
+    # Stitching skirts retain their own layer colours and edge-mask alpha values.
+    if top_material == VoxelTerrainGenerator.ROCK:
+        _emit_side_segment(point_a, point_b, normal, low_height_voxels, high_height_voxels, VoxelTerrainGenerator.ROCK, vertical_first, edge_alpha)
+        return
+    var skirt_top_start: int = maxi(low_height_voxels, high_height_voxels - 1)
+    var skirt_soil_start: int = maxi(low_height_voxels, high_height_voxels - 5)
+    _emit_side_segment(point_a, point_b, normal, low_height_voxels, skirt_soil_start, VoxelTerrainGenerator.ROCK, vertical_first, edge_alpha)
+    _emit_side_segment(point_a, point_b, normal, skirt_soil_start, skirt_top_start, VoxelTerrainGenerator.SOIL, vertical_first, edge_alpha)
+    _emit_side_segment(point_a, point_b, normal, skirt_top_start, high_height_voxels, top_material, vertical_first, edge_alpha)
+
 
 func _emit_side_segment(
     point_a: Vector3, point_b: Vector3, normal: Vector3,
-    low_y: int, high_y: int, material_type: int, vertical_first: bool, edge_alpha: float = 1.0
+    low_y: int, high_y: int, material_type: int, vertical_first: bool,
+    edge_alpha: float = 1.0, encoded_alpha: float = -1.0
 ) -> void:
     if high_y <= low_y:
         return
@@ -646,12 +664,15 @@ func _emit_side_segment(
     var b_low := Vector3(point_b.x, low_m, point_b.z)
     var b_high := Vector3(point_b.x, high_m, point_b.z)
     var side_color: Color = _material_color(material_type)
-    if edge_alpha < 0.95:
+    if encoded_alpha >= 0.0:
+        side_color.a = encoded_alpha
+    elif edge_alpha < 0.95:
         side_color.a = edge_alpha
     if vertical_first:
         _add_quad(a_low, a_high, b_high, b_low, normal, side_color)
     else:
         _add_quad(a_low, b_low, b_high, a_high, normal, side_color)
+
 
 func _side_material_at_height(y: int, high_height_voxels: int, top_material: int) -> int:
     if top_material == VoxelTerrainGenerator.ROCK:

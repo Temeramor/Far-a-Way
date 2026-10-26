@@ -1,4 +1,4 @@
-# Far a Way 0.1.0.10
+# Far a Way 0.1.0.11
 
 Far a Way is a first-person landscape exploration prototype built with **Godot 4.7.2** and the Mobile renderer. It combines a height-column voxel terrain, streamed hierarchical LOD, a stylized procedural surface material, animated sky, weather/day-night controls, Android touch input and Windows keyboard/mouse controls.
 
@@ -9,7 +9,7 @@ Far a Way is a first-person landscape exploration prototype built with **Godot 4
 - **World:** seeded 10 × 10 km height-column landscape.
 - **Logical height quantisation:** 10 cm.
 - **Targets:** Android ARM64 and Windows x86-64; native GDExtension binaries are platform-specific.
-- **Version:** `0.1.0.10`.
+- **Version:** `0.1.0.11`.
 
 ## Controls
 
@@ -22,6 +22,8 @@ Far a Way is a first-person landscape exploration prototype built with **Godot 4
 ## Terrain detail, filtering and shadows
 
 - Eight sampling levels use steps of 10 cm, 20 cm, 40 cm, 80 cm, 1.6 m, 3.2 m, 6.4 m and 12.8 m. The 20 cm tier occupies a short 64–80 m ring; the former distance bands for larger steps otherwise remain intact. LOD7 uses a smooth shared-vertex heightfield at the same 12.8 m sampling interval, preserving distant mountain silhouettes without the obvious cuboid risers.
+- Height samples stay continuous in the mesh cache and are quantised to the 10 cm voxel grid only after cubic interpolation. This reduces the repeated contour pattern caused by quantising the 0.5 m cache before interpolation.
+- The upper surface voxel uses the same grass/rock material blend on its side and top faces; lower exposed voxels retain their own soil/rock layers. Native C++ and GDScript meshing now use matching surface weights and alpha markers, including a one-cell border halo.
 - The normal walking camera uses vertical FOV 82°. At 1080p, a 10 cm cell projects to about one pixel at 62 m: `pixels ≈ cell_size × 1080 / (2 × tan(FOV/2) × distance)`. This is why the default LOD0 boundary remains 64 m. Flight FOV is wider, so the same terrain has a different projected size.
 - Visible voxel meshes do **not** cast shadows. Separate, smooth heightfield proxies represent the continuous landform silhouette so mountains can shadow nearby terrain without casting individual block-step shadows.
 - Directional shadow distance is capped at 1,024 m independently of the default 4,096 m terrain view distance. Shadow proxy sampling becomes coarser with LOD, keeping the proxy near a bounded grid density. Top surfaces receive gradually attenuated landform shadows through LOD5; LOD6+ lies beyond the active shadow range. Vertical voxel walls never receive shadow attenuation, so the smooth proxy can shade the terrain without creating a shadow checkerboard.
@@ -31,7 +33,7 @@ Far a Way is a first-person landscape exploration prototype built with **Godot 4
 
 ## Native VoxEn extension
 
-Native C++ handles height sampling, greedy top-face merging, exposed side faces, stitching skirts, smooth terrain-shadow proxy generation, collision height-map data, and conversion of generated geometry to Godot packed arrays when a compatible GDExtension is installed. The GDScript fallback remains available when the extension is absent.
+Native C++ handles height sampling, greedy top-face merging, exposed side faces, stitching skirts, smooth terrain-shadow proxy generation, collision height-map data, and conversion of generated geometry to Godot packed arrays when a compatible GDExtension is installed. Native top faces encode per-corner grass/rock blend weights; the upper voxel side face carries the corresponding surface weight and uses the same XZ material projection. The native cache stays continuous until interpolation is complete. The GDScript fallback implements the same material and height rules when the extension is absent.
 
 The repository does not commit compiled DLL/SO files. Build the native extension separately for every target platform.
 
