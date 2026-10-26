@@ -1,9 +1,9 @@
 # Copyright (c) 2023-2025 Cory Petkovsek and Contributors
 # Copyright (c) 2021 J. Cuellar
 
-## SkyDome is a component of [Sky system].
+## SkyDome is a child component of the main sky controller.
 ##
-## This class renders the sky shader, including the stars, clouds, sun and moon. See [Sky system].
+## This class renders the sky shader, including stars, clouds, the sun and the moon.
 
 @tool
 class_name SkyDome
