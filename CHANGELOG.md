@@ -19,4 +19,4 @@
 - Added a sky and time-of-day system for the sun, moon, stars, cloud layers, atmospheric fog, environmental lighting and an advancing game clock.
 - Added Clear, Cloudy and Overcast weather presets, a weather selector, time selection and Dawn, Day, Dusk and Night time presets.
 - Added the Forward+ Windows native extension descriptor and SCons build configuration for debug and release DLLs.
-- Added smoke tests for deterministic terrain generation, world-size scaling and hierarchical LOD/mesh sampling.
+- Added smoke tests for deterministic terrain generation, world-size scaling and hierarchical LOD/mesh sampling, plus an optional native-builder check for geometry arrays and collision height-map output.
