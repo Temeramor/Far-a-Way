@@ -121,4 +121,10 @@ godot --headless --path . --script res://tests/terrain_smoke_test.gd
 godot --headless --path . --script res://tests/lod_hierarchy_smoke_test.gd
 ```
 
-Then run the project with the rebuilt Windows extension and check rendering and streaming on the target GPU.
+After building the Windows DLL, also run the native smoke test:
+
+```powershell
+godot --headless --path . --script res://tests/native_builder_smoke_test.gd
+```
+
+The native smoke test checks generated geometry arrays and collision height-map output. It reports a skip when the extension is not loaded, so a passing verification requires the DLL to be present. Then run the project and check rendering and streaming on the target GPU.
