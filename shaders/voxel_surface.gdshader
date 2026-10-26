@@ -65,7 +65,7 @@ float voronoi_edge(vec2 p) {
     return sqrt(second_nearest) - sqrt(nearest);
 }
 
-// Continuous transitions between the Neverland swatches prevent harsh colour steps
+// Continuous palette transitions prevent harsh colour steps
 // from collecting into large, patch-like regions across the visible terrain.
 vec3 grass_palette(float pick) {
     float p = clamp(pick, 0.0, 1.0);
