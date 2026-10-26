@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a seamless, broad-form cloud noise map used in Neverland's clear weather.
+"""Generate a seamless, broad-form cloud noise map used for clear weather.
 
 Cloudy and overcast weather use a separate bundled cloud-noise image.
 This map uses fewer, wider noise islands so a clear sky produces larger open gaps.
