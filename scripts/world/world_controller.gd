@@ -6,7 +6,6 @@ const PauseMenuScript = preload("res://scripts/ui/pause_menu.gd")
 @onready var terrain: TerrainGenerator = $Terrain
 @onready var voxel_world: VoxelWorld = $VoxelWorld
 @onready var player: PlayerController = $Player
-@onready var touch_controls: TouchControls = $CanvasLayer/TouchControls
 @onready var loading_screen: LoadingScreen = $CanvasLayer/LoadingScreen
 @onready var sky_system: WorldEnvironment = $Sky
 @onready var sky_dome: Node = $Sky/SkyDome
@@ -45,13 +44,9 @@ var _voxen_debug_label: Label
 var _voxen_debug_visible: bool = false
 var _voxen_debug_timer: float = 0.0
 var _pause_menu: PauseMenu
-var _pause_button: Button
 
 
 func _ready() -> void:
-    touch_controls.movement_changed.connect(player.set_touch_move)
-    touch_controls.look_dragged.connect(player.apply_look_delta)
-    touch_controls.flight_toggle_requested.connect(player.toggle_flight_mode)
     player.flight_mode_changed.connect(_on_flight_mode_changed)
     terrain.generation_started.connect(_on_generation_started)
     terrain.generation_progress.connect(_on_generation_progress)
@@ -60,8 +55,6 @@ func _ready() -> void:
         time_of_day.time_changed.connect(_on_time_changed)
 
     player.process_mode = Node.PROCESS_MODE_DISABLED
-    touch_controls.visible = false
-    touch_controls.process_mode = Node.PROCESS_MODE_DISABLED
     loading_screen.visible = false
     voxel_world.set_lod_settings(GameSettings.lod0_distance_m)
     voxel_world.set_shadow_mode(GameSettings.shadow_mode)
@@ -110,7 +103,7 @@ func _apply_view_distance_environment(distance_m: float) -> void:
 
 
 func _configure_sky_system() -> void:
-    # Sky3D owns the sun, moon, atmosphere, clouds and the clock. Use an equatorial
+    # The Sky controller owns the sun, moon, atmosphere, clouds and the clock. Use an equatorial
     # location so the four time presets remain intuitive throughout the year.
     # With the add-on's realistic celestial calculation, the sun travels east to west.
     time_of_day.set("system_sync", false)
@@ -148,7 +141,6 @@ func begin_generation(seed_value: int) -> void:
         weather_menu_button.disabled = true
     _weather_menu_open = false
     player.mouse_capture_paused = false
-    touch_controls.set_process_input(true)
 
     player.flight_speed_multiplier = GameSettings.flight_speed_multiplier
     player.flight_fov = GameSettings.flight_fov
@@ -174,25 +166,19 @@ func _on_generation_finished(_seed_value: int) -> void:
     var ground_height: float = terrain.height_at_world(0.0, 0.0)
     player.global_position = Vector3(0.0, ground_height + 0.12, 0.0)
     player.velocity = Vector3.ZERO
-    player.set_touch_move(Vector2.ZERO)
     player.reset_camera()
 
-    touch_controls.process_mode = Node.PROCESS_MODE_INHERIT
-    touch_controls.visible = true
     player.process_mode = Node.PROCESS_MODE_INHERIT
     loading_screen.set_progress(1.0, "Мир готов. Приятного исследования!")
     loading_screen.visible = false
     _world_ready = true
-    if _pause_button != null:
-        _pause_button.visible = OS.has_feature("android")
     if weather_menu_button != null:
-        weather_menu_button.visible = OS.has_feature("android")
+        weather_menu_button.visible = true
         weather_menu_button.disabled = false
     if weather_panel != null:
         weather_panel.visible = false
     _weather_menu_open = false
     player.mouse_capture_paused = false
-    touch_controls.set_process_input(true)
     _update_weather_button_styles()
     _update_time_button_styles()
     Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -327,7 +313,7 @@ func _setup_weather_controls() -> void:
 
     var hint := Label.new()
     hint.text = "M — открыть/закрыть · Esc — закрыть"
-    hint.visible = not OS.has_feature("android")
+    hint.visible = true
     hint.add_theme_font_size_override("font_size", 11)
     hint.add_theme_color_override("font_color", Color(0.66, 0.72, 0.63, 1.0))
     rows.add_child(hint)
@@ -478,7 +464,7 @@ func _apply_weather(mode: int, animate: bool) -> void:
     _sky_tween.set_ease(Tween.EASE_IN_OUT)
     for property_name in targets:
         _sky_tween.tween_property(sky_dome, property_name, targets[property_name], 2.5)
-    # Tween the Environment directly: Sky3D's ambient_energy alias starts its own
+    # Tween the Environment directly: the Sky controller's ambient-energy alias starts its own
     # sky-contribution tween from its setter, so animating that alias would fight itself.
     _sky_tween.tween_property(sky_system.environment, "ambient_light_energy", ambient_energy, 2.5)
 
@@ -508,7 +494,7 @@ func _on_time_preset_pressed(preset: int) -> void:
 
 
 func _on_time_changed(value: float) -> void:
-    # Keep the active time preset in sync while Sky3D advances its clock automatically.
+    # Keep the active time preset in sync while the Sky controller advances its clock automatically.
     if value >= 4.0 and value < 9.0:
         _time_mode = TIME_DAWN
     elif value >= 9.0 and value < 16.0:
@@ -542,17 +528,12 @@ func _set_weather_menu_open(open: bool) -> void:
         _weather_menu_open = true
         weather_panel.visible = true
         player.mouse_capture_paused = true
-        touch_controls.set_process_input(false)
         Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
     else:
         _weather_menu_open = false
         weather_panel.visible = false
         player.mouse_capture_paused = false
-        touch_controls.set_process_input(true)
-        if OS.has_feature("android"):
-            Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-        else:
-            Input.mouse_mode = _mouse_mode_before_weather_menu
+        Input.mouse_mode = _mouse_mode_before_weather_menu
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -661,16 +642,6 @@ func _toggle_voxen_debug() -> void:
 
 
 func _build_pause_menu_ui() -> void:
-    _pause_button = _make_control_button("PauseMenuToggle", "ПАУЗА", "Открыть паузу (Esc)")
-    _pause_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-    _pause_button.offset_left = -304.0
-    _pause_button.offset_top = 14.0
-    _pause_button.offset_right = -220.0
-    _pause_button.offset_bottom = 54.0
-    _pause_button.custom_minimum_size = Vector2(84.0, 40.0)
-    _pause_button.visible = false
-    _pause_button.pressed.connect(_open_pause_menu)
-    $CanvasLayer.add_child(_pause_button)
 
     _pause_menu = PauseMenuScript.new() as PauseMenu
     _pause_menu.configure(voxel_world, self)
@@ -690,26 +661,18 @@ func _open_pause_menu() -> void:
 
 func _on_pause_menu_opened() -> void:
     player.mouse_capture_paused = true
-    touch_controls.visible = false
-    touch_controls.set_process_input(false)
     if weather_panel != null:
         weather_panel.visible = false
     if weather_menu_button != null:
         weather_menu_button.visible = false
-    if _pause_button != null:
-        _pause_button.visible = false
 
 
 func _on_pause_menu_closed() -> void:
     if not _world_ready:
         return
     player.mouse_capture_paused = false
-    touch_controls.visible = true
-    touch_controls.set_process_input(true)
     if weather_menu_button != null:
-        weather_menu_button.visible = OS.has_feature("android")
-    if _pause_button != null:
-        _pause_button.visible = OS.has_feature("android")
+        weather_menu_button.visible = true
 
 
 func _return_to_menu() -> void:
