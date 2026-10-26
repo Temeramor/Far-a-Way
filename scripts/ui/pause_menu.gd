@@ -134,8 +134,8 @@ func _build_ui() -> void:
     settings_stack.add_child(_make_divider())
 
     var settings_notice := _make_label(
-        "Графика настраивается автоматически для стабильной работы. "
-        + "Детализация и тени рельефа упрощаются с расстоянием; тяжёлое MSAA отключено.",
+        "Графика настроена автоматически. Используется MSAA ×2; "
+        + "дальние материалы и тени рельефа упрощаются ради производительности.",
         false
     )
     settings_notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
