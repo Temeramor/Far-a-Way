@@ -1,9 +1,9 @@
 # Copyright (c) 2023-2025 Cory Petkovsek and Contributors
 # Copyright (c) 2021 J. Cuellar
 
-## SkyDome is a component of [Sky3D].
+## SkyDome is a component of [Sky system].
 ##
-## This class renders the sky shader, including the stars, clouds, sun and moon. See [Sky3D].
+## This class renders the sky shader, including the stars, clouds, sun and moon. See [Sky system].
 
 @tool
 class_name SkyDome
@@ -48,7 +48,7 @@ func _update_ambient_color() -> void:
 func _ready() -> void:
 	set_process(false)
 	set_physics_process(false)
-	# Sky3D creates this node at runtime and assigns its Environment immediately
+	# Sky system creates this node at runtime and assigns its Environment immediately
 	# after add_child(). Defer construction so that assignment has completed even
 	# on engine versions that call a dynamically-added child's _ready() inline.
 	call_deferred("_finish_initial_setup")
@@ -861,7 +861,7 @@ const WIND_DIRECTION_OFFSET: float = deg_to_rad(-90)
 
 
 enum { PHYSICS_PROCESS, PROCESS, MANUAL }
-## Sky3D is updated in two parts. The sky, sun, moon, and stars are updated by the
+## Sky system is updated in two parts. The sky, sun, moon, and stars are updated by the
 ## [member TimeOfDay.update_interval] timer. Cloud movement is updated by this method: your choice of
 ## _physics_process(), _process(), or by manually calling [method process_tick].
 @export_enum("Physics Process", "Process", "Manual") var process_method: int = PHYSICS_PROCESS :
