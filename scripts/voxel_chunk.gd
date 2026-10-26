@@ -1,11 +1,11 @@
 extends Node3D
 class_name VoxelTerrainChunk
 
-## Holds render/collision resources for one chunk. Mesh CPU work happens in VoxelChunkMeshBuilder;
-## replacements are attached on the main thread and old GPU-backed nodes are retired gradually.
+## Holds render/collision resources for one chunk; the native builder performs expensive CPU mesh work.
+## Mesh/physics nodes are attached on the main thread and replaced GPU resources are retired gradually.
 
 const VOXEL_SIZE: float = 0.1
-const BuilderScript = preload("res://scripts/voxel_chunk_builder.gd")
+const FallbackBuilderScript = preload("res://scripts/voxel_chunk_mesh_builder_fallback.gd")
 
 var coord: Vector2i = Vector2i.ZERO
 var lod: int = -1
@@ -60,7 +60,7 @@ func build(
         "world_size_voxels": world_size_voxels,
         "debug_lod_colors": p_debug_lod_colors
     }
-    var builder = BuilderScript.new()
+    var builder = FallbackBuilderScript.new()
     apply_mesh_data(builder.build_mesh_data(job_data), material)
 
 func apply_mesh_data(data: Dictionary, material: Material) -> void:
