@@ -4,18 +4,16 @@ config_version=5
 
 [application]
 config/name="Far a Way"
-config/description="Far a Way 0.1.0.11 — procedural voxel exploration with hierarchical LOD."
-config/version="0.1.0.11"
+config/description="Far a Way 0.1.0.12 — Windows voxel exploration with the Forward+ renderer."
+config/version="0.1.0.12"
 config/icon="res://icon.svg"
 run/main_scene="res://scenes/menu.tscn"
-config/features=PackedStringArray("4.7", "Mobile")
+config/features=PackedStringArray("4.7", "Forward Plus")
 
 [autoload]
 GameSettings="*res://scripts/systems/game_settings.gd"
 
 [display]
-window/handheld/orientation=0
-window/energy_saving/keep_screen_on=true
 window/size/viewport_width=1280
 window/size/viewport_height=720
 window/size/window_width_override=1280
@@ -25,11 +23,7 @@ window/stretch/mode="canvas_items"
 [rendering]
 anti_aliasing/quality/msaa_3d=1
 anti_aliasing/quality/screen_space_aa=0
-renderer/rendering_method="mobile"
-renderer/rendering_method.mobile="mobile"
+renderer/rendering_method="forward_plus"
 textures/default_filters/use_nearest_mipmap_filter=false
 rendering/shading/overrides/force_vertex_shading=false
-rendering/shading/overrides/force_vertex_shading.mobile=false
 
-[input_devices]
-pointing/emulate_mouse_from_touch=true

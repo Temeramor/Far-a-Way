@@ -13,7 +13,7 @@ const DEFAULT_VIEW_DISTANCE_M: float = 4096.0
 
 var flight_speed_multiplier: float = DEFAULT_FLIGHT_SPEED_MULTIPLIER
 var flight_fov: float = DEFAULT_FLIGHT_FOV
-# Fixed mobile graphics profile; intentionally no experimental user-facing toggles.
+# Fixed baseline profile for the Forward+ migration; Windows graphics options will be added separately.
 var lod0_distance_m: float = DEFAULT_LOD0_DISTANCE_M
 var shadow_mode: int = DEFAULT_SHADOW_MODE
 var view_distance_m: float = DEFAULT_VIEW_DISTANCE_M

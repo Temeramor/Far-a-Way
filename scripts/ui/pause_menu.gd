@@ -20,7 +20,7 @@ var _mouse_mode_before_pause: int = Input.MOUSE_MODE_VISIBLE
 
 
 func configure(_voxel_world: Node, _world_controller: Node = null) -> void:
-    # Keep the scene setup API. Graphics now use the fixed automatic profile.
+    # Keep the scene setup API while Windows graphics options are prepared.
     pass
 
 
@@ -134,8 +134,8 @@ func _build_ui() -> void:
     settings_stack.add_child(_make_divider())
 
     var settings_notice := _make_label(
-        "Графика настроена автоматически. Используется MSAA ×2; "
-        + "дальние материалы и тени рельефа упрощаются ради производительности.",
+        "Используется рендерер Forward+ и базовый профиль MSAA ×2. "
+        + "Дополнительные настройки графики будут добавлены отдельно.",
         false
     )
     settings_notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

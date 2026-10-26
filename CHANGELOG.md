@@ -2,6 +2,15 @@
 
 All notable changes are recorded here. The current version is defined by `project.godot` and `VERSION`.
 
+## 0.1.0.12 — 2026-10-26
+
+- Switched the project from the Mobile renderer to Forward+, and changed the required project feature tag to `Forward Plus`.
+- Removed mobile-specific renderer overrides and Android-only display/input configuration from `project.godot`.
+- Made Windows x86-64 the only declared platform target in `bin/voxen_native.gdextension`; Linux and Android native entries were removed.
+- Updated README build instructions and project metadata for Windows-only development. The current pause-menu notice now names Forward+ and makes clear that extended graphics controls are a later step.
+- Kept the existing 2× MSAA baseline and existing terrain/LOD/shader behaviour. Forward+-only features are not enabled by this change; the renderer switch is the foundation for later PBR materials, SSAO/SSIL, SSR, SDFGI, volumetric fog and temporal upscaling.
+- Bumped the project version to `0.1.0.12`. Validate shader/material behaviour in Godot on Windows and rebuild the Windows GDExtension before relying on the result.
+
 ## 0.1.0.11 — 2026-10-26
 
 - Fixed upper grass voxel side faces so they use the same grass/rock texture blend and XZ material projection as their top faces, instead of using a stone-like side treatment. Lower exposed voxels retain their own soil/rock layers.

@@ -1,23 +1,22 @@
-# Far a Way 0.1.0.11
+# Far a Way 0.1.0.12
 
-Far a Way is a first-person landscape exploration prototype built with **Godot 4.7.2** and the Mobile renderer. It combines a height-column voxel terrain, streamed hierarchical LOD, a stylized procedural surface material, animated sky, weather/day-night controls, Android touch input and Windows keyboard/mouse controls.
+Far a Way is a first-person landscape exploration prototype built with **Godot 4.7.2** and the **Forward+ renderer**. It combines height-column voxel terrain, streamed hierarchical LOD, a stylized procedural surface material, animated sky, weather/day-night controls and keyboard/mouse controls.
 
 ## Project overview
 
 - **Genre:** first-person landscape exploration / procedural voxel terrain.
-- **Engine:** Godot 4.7.2, Mobile renderer.
+- **Engine:** Godot 4.7.2, Forward+ renderer.
 - **World:** seeded 10 × 10 km height-column landscape.
 - **Logical height quantisation:** 10 cm.
-- **Targets:** Android ARM64 and Windows x86-64; native GDExtension binaries are platform-specific.
-- **Version:** `0.1.0.11`.
+- **Target:** Windows x86-64 only. Android and Linux are no longer maintained targets for this branch; the native extension descriptor only lists Windows builds.
+- **Version:** `0.1.0.12`.
 
 ## Controls
 
 1. Open the project in Godot 4.7.2, allow resources to import, press **F5**, and start a new game from the menu.
-2. **Windows:** move with WASD / arrow keys, look with the mouse, press **Esc** to pause.
-3. **Android:** use the left-side touch joystick to move, drag on the right side to look, and use the pause button on the HUD.
-4. Double-tap the right half of the screen (or double-tap Space on desktop) to toggle flight.
-5. **VOXEN DEBUG** displays streaming/LOD/collision/task diagnostics; **F3** toggles debug LOD colours; **R** regenerates the landscape with a new seed.
+2. Move with WASD / arrow keys, look with the mouse, and press **Esc** to pause.
+3. Double-tap **Space** to toggle flight.
+4. **VOXEN DEBUG** displays streaming/LOD/collision/task diagnostics; **F3** toggles debug LOD colours; **R** regenerates the landscape with a new seed.
 
 ## Terrain detail, filtering and shadows
 
@@ -29,15 +28,15 @@ Far a Way is a first-person landscape exploration prototype built with **Godot 4
 - Directional shadow distance is capped at 1,024 m independently of the default 4,096 m terrain view distance. Shadow proxy sampling becomes coarser with LOD, keeping the proxy near a bounded grid density. Top surfaces receive gradually attenuated landform shadows through LOD5; LOD6+ lies beyond the active shadow range. Vertical voxel walls never receive shadow attenuation, so the smooth proxy can shade the terrain without creating a shadow checkerboard.
 - LOD3 and farther use a cheaper low-frequency material path. Fine per-cell colour variation, warped crack fields and Voronoi searches are skipped for those distant tiers. Near the player, procedural details are also skipped when their screen-space contribution becomes negligible.
 - Lighting is softened on 10 cm vertical risers when those risers become sub-pixel, reducing dark contour-like Moiré bands without MSAA ×4. The original default MSAA ×2 profile is retained; screen-space AA remains off to avoid extra blur and post-processing cost.
-- Graphics settings are automatic; the pause menu retains the same visual style but no longer exposes experimental AA, shadow-mode, or view-distance sliders. Old persisted graphics overrides are cleared on upgrade.
+- The project now defaults to Forward+, opening the way for desktop rendering features such as screen-space reflections, SSAO/SSIL, SDFGI, volumetric fog and TAA/FSR2. This change only selects the renderer; those effects and extended user-facing graphics options are not enabled by this commit. MSAA remains at the previous 2× baseline until Windows graphics settings are implemented.
 
 ## Native VoxEn extension
 
 Native C++ handles height sampling, greedy top-face merging, exposed side faces, stitching skirts, smooth terrain-shadow proxy generation, collision height-map data, and conversion of generated geometry to Godot packed arrays when a compatible GDExtension is installed. Native top faces encode per-corner grass/rock blend weights; the upper voxel side face carries the corresponding surface weight and uses the same XZ material projection. The native cache stays continuous until interpolation is complete. The GDScript fallback implements the same material and height rules when the extension is absent.
 
-The repository does not commit compiled DLL/SO files. Build the native extension separately for every target platform.
+The repository does not commit compiled native libraries. The extension manifest is Windows-only; build the DLL for Windows x86-64.
 
-Requirements: a C++ toolchain, Python 3.12+, SCons, Godot 4.7.2 C++ bindings (`godot-cpp` tag `10.0.0-stable`), and the Android NDK for Android builds.
+Requirements: a Windows C++ toolchain (Visual Studio Build Tools), Python 3.12+, SCons, and Godot 4.7.2 C++ bindings (`godot-cpp` tag `10.0.0-stable`). Forward+ requires a graphics driver supporting a RenderingDevice backend such as Vulkan or Direct3D 12.
 
 From the project root:
 
@@ -47,13 +46,6 @@ python -m pip install --upgrade scons
 cd native
 ```
 
-Linux x86-64:
-
-```sh
-scons platform=linux target=template_debug arch=x86_64
-scons platform=linux target=template_release arch=x86_64
-```
-
 Windows x86-64:
 
 ```sh
@@ -61,20 +53,13 @@ scons platform=windows target=template_debug arch=x86_64
 scons platform=windows target=template_release arch=x86_64
 ```
 
-Android ARM64 (with the Android NDK environment configured):
-
-```sh
-scons platform=android target=template_debug arch=arm64
-scons platform=android target=template_release arch=arm64
-```
-
-The extension descriptor is `bin/voxen_native.gdextension`; compiled outputs are expected under `bin/linux/`, `bin/windows/` and `bin/android/`. Do not commit generated libraries. Rebuild the extension after changing native sources.
+The extension descriptor is `bin/voxen_native.gdextension`; the Windows outputs are expected under `bin/windows/`. Do not commit generated libraries. Rebuild the extension after changing native sources.
 
 ## Architecture and limitations
 
 - **Native C++:** mesh generation and packed-array transfer; heavy per-chunk work runs in worker threads.
 - **GDScript:** streaming priorities, LOD hierarchy visibility, worker lifecycle, attachment of render/physics resources, UI, controls, sky/weather and world orchestration.
-- **Streaming:** larger parent tiles remain visible until child tiles are ready, avoiding temporary holes during refinement. The worker cap is conservative to leave CPU time available for the mobile renderer.
+- **Streaming:** larger parent tiles remain visible until child tiles are ready, avoiding temporary holes during refinement. The worker cap is conservative to leave CPU time available for the renderer and main-thread scene management.
 - **Terrain model:** height-column terrain rather than a full 3D voxel volume. Enclosed caves, overhangs, arbitrary voxel editing and persistent terrain changes are not implemented yet.
 - **Native binaries:** build separately for each target; compiled artifacts are intentionally excluded from the repository.
 
@@ -88,6 +73,6 @@ godot --headless --path . --script res://tests/neverland_voxen_smoke_test.gd
 godot --headless --path . --script res://tests/lod_hierarchy_smoke_test.gd
 ```
 
-The tests cover terrain generation and LOD hierarchy/mesh sampling; the visual result still requires checking on the target Android device, and the native extension needs rebuilding to include the C++ changes.
+The tests cover terrain generation and LOD hierarchy/mesh sampling; verify rendering on the target Windows GPU, and rebuild the native extension when C++ sources change.
 
 Version history is maintained in [CHANGELOG.md](CHANGELOG.md).
