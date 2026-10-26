@@ -1,9 +1,9 @@
 # Copyright (c) 2023-2025 Cory Petkovsek and Contributors
 # Copyright (c) 2021 J. Cuellar
 
-## TimeOfDay is a component of [Sky system].
+## TimeOfDay is a component of the main sky controller.
 ##
-## This class tracks the progress of time, as well as the planetary calculations. See [Sky system].
+## This class tracks time progression and performs the associated planetary calculations.
 
 @tool
 class_name TimeOfDay
