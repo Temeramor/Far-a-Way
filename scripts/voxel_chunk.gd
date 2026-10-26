@@ -188,11 +188,13 @@ func set_shadow_mode(mode: int) -> void:
 
 
 func _shadow_receive_strength() -> float:
-    if lod < 0 or lod >= 4:
+    # Smooth heightfield shadows remain visible on the top surfaces through the
+    # 1 km shadow range. Vertical voxel risers bypass shadow attenuation in the shader.
+    if lod < 0 or lod >= 6:
         return 0.0
     if _shadow_mode == 0:
         return 1.0
-    return maxf(0.0, 1.0 - float(lod) * 0.25)
+    return maxf(0.0, 1.0 - float(lod) * 0.15)
 
 
 func _should_proxy_cast_shadow() -> bool:
