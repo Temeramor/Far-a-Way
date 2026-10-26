@@ -1,9 +1,9 @@
 # Copyright (c) 2023-2025 Cory Petkovsek and Contributors
 # Copyright (c) 2021 J. Cuellar
 
-## TimeOfDay is a component of [Sky3D].
+## TimeOfDay is a component of [Sky system].
 ##
-## This class tracks the progress of time, as well as the planetary calculations. See [Sky3D].
+## This class tracks the progress of time, as well as the planetary calculations. See [Sky system].
 
 @tool
 class_name TimeOfDay
@@ -137,7 +137,7 @@ var _sky_dome: SkyDome
 
 @export_group("Current Time")
 
-## Syncronize all of Sky3D with your system clock for a realtime sky, time, and date.
+## Syncronize all of Sky system with your system clock for a realtime sky, time, and date.
 @export var system_sync: bool = false
 
 ## A readable game date string, eg. '2025-01-01'. Alias for [member TimeOfDay.game_date].
