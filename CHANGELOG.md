@@ -5,6 +5,7 @@ All notable changes are recorded here. The current version is defined by `projec
 ## 0.1.0.10 — 2026-10-26
 
 - Inserted a 20 cm LOD tier between the 10 cm LOD0 and the former 40 cm LOD1. The new tier occupies a short 64–80 m ring, preserving the previous distance ranges for the larger mesh steps and retaining 12.8 m cells at the farthest level.
+- Replaced the visible LOD7 block-top mesh with a smooth shared-vertex heightfield at the same 12.8 m sampling interval. This preserves distant landform silhouettes while removing the strongest cuboid appearance; a separate smooth proxy continues to cast terrain shadows.
 - Calculated the default LOD0 boundary for a 1080p view: with vertical FOV 82°, a 10 cm cell projects to approximately one pixel at about 62 m, so the 64 m boundary remains appropriate.
 - Kept visible voxel surfaces out of the shadow map and retained smooth continuous-heightfield shadow proxies for landform silhouettes. Shadow proxy sampling is coarser at distant LODs, and directional shadow distance is capped at 1,024 m independently of the 4,096 m terrain view.
 - Added screen-space softening for sub-pixel 10 cm risers so their horizontal-normal walls produce fewer dark contour/Moiré strips without enabling expensive MSAA ×4. Vertical voxel walls do not receive terrain shadow attenuation.

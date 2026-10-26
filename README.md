@@ -21,7 +21,7 @@ Far a Way is a first-person landscape exploration prototype built with **Godot 4
 
 ## Terrain detail, filtering and shadows
 
-- Eight mesh-sampling levels use steps of 10 cm, 20 cm, 40 cm, 80 cm, 1.6 m, 3.2 m, 6.4 m and 12.8 m. The 20 cm tier occupies a short 64–80 m ring; the pre-existing distance bands for larger steps remain otherwise unchanged.
+- Eight sampling levels use steps of 10 cm, 20 cm, 40 cm, 80 cm, 1.6 m, 3.2 m, 6.4 m and 12.8 m. The 20 cm tier occupies a short 64–80 m ring; the former distance bands for larger steps otherwise remain intact. LOD7 uses a smooth shared-vertex heightfield at the same 12.8 m sampling interval, preserving distant mountain silhouettes without the obvious cuboid risers.
 - The normal walking camera uses vertical FOV 82°. At 1080p, a 10 cm cell projects to about one pixel at 62 m: `pixels ≈ cell_size × 1080 / (2 × tan(FOV/2) × distance)`. This is why the default LOD0 boundary remains 64 m. Flight FOV is wider, so the same terrain has a different projected size.
 - Visible voxel meshes do **not** cast shadows. Separate, smooth heightfield proxies represent the continuous landform silhouette so mountains can shadow nearby terrain without casting individual block-step shadows.
 - Directional shadow distance is capped at 1,024 m independently of the default 4,096 m terrain view distance. Shadow proxy sampling becomes coarser with LOD.

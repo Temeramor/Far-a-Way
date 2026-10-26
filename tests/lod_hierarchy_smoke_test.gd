@@ -71,6 +71,31 @@ func _run() -> void:
     if not is_equal_approx(float(last_root["width"]), 1808.0):
         errors.append("Last LOD7 edge tile should be clipped to 1808 m")
 
+    # LOD7 should use shared vertices for a smooth heightfield rather than flat voxel quads.
+    var far_generator := VoxelTerrainGenerator.new(1337, 10000.0)
+    var far_builder := VoxelChunkMeshBuilder.new()
+    var far_data: Dictionary = far_builder.build_mesh_data({
+        "coord": Vector2i.ZERO,
+        "request": {
+            "lod": 7, "start_x": 50000, "start_z": 50000,
+            "size_x": 2560, "size_z": 2560, "step_voxels": 128,
+            "collision": false, "distance": 0.0, "priority": 0.0
+        },
+        "neighbor_lods": {"left": -1, "right": -1, "north": -1, "south": -1},
+        "seed": 1337,
+        "world_min_x": -5000.0, "world_min_z": -5000.0,
+        "world_size_voxels": 100000,
+        "terrain_world_size_m": 10000.0,
+        "mountain_profile": far_generator.get_mountain_profile(),
+        "debug_lod_colors": false,
+        "build_collision": false
+    })
+    if not bool(far_data.get("has_geometry", false)):
+        errors.append("LOD7 smooth heightfield should produce visible geometry")
+    var far_vertices: PackedVector3Array = far_data.get("vertices", PackedVector3Array())
+    if far_vertices.size() != 21 * 21:
+        errors.append("LOD7 smooth mesh should use shared grid vertices")
+
     # Regression: leaf visibility must safely handle a typed empty child list.
     var leaf_key: Vector2i = world._make_lod_key(0, 0, 0)
     world._wanted[leaf_key] = {"lod": 0, "fallback": false, "collision": false}
