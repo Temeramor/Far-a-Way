@@ -2,24 +2,22 @@
 
 ## 0.1.0.1 — 2026-10-26
 
-- Added the Windows x86-64 first-person exploration project using Godot 4.7.2 and the Forward+ renderer.
-- Added a main menu with New Game, Settings and Exit flows, plus deterministic world-seed input from numbers or arbitrary text strings.
-- Added persistent player settings for flight speed and flight field of view, including Save, Cancel and Defaults actions.
-- Added a first-person character controller with mouse look, keyboard movement, gravity, camera-aligned flight mode and double-tap Space activation.
-- Added the world loading screen, initial spawn preparation, progress reporting, pause menu, Continue action and return-to-menu flow.
-- Added deterministic procedural height-column terrain with layered noise, three seeded mountain chains, world-size-scaled mountain profiles, slope-aware grass/rock material weighting and 10 cm final height quantisation.
-- Added a stylised surface material with pixel-scale colour variation, variable Voronoi-style rock cracks, smooth grass/rock transitions and consistent top/side material treatment.
-- Added eight distance-based terrain LOD tiers from 10 cm to 12.8 m, including a short 20 cm intermediate ring and a smooth shared-vertex far-distance surface.
-- Added hierarchical terrain streaming with parent-tile fallback, neighbour-aware refinement, border halo sampling and stitching skirts to maintain continuous coverage.
-- Added movement-aware chunk scheduling using distance, view direction, velocity prediction and measured build, queue-wait and apply-wait timings.
-- Added background chunk jobs, bounded worker concurrency, collision-height-map creation, resource retirement and streaming/LOD/collision/worker diagnostics.
-- Added the native C++ terrain builder for noise/height sampling, interpolation, greedy top-face merging, exposed side geometry, material weights, LOD skirts, far terrain, smooth shadow proxies, collision data and packed mesh arrays.
-- Added a GDScript mesh-generation fallback for runs without the native DLL, with the native builder as the intended Windows performance path.
-- Added smooth terrain-shadow proxy geometry so landform silhouettes cast shadows without visible voxel meshes casting individual block shadows, alongside distance-based material/shadow simplification and the baseline MSAA ×2 profile.
-- Added a sky and time-of-day system for the sun, moon, stars, cloud layers, atmospheric fog, environmental lighting and an advancing game clock.
-- Added Clear, Cloudy and Overcast weather presets, a weather selector, time selection and Dawn, Day, Dusk and Night time presets.
-- Added the Forward+ Windows native extension descriptor and SCons build configuration for debug and release DLLs.
-- Added smoke tests for deterministic terrain generation, world-size scaling and hierarchical LOD/mesh sampling, plus an optional native-builder check for geometry arrays and collision height-map output.
-- Added F3 access to an expanded VoxEn diagnostics panel with frame timing, FPS, native-builder availability, LOD distribution, collision counts, worker queue timings and streaming backlog.
-- Added persistent windowed/fullscreen mode and selectable window resolutions from 640 × 360 through 2560 × 1440.
-- Added shared world-space material sampling for voxel top and upper side faces, plus stronger noise variation along grass-to-rock transitions.
+- Added a Windows x86-64 first-person exploration project built with Godot 4.7.2 and the Forward+ renderer.
+- Added a main menu with New Game, Settings and Exit, deterministic world-seed input, and a loading screen with generation progress.
+- Added a first-person controller with mouse look, WASD and arrow-key movement, gravity, and camera-aligned flight activated by double-tapping Space.
+- Added persistent player options for flight speed and field of view.
+- Added a 10 × 10 km procedural landscape with seeded mountain chains, layered noise, world-size-scaled relief and 10 cm base height quantisation.
+- Added slope-aware grass and rock distribution, varied grass and stone palettes, procedural rock cracks and shared material sampling across voxel tops and upper sides.
+- Added eight hierarchical terrain LOD tiers, with shared-vertex terrain surfaces for distant levels and edge skirts for continuous coverage between neighbouring tiles.
+- Added distance-scaled geometry sampling and lower-density terrain-shadow proxies for distant chunks.
+- Added asynchronous native C++ mesh generation, a GDScript fallback builder, collision height maps and packed vertex/index arrays.
+- Added movement-aware terrain streaming prioritised by distance, view direction, velocity prediction and measured worker timing.
+- Added bounded worker scheduling, LOD-aware chunk caching, mesh-resource retirement and streaming diagnostics.
+- Added VoxEn diagnostics on F3, including FPS, frame time, LOD distribution, queued and running jobs, chunk geometry counts, estimated mesh memory, video-memory usage and rendered primitive counts.
+- Added display options for windowed and fullscreen modes, with selectable resolutions from 640 × 360 through 2560 × 1440 and persistent preferences.
+- Added a pause menu with Continue, Settings and Return to Menu actions; Esc opens the pause menu and M opens the weather and time menu.
+- Added a sky and time-of-day system with sun, moon, stars, cloud layers, atmospheric fog and environmental lighting.
+- Added Clear, Cloudy and Overcast weather presets, plus Dawn, Day, Dusk and Night time presets.
+- Added smooth terrain-shadow proxies that preserve broad landform silhouettes while scaling shadow sampling with distance.
+- Added a Windows native-extension descriptor and SCons build configuration, with compiler intermediates placed in a dedicated native build directory.
+- Added smoke tests for deterministic terrain sampling, world-size scaling, hierarchical LOD coverage, compact far meshes, mesh-array integrity and native collision-height-map output.
