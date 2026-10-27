@@ -50,7 +50,7 @@ The world is divided into terrain chunks, generated in the background and priori
 | LOD6 | 6.4 m | Shared-vertex surface |
 | LOD7 | 12.8 m | Shared-vertex surface |
 
-The default LOD0 boundary is 64 m, followed by a short 20 cm ring from 64 to 80 m; the later boundaries expand by powers of two to cover the distant landscape. Distant tiers use shared vertices and perimeter skirts, bounding side-face geometry while retaining broad mountain silhouettes. The highest two tiers keep their configured source-grid density to preserve distant terrain shape.
+The default LOD0 boundary is 64 m, followed by a short 20 cm ring from 64 to 80 m; the later boundaries expand by powers of two to cover the distant landscape. Distant tiers use shared vertices and perimeter skirts, bounding side-face geometry while retaining broad mountain silhouettes. The farthest tier retains its configured source-grid density to preserve distant terrain shape.
 
 Parent tiles remain visible until the required child tiles are ready, helping prevent temporary holes during refinement. A border halo, stitching skirts and neighbour-aware visibility keep adjacent chunks connected. The stream manager prioritises jobs using distance, view direction, velocity prediction and measured build/queue/apply timings. The worker-task limit adjusts to available CPU cores so scene management and rendering retain processing time.
 
