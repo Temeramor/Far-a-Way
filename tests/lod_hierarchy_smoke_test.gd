@@ -94,8 +94,39 @@ func _run() -> void:
     if not bool(far_data.get("has_geometry", false)):
         errors.append("LOD7 smooth heightfield should produce visible geometry")
     var far_vertices: PackedVector3Array = far_data.get("vertices", PackedVector3Array())
-    if far_vertices.size() != 21 * 21:
-        errors.append("LOD7 smooth mesh should use shared grid vertices")
+    if far_vertices.size() != 11 * 11:
+        errors.append("LOD7 low-density smooth mesh should use shared grid vertices")
+    var far_indices: PackedInt32Array = far_data.get("indices", PackedInt32Array())
+    if far_indices.is_empty() or far_indices.size() % 3 != 0:
+        errors.append("LOD7 smooth mesh triangle indices should be a non-empty multiple of three")
+
+    # LOD2 is a smooth shared-vertex surface with a bounded vertex count and border skirts.
+    var compact_data: Dictionary = far_builder.build_mesh_data({
+        "coord": Vector2i.ZERO,
+        "request": {
+            "lod": 2, "start_x": 50000, "start_z": 50000,
+            "size_x": 1280, "size_z": 1280, "step_voxels": 4,
+            "collision": false, "distance": 100.0, "priority": 0.0
+        },
+        "neighbor_lods": {"left": 2, "right": 2, "north": 2, "south": 2},
+        "seed": 1337,
+        "world_min_x": -5000.0, "world_min_z": -5000.0,
+        "world_size_voxels": 100000,
+        "terrain_world_size_m": 10000.0,
+        "mountain_profile": far_generator.get_mountain_profile(),
+        "debug_lod_colors": false,
+        "build_collision": false
+    })
+    var compact_vertices: PackedVector3Array = compact_data.get("vertices", PackedVector3Array())
+    var compact_normals: PackedVector3Array = compact_data.get("normals", PackedVector3Array())
+    var compact_colors: PackedColorArray = compact_data.get("colors", PackedColorArray())
+    var compact_indices: PackedInt32Array = compact_data.get("indices", PackedInt32Array())
+    if compact_vertices.size() > 40000:
+        errors.append("LOD2 shared-vertex mesh should stay below 40,000 vertices per tile")
+    if compact_vertices.size() != compact_normals.size() or compact_vertices.size() != compact_colors.size():
+        errors.append("LOD2 compact mesh vertex attributes should have matching array lengths")
+    if compact_indices.is_empty() or compact_indices.size() % 3 != 0:
+        errors.append("LOD2 mesh triangle indices should be a non-empty multiple of three")
 
     # Regression: leaf visibility must safely handle a typed empty child list.
     var leaf_key: Vector2i = world._make_lod_key(0, 0, 0)
