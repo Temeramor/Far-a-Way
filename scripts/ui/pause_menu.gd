@@ -132,7 +132,7 @@ func _build_ui() -> void:
     settings_stack.add_child(display_heading)
     _window_mode_selector = OptionButton.new()
     _window_mode_selector.add_item("В окне", 0)
-    _window_mode_selector.add_item("Полноэкранный", 1)
+    _window_mode_selector.add_item("Полноэкранный (выбранное разрешение)", 1)
     _window_mode_selector.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     _window_mode_selector.item_selected.connect(_on_window_mode_selected)
     settings_stack.add_child(_window_mode_selector)
@@ -146,7 +146,7 @@ func _build_ui() -> void:
     _resolution_selector.item_selected.connect(_on_resolution_selected)
     settings_stack.add_child(_resolution_selector)
 
-    var display_hint := _make_label("В оконном режиме размер окна соответствует выбранному разрешению. В полноэкранном режиме используется разрешение рабочего стола.", false)
+    var display_hint := _make_label("Выбранное разрешение применяется как к размеру окна, так и к полноэкранному режиму. Для некоторых мониторов доступны только поддерживаемые режимы.", false)
     display_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     settings_stack.add_child(display_hint)
     settings_stack.add_child(_make_divider())
