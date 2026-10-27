@@ -38,7 +38,6 @@ var _last_styled_time_mode: int = -1
 var _world_ready: bool = false
 var _generation_started: bool = false
 var _sky_tween: Tween
-var _voxen_debug_button: Button
 var _voxen_debug_panel: PanelContainer
 var _voxen_debug_label: Label
 var _voxen_debug_visible: bool = false
