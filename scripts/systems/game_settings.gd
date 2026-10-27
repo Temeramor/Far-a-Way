@@ -144,6 +144,7 @@ func _normalise_resolution() -> void:
 
 func reset_to_defaults() -> void:
     _set_defaults()
+    apply_display_settings()
     _save_all_settings()
 
 
