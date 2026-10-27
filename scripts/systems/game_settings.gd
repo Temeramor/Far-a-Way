@@ -122,7 +122,7 @@ func apply_display_settings() -> void:
         DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
         DisplayServer.window_set_size(Vector2i(window_width, window_height))
         var screen_size: Vector2i = DisplayServer.screen_get_size()
-        DisplayServer.window_set_position(Vector2i(maxi(0, (screen_size.x - window_width) / 2), maxi(0, (screen_size.y - window_height) / 2)))
+        DisplayServer.window_set_position(Vector2i(maxi(0, floori(float(screen_size.x - window_width) * 0.5)), maxi(0, floori(float(screen_size.y - window_height) * 0.5))))
     else:
         DisplayServer.window_set_mode(target_mode)
 
