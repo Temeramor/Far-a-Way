@@ -120,11 +120,18 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
         mesh_material = _mesh_shader_material
 
     var render_vertices_data: PackedVector3Array = data.get("vertices", PackedVector3Array())
+    var render_normals_data: PackedVector3Array = data.get("normals", PackedVector3Array())
+    var render_colors_data: PackedColorArray = data.get("colors", PackedColorArray())
     var render_indices_data: PackedInt32Array = data.get("indices", PackedInt32Array())
     var shadow_vertices: PackedVector3Array = data.get("smooth_shadow_vertices", PackedVector3Array())
     var shadow_indices: PackedInt32Array = data.get("smooth_shadow_indices", PackedInt32Array())
     render_vertex_count = render_vertices_data.size()
     render_index_count = render_indices_data.size()
+    if render_vertex_count > 600000 or render_vertices_data.is_empty() or render_indices_data.is_empty() or render_index_count % 3 != 0 or render_normals_data.size() != render_vertex_count or render_colors_data.size() != render_vertex_count:
+        push_warning("Voxel chunk %s LOD%d did not pass mesh upload limits (vertices=%d, indices=%d)." % [str(coord), lod, render_vertex_count, render_index_count])
+        render_vertex_count = 0
+        render_index_count = 0
+        return
     shadow_vertex_count = shadow_vertices.size()
     # Conservative estimate for GPU position/normal/colour buffers and triangle indices.
     estimated_mesh_bytes = render_vertex_count * 28 + render_index_count * 4 + shadow_vertex_count * 24 + shadow_indices.size() * 4
