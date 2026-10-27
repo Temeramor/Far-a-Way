@@ -63,6 +63,11 @@ func _run_native_builder_test() -> void:
         quit(1)
         return
 
+    if indices.size() % 3 != 0:
+        push_error("Native builder returned an index count that is not divisible by three.")
+        quit(1)
+        return
+
     var collision_data: Dictionary = result.get("collision_height_map", {})
     if collision_data.is_empty():
         push_error("Native builder did not return collision height-map data.")
