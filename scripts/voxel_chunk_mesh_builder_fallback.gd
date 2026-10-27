@@ -53,6 +53,9 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
     debug_lod_colors = p_debug_lod_colors
 
     var step_voxels: int = maxi(1, int(request.get("step_voxels", BASE_MESH_STEP_VOXELS << lod)))
+    # Use a lower sample density for distant smooth meshes; actual tile bounds remain unchanged.
+    if p_lod >= 2:
+        step_voxels *= 2
     var cell_size: float = float(step_voxels) * VOXEL_SIZE
     var cells_x: int = int(ceil(float(size_voxels_x) / float(step_voxels)))
     var cells_z: int = int(ceil(float(size_voxels_z) / float(step_voxels)))
@@ -355,7 +358,8 @@ func _build_smooth_shadow_surface(
     # This is a continuous heightfield sampled independently of the visible voxel grid.
     # Keep the shadow mesh bounded to 256x256 cells per chunk: at distance its spacing
     # increases with LOD, while remaining finer than the visible voxel silhouette.
-    var shadow_step_voxels: int = 5 if p_lod <= 1 else (10 << maxi(0, p_lod - 3))
+    # Keep shadow proxies at or below roughly 128x128 cells per tile.
+    var shadow_step_voxels: int = 5 if p_lod <= 1 else (10 if p_lod <= 2 else (20 << (p_lod - 3)))
     var shadow_cells_x: int = ceili(float(size_voxels_x) / float(shadow_step_voxels))
     var shadow_cells_z: int = ceili(float(size_voxels_z) / float(shadow_step_voxels))
     var shadow_width: int = shadow_cells_x + 1
