@@ -177,6 +177,7 @@ struct MeshBuild {
     bool debug_lod_colors = false;
     bool want_collision = false;
     bool build_collision = false;
+    bool adaptive_smooth_surface = false;
 
     double world_min_x = 0.0;
     double world_min_z = 0.0;
@@ -956,8 +957,8 @@ struct MeshBuild {
 
         noise.configure_from_job(job_data, static_cast<double>(world_size_voxels) * VOXEL_SIZE);
 
-        if (lod >= 2) {
-            // Distant tiers use shared vertices instead of thousands of independent voxel risers.
+        if (lod >= 1) {
+            // Mid and distant tiers use shared vertices instead of thousands of independent voxel risers.
             // This bounds mesh memory and avoids long-frame GPU uploads when travelling quickly.
             build_smooth_far_surface();
             if (lod < 7) {
@@ -976,6 +977,19 @@ struct MeshBuild {
             build_greedy_top_faces();
             build_exposed_side_faces();
             build_lod_skirts();
+
+            constexpr size_t MAX_NEAR_DETAIL_VERTICES = 500000;
+            if (lod == 0 && vertices.size() > MAX_NEAR_DETAIL_VERTICES) {
+                // Highly rugged near tiles can create hundreds of thousands of tiny riser quads.
+                // Preserve their sampled silhouette with a compact shared-vertex surface to cap uploads.
+                adaptive_smooth_surface = true;
+                vertices.clear();
+                normals.clear();
+                colors.clear();
+                indices.clear();
+                build_smooth_far_surface();
+                build_smooth_surface_skirts();
+            }
         }
         build_smooth_shadow_surface();
 
@@ -1015,6 +1029,7 @@ struct MeshBuild {
         out["step_voxels"] = step_voxels;
         out["neighbor_lods_used"] = neighbor_lods.duplicate(true);
         out["debug_lod_colors"] = debug_lod_colors;
+        out["adaptive_smooth_surface"] = adaptive_smooth_surface;
         out["vertices"] = packed_vertices;
         out["normals"] = packed_normals;
         out["colors"] = packed_colors;
