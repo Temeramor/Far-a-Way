@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import sys
+import glob
 
 from SCons.Script import Environment, Glob, SConscript, Variables, ARGUMENTS, Help
 
@@ -22,6 +23,25 @@ env = SConscript(
 env.Append(CPPPATH=["src/"])
 sources = Glob("src/*.cpp")
 
+# Keep compiler objects outside src/: Godot may mistake binary .obj files for Wavefront models.
+object_dir = os.path.join("build", "obj")
+os.makedirs(object_dir, exist_ok=True)
+
+# Clean leftovers from builds that emitted binary .obj files next to the sources.
+for stale_object in glob.glob(os.path.join("src", "*.obj")):
+    try:
+        os.remove(stale_object)
+    except OSError as error:
+        print("Warning: could not remove stale object file {}: {}".format(stale_object, error))
+
+objects = [
+    env.Object(
+        target=os.path.join(object_dir, os.path.splitext(os.path.basename(str(source)))[0]),
+        source=source,
+    )
+    for source in sources
+]
+
 suffix = env["suffix"].replace(".dev", "").replace(".universal", "")
 lib_filename = "{}{}{}{}".format(
     env.subst("$SHLIBPREFIX"),
@@ -33,6 +53,6 @@ output_dir = os.path.abspath(os.path.join("..", "bin", env["platform"]))
 os.makedirs(output_dir, exist_ok=True)
 library = env.SharedLibrary(
     os.path.join(output_dir, lib_filename),
-    source=sources,
+    source=objects,
 )
 Default(library)
