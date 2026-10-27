@@ -17,6 +17,9 @@ const COLOR_MUTED: Color = Color("#B8A986")
 var _main_panel: PanelContainer
 var _settings_panel: PanelContainer
 var _mouse_mode_before_pause: int = Input.MOUSE_MODE_VISIBLE
+var _window_mode_selector: OptionButton
+var _resolution_selector: OptionButton
+const RESOLUTIONS: Array[Vector2i] = [Vector2i(640, 360), Vector2i(800, 450), Vector2i(1024, 576), Vector2i(1280, 720), Vector2i(1366, 768), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440)]
 
 
 func _ready() -> void:
@@ -125,16 +128,27 @@ func _build_ui() -> void:
     settings_stack.add_child(settings_title)
     settings_stack.add_child(_make_divider())
 
-    var settings_notice := _make_label(
-        "Используется рендерер Forward+ и базовый профиль MSAA ×2. "
-        + "Дополнительные настройки графики будут добавлены отдельно.",
-        false
-    )
-    settings_notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    settings_notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    settings_notice.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-    settings_notice.custom_minimum_size = Vector2(0.0, 110.0)
-    settings_stack.add_child(settings_notice)
+    var display_heading := _make_label("РЕЖИМ ЭКРАНА", true)
+    settings_stack.add_child(display_heading)
+    _window_mode_selector = OptionButton.new()
+    _window_mode_selector.add_item("В окне", 0)
+    _window_mode_selector.add_item("Полноэкранный", 1)
+    _window_mode_selector.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    _window_mode_selector.item_selected.connect(_on_window_mode_selected)
+    settings_stack.add_child(_window_mode_selector)
+
+    var resolution_heading := _make_label("РАЗРЕШЕНИЕ ОКНА", true)
+    settings_stack.add_child(resolution_heading)
+    _resolution_selector = OptionButton.new()
+    for resolution in RESOLUTIONS:
+        _resolution_selector.add_item("%d × %d" % [resolution.x, resolution.y])
+    _resolution_selector.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    _resolution_selector.item_selected.connect(_on_resolution_selected)
+    settings_stack.add_child(_resolution_selector)
+
+    var display_hint := _make_label("В оконном режиме размер окна соответствует выбранному разрешению. В полноэкранном режиме используется разрешение рабочего стола.", false)
+    display_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    settings_stack.add_child(display_hint)
     settings_stack.add_child(_make_divider())
 
     var settings_buttons := HBoxContainer.new()
@@ -151,7 +165,33 @@ func _build_ui() -> void:
     done_button.pressed.connect(_show_main_page)
     settings_buttons.add_child(done_button)
 
+    _sync_display_controls()
     _show_main_page()
+
+
+func _on_window_mode_selected(index: int) -> void:
+    var mode_id: int = _window_mode_selector.get_item_id(index)
+    var selected_size: Vector2i = RESOLUTIONS[_resolution_selector.selected]
+    GameSettings.set_display_settings(mode_id, selected_size.x, selected_size.y)
+    _sync_display_controls()
+
+
+func _on_resolution_selected(index: int) -> void:
+    var selected_size: Vector2i = RESOLUTIONS[index]
+    GameSettings.set_display_settings(_window_mode_selector.get_item_id(_window_mode_selector.selected), selected_size.x, selected_size.y)
+    _sync_display_controls()
+
+
+func _sync_display_controls() -> void:
+    if _window_mode_selector == null or _resolution_selector == null:
+        return
+    _window_mode_selector.select(GameSettings.window_mode)
+    var selected_index: int = 0
+    for i in range(RESOLUTIONS.size()):
+        if RESOLUTIONS[i].x == GameSettings.window_width and RESOLUTIONS[i].y == GameSettings.window_height:
+            selected_index = i
+            break
+    _resolution_selector.select(selected_index)
 
 
 func _style_texture(path: String, border: float, content_left: float, content_top: float, content_right: float, content_bottom: float) -> StyleBoxTexture:
