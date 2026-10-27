@@ -242,14 +242,16 @@ void vertex() {
 }
 
 void fragment() {
-    if (COLOR.a < 0.95) {
-        float edge_code = floor((COLOR.a - 0.80) * 25.0 + 0.5);
+    // Vertex colour alpha is stored as an 8-bit channel. Decode integer codes,
+    // not narrow float ranges: this leaves a safe gap between skirts, side tops and tops.
+    float alpha_code = floor(COLOR.a * 255.0 + 0.5);
+    if (alpha_code < 238.0) {
         float edge_visible = skirt_visibility.x;
-        if (edge_code > 0.5 && edge_code < 1.5) {
+        if (alpha_code >= 209.0 && alpha_code < 219.0) {
             edge_visible = skirt_visibility.y;
-        } else if (edge_code > 1.5 && edge_code < 2.5) {
+        } else if (alpha_code >= 219.0 && alpha_code < 230.0) {
             edge_visible = skirt_visibility.z;
-        } else if (edge_code > 2.5) {
+        } else if (alpha_code >= 230.0) {
             edge_visible = skirt_visibility.w;
         }
         if (edge_visible < 0.5) discard;
@@ -268,13 +270,13 @@ void fragment() {
     }
 
     vec3 normal = normalize(world_normal);
-    bool is_top_surface = COLOR.a >= 0.96 && COLOR.a < 0.995;
-    bool is_surface_side = COLOR.a >= 0.95 && COLOR.a < 0.96;
+    bool is_top_surface = alpha_code >= 246.0 && alpha_code <= 253.0;
+    bool is_surface_side = alpha_code >= 240.0 && alpha_code < 246.0;
     float top_rock_amount = 0.0;
     if (is_top_surface) {
-        top_rock_amount = clamp((COLOR.a - 0.965) / 0.025, 0.0, 1.0);
+        top_rock_amount = clamp((alpha_code - 246.0) / 6.0, 0.0, 1.0);
     } else if (is_surface_side) {
-        top_rock_amount = clamp((COLOR.a - 0.951) / 0.007, 0.0, 1.0);
+        top_rock_amount = clamp((alpha_code - 240.0) / 5.0, 0.0, 1.0);
     }
     // Use one world-space XZ projection for upper sides and top faces. This keeps
     // their procedural palette aligned at the edge instead of changing with face normal.
