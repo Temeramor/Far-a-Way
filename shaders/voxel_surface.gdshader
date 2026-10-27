@@ -276,15 +276,9 @@ void fragment() {
     } else if (is_surface_side) {
         top_rock_amount = clamp((COLOR.a - 0.951) / 0.007, 0.0, 1.0);
     }
+    // Use one world-space XZ projection for upper sides and top faces. This keeps
+    // their procedural palette aligned at the edge instead of changing with face normal.
     vec2 rock_world = world_position.xz;
-    // Upper voxel sides reuse the same XZ material coordinates as their top faces.
-    if (!is_surface_side) {
-        if (abs(normal.x) > abs(normal.y) && abs(normal.x) > abs(normal.z)) {
-            rock_world = world_position.zy;
-        } else if (abs(normal.z) > abs(normal.y)) {
-            rock_world = world_position.xy;
-        }
-    }
 
     if (debug_lod_colors) {
         ALBEDO = clamp(COLOR.rgb, vec3(0.0), vec3(1.0));
@@ -315,8 +309,7 @@ void fragment() {
             if (voxel_detail_weight > 0.02) {
                 vec3 voxel_cell_3d = floor((world_position - normal * 0.001) / max(pixel_size, 0.1));
                 vec3 voxel_center_world = (voxel_cell_3d + vec3(0.5)) * max(pixel_size, 0.1);
-                vec2 pixel_cell = vec2(voxel_cell_3d.x + voxel_cell_3d.y * 37.0,
-                                       voxel_cell_3d.z + voxel_cell_3d.y * 17.0);
+                vec2 pixel_cell = floor(voxel_center_world.xz / max(pixel_size, 0.1));
                 vec2 rock_pixel_cell = floor(rock_world / max(pixel_size, 0.1));
                 vec2 rock_pixel_world = rock_pixel_cell * max(pixel_size, 0.1);
                 vec3 detailed_color = mix(grass_pixel(pixel_cell, voxel_center_world.xz),
@@ -332,8 +325,7 @@ void fragment() {
             if (voxel_detail_weight > 0.02) {
                 vec3 voxel_cell_3d = floor((world_position - normal * 0.001) / max(pixel_size, 0.1));
                 vec3 voxel_center_world = (voxel_cell_3d + vec3(0.5)) * max(pixel_size, 0.1);
-                vec2 pixel_cell = vec2(voxel_cell_3d.x + voxel_cell_3d.y * 37.0,
-                                       voxel_cell_3d.z + voxel_cell_3d.y * 17.0);
+                vec2 pixel_cell = floor(voxel_center_world.xz / max(pixel_size, 0.1));
                 ALBEDO = mix(filtered_color, grass_pixel(pixel_cell, voxel_center_world.xz), voxel_detail_weight);
             } else {
                 ALBEDO = filtered_color;
