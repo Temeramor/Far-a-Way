@@ -99,7 +99,7 @@ vec3 grass_pixel(vec2 pixel_cell, vec2 pixel_world) {
 
     // Rare soft flecks add the fine colour variety from main without stark cell jumps.
     float fleck = hash21(pixel_cell + vec2(81.2, 18.4));
-    float light_fleck = smoothstep(0.986, 0.999, fleck) * 0.42;
+    float light_fleck = smoothstep(0.994, 0.999, fleck) * 0.22;
     float dark_fleck = (1.0 - smoothstep(0.002, 0.018, fleck)) * 0.36;
     color = mix(color, palette_color(vec3(0.741, 0.741, 0.467)), light_fleck);
     color = mix(color, palette_color(vec3(0.275, 0.290, 0.173)), dark_fleck);
@@ -300,7 +300,7 @@ void fragment() {
         }
     } else {
         float voxel_footprint = world_units_per_pixel / max(pixel_size, 0.1);
-        float voxel_detail_weight = 1.0 - smoothstep(0.70, 1.55, voxel_footprint);
+        float voxel_detail_weight = 1.0 - smoothstep(0.45, 1.05, voxel_footprint);
         float rock_crack_footprint = world_units_per_pixel / 5.5;
         float rock_crack_weight = 1.0 - smoothstep(0.55, 1.25, rock_crack_footprint);
 
