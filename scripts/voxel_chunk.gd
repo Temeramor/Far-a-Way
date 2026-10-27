@@ -13,6 +13,10 @@ var mesh_step_voxels: int = 1
 var collision_enabled: bool = false # A collision shape is allocated for this chunk.
 var collision_active: bool = false # Its collision layer is currently enabled.
 var mesh_ready: bool = false
+var render_vertex_count: int = 0
+var render_index_count: int = 0
+var shadow_vertex_count: int = 0
+var estimated_mesh_bytes: int = 0
 var debug_lod_colors: bool = false
 var neighbor_lods_used: Dictionary = {}
 
@@ -85,6 +89,10 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     collision_active = false
     position = data.get("position", Vector3.ZERO)
     mesh_ready = false
+    render_vertex_count = 0
+    render_index_count = 0
+    shadow_vertex_count = 0
+    estimated_mesh_bytes = 0
     if preserve_collision:
         collision_enabled = true
         set_collision_active(_render_active and wants_collision)
@@ -105,6 +113,14 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
         _mesh_shader_material.set_shader_parameter("lod_index", lod)
         mesh_material = _mesh_shader_material
 
+    var shadow_vertices: PackedVector3Array = data.get("smooth_shadow_vertices", PackedVector3Array())
+    var shadow_indices: PackedInt32Array = data.get("smooth_shadow_indices", PackedInt32Array())
+    render_vertex_count = (data.get("vertices", PackedVector3Array()) as PackedVector3Array).size()
+    render_index_count = (data.get("indices", PackedInt32Array()) as PackedInt32Array).size()
+    shadow_vertex_count = shadow_vertices.size()
+    # Conservative estimate for GPU position/normal/colour buffers and triangle indices.
+    estimated_mesh_bytes = render_vertex_count * 28 + render_index_count * 4 + shadow_vertex_count * 24 + shadow_indices.size() * 4
+
     var mesh := _make_array_mesh(data, mesh_material)
     mesh.resource_name = "VoxelChunk_%d_%d_LOD%d" % [coord.x, coord.y, lod]
     var mesh_instance := MeshInstance3D.new()
@@ -119,9 +135,7 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     _skirt_visibility_cache = Vector4(-1.0, -1.0, -1.0, -1.0)
     add_child(mesh_instance)
 
-    var shadow_vertices: PackedVector3Array = data.get("smooth_shadow_vertices", PackedVector3Array())
     var shadow_normals: PackedVector3Array = data.get("smooth_shadow_normals", PackedVector3Array())
-    var shadow_indices: PackedInt32Array = data.get("smooth_shadow_indices", PackedInt32Array())
     if shadow_vertices.size() >= 3 and shadow_indices.size() >= 3:
         var shadow_data: Dictionary = {
             "vertices": shadow_vertices,
