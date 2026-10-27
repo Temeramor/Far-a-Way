@@ -20,9 +20,9 @@ const FallbackBuilderScript = preload("res://scripts/voxel_chunk_mesh_builder_fa
 @export_range(512.0, 8192.0, 256.0) var render_distance_m: float = 4096.0
 @export_range(32.0, 256.0, 16.0) var lod0_distance_m: float = 64.0
 @export_range(0.0, 24.0, 2.0) var lod_hysteresis_m: float = 12.0
-@export_range(1, 8, 1) var max_concurrent_mesh_jobs: int = 4
-@export_range(1, 4, 1) var max_mesh_applies_per_frame: int = 4
-@export_range(1.0, 8.0, 0.5) var max_mesh_apply_time_ms: float = 4.0
+@export_range(1, 8, 1) var max_concurrent_mesh_jobs: int = 2
+@export_range(1, 4, 1) var max_mesh_applies_per_frame: int = 2
+@export_range(1.0, 8.0, 0.5) var max_mesh_apply_time_ms: float = 2.0
 @export_range(0.03, 0.2, 0.01) var streaming_refresh_interval_s: float = 0.05
 @export_range(0.5, 8.0, 0.5) var streaming_refresh_distance_m: float = 2.0
 @export_range(0.5, 2.5, 0.1) var streaming_prediction_seconds: float = 1.4
@@ -392,12 +392,19 @@ func _refresh_streaming() -> void:
     for queued_coord in _queued.keys():
         if not wanted.has(queued_coord):
             _queued.erase(queued_coord)
-    var cache_radius: float = maxf(render_distance_m, get_lod_boundary_m(5)) + chunk_size_m * 8.0
     for existing_value in _chunks.keys():
         var existing_coord: Vector2i = existing_value
         if wanted.has(existing_coord):
             continue
         var old_chunk: VoxelTerrainChunk = _chunks[existing_coord] as VoxelTerrainChunk
+        var existing_lod: int = int(_decode_lod_key(existing_coord)["lod"])
+        # Retain the handful of LOD7 world roots, but do not keep thousands of obsolete
+        # fine-detail chunks cached along a high-speed flight path.
+        if existing_lod == 7:
+            old_chunk.set_render_active(false)
+            continue
+        var tile_size_m: float = chunk_size_m * float(1 << existing_lod)
+        var cache_radius: float = maxf(tile_size_m, get_lod_boundary_m(existing_lod) + tile_size_m * 0.5)
         if _distance_to_chunk_bounds(player_xz, _chunk_bounds(existing_coord)) > cache_radius:
             old_chunk.set_render_active(false)
             old_chunk._retire_current_generation()
@@ -957,17 +964,26 @@ func _p95_usec(samples: Array) -> float:
     return float(ordered[index])
 
 func _retire_stale_resources() -> void:
-    # Free at most one old render/physics node per frame, smoothing mesh-buffer destruction.
+    # Bound the disposal queue so old GPU buffers cannot accumulate for hundreds of frames.
+    var started_usec: int = Time.get_ticks_usec()
+    var retired_count: int = 0
     for chunk_value in _chunks.values():
         var resident_chunk: VoxelTerrainChunk = chunk_value as VoxelTerrainChunk
-        if resident_chunk.retire_one_old_node():
+        while retired_count < 8 and resident_chunk.retire_one_old_node():
+            retired_count += 1
+            if retired_count >= 2 and Time.get_ticks_usec() - started_usec >= 2500:
+                return
+    for i in range(_retiring_chunks.size() - 1, -1, -1):
+        var stale_chunk: VoxelTerrainChunk = _retiring_chunks[i]
+        while retired_count < 8 and stale_chunk.retire_one_old_node():
+            retired_count += 1
+            if retired_count >= 2 and Time.get_ticks_usec() - started_usec >= 2500:
+                return
+        if stale_chunk._retired_nodes.is_empty():
+            _retiring_chunks.remove_at(i)
+            stale_chunk.free()
+        if retired_count >= 8 or Time.get_ticks_usec() - started_usec >= 2500:
             return
-    for stale_chunk in _retiring_chunks:
-        if stale_chunk.retire_one_old_node():
-            return
-    if not _retiring_chunks.is_empty():
-        var finished_chunk: VoxelTerrainChunk = _retiring_chunks.pop_front()
-        finished_chunk.free()
 
 func _place_player_on_surface() -> void:
     if _player == null:
