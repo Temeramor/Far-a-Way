@@ -47,7 +47,7 @@ The world is divided into terrain chunks, generated in the background and priori
 | LOD3 | 0.8 m | Shared-vertex surface, 1.6 m |
 | LOD4 | 1.6 m | Shared-vertex surface, 3.2 m |
 | LOD5 | 3.2 m | Shared-vertex surface, 6.4 m |
-| LOD6 | 6.4 m | Shared-vertex surface |
+| LOD6 | 6.4 m | Shared-vertex surface, 12.8 m |
 | LOD7 | 12.8 m | Shared-vertex surface |
 
 The default LOD0 boundary is 64 m, followed by a short 20 cm ring from 64 to 80 m; the later boundaries expand by powers of two to cover the distant landscape. Distant tiers use shared vertices and perimeter skirts, bounding side-face geometry while retaining broad mountain silhouettes. The farthest tier retains its configured source-grid density to preserve distant terrain shape.
