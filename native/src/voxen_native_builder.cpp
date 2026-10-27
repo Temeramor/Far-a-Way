@@ -235,7 +235,11 @@ struct MeshBuild {
 
     Color top_face_color(int32_t material_type, double rock_weight) const {
         Color color = material_color(material_type);
-        color.a = 0.965 + std::clamp(rock_weight, 0.0, 1.0) * 0.025;
+        // Reserve stable 8-bit alpha codes: 246..252 for tops, 240..245 for
+        // upper side faces, and <=235 for stitching skirts.
+        const int32_t code = 246 + static_cast<int32_t>(std::lround(
+            std::clamp(rock_weight, 0.0, 1.0) * 6.0));
+        color.a = static_cast<double>(code) / 255.0;
         return color;
     }
 
@@ -418,7 +422,9 @@ struct MeshBuild {
             }
             double encoded_alpha = -1.0;
             if (surface_rock_weight >= 0.0) {
-                encoded_alpha = 0.951 + std::clamp(surface_rock_weight, 0.0, 1.0) * 0.007;
+                const int32_t alpha_code = 240 + static_cast<int32_t>(std::lround(
+                    std::clamp(surface_rock_weight, 0.0, 1.0) * 5.0));
+                encoded_alpha = static_cast<double>(alpha_code) / 255.0;
             }
             emit_side_segment(point_a, point_b, normal, top_start, high_height_voxels,
                 top_material, vertical_first, edge_alpha, encoded_alpha);
@@ -806,9 +812,7 @@ struct MeshBuild {
                 const double dz = (south_height - north_height) / std::max(0.001, south_z - north_z);
                 normals.emplace_back(Vector3(-dx, 1.0, -dz).normalized());
                 const double rock_weight = noise.surface_rock_weight(std::sqrt(dx * dx + dz * dz), world_x, world_z);
-                Color color = material_color(rock_weight >= 0.5 ? ROCK : GRASS);
-                color.a = 0.965 + std::clamp(rock_weight, 0.0, 1.0) * 0.025;
-                colors.push_back(color);
+                colors.push_back(top_face_color(rock_weight >= 0.5 ? ROCK : GRASS, rock_weight));
             }
         }
 
@@ -825,6 +829,42 @@ struct MeshBuild {
                 indices.push_back(top_right);
                 indices.push_back(bottom_right);
             }
+        }
+    }
+
+    void add_smooth_skirt_segment(const Vector3 &top_a, const Vector3 &top_b,
+            const Vector3 &normal, double depth, double alpha) {
+        const Vector3 low_a(top_a.x, top_a.y - depth, top_a.z);
+        const Vector3 low_b(top_b.x, top_b.y - depth, top_b.z);
+        Color skirt_color = material_color(GRASS);
+        skirt_color.a = alpha;
+        add_quad(low_a, top_a, top_b, low_b, normal, skirt_color);
+    }
+
+    void build_smooth_surface_skirts() {
+        // A deep perimeter skirt conceals tiny height differences at LOD and root borders.
+        // It is masked by the same per-neighbour visibility logic as voxel skirts.
+        const int32_t width = cells_x + 1;
+        const double depth = std::max(8.0, cell_size * 8.0);
+        const Vector3 left_normal(-1.0, 0.0, 0.0);
+        const Vector3 right_normal(1.0, 0.0, 0.0);
+        const Vector3 north_normal(0.0, 0.0, -1.0);
+        const Vector3 south_normal(0.0, 0.0, 1.0);
+        for (int32_t z = 0; z < cells_z; ++z) {
+            const Vector3 left_a = vertices[static_cast<size_t>(z + 1) * width];
+            const Vector3 left_b = vertices[static_cast<size_t>(z) * width];
+            add_smooth_skirt_segment(left_a, left_b, left_normal, depth, SKIRT_ALPHA_LEFT);
+            const Vector3 right_a = vertices[static_cast<size_t>(z) * width + cells_x];
+            const Vector3 right_b = vertices[static_cast<size_t>(z + 1) * width + cells_x];
+            add_smooth_skirt_segment(right_a, right_b, right_normal, depth, SKIRT_ALPHA_RIGHT);
+        }
+        for (int32_t x = 0; x < cells_x; ++x) {
+            const Vector3 north_a = vertices[static_cast<size_t>(x + 1)];
+            const Vector3 north_b = vertices[static_cast<size_t>(x)];
+            add_smooth_skirt_segment(north_a, north_b, north_normal, depth, SKIRT_ALPHA_NORTH);
+            const Vector3 south_a = vertices[static_cast<size_t>(cells_z) * width + x];
+            const Vector3 south_b = vertices[static_cast<size_t>(cells_z) * width + x + 1];
+            add_smooth_skirt_segment(south_a, south_b, south_normal, depth, SKIRT_ALPHA_SOUTH);
         }
     }
 
@@ -910,9 +950,13 @@ struct MeshBuild {
 
         noise.configure_from_job(job_data, static_cast<double>(world_size_voxels) * VOXEL_SIZE);
 
-        if (lod == 7) {
-            // Smooth far tier does not need the quantized height cache or categorical voxel map.
+        if (lod >= 2) {
+            // Distant tiers use shared vertices instead of thousands of independent voxel risers.
+            // This bounds mesh memory and avoids long-frame GPU uploads when travelling quickly.
             build_smooth_far_surface();
+            if (lod < 7) {
+                build_smooth_surface_skirts();
+            }
         } else {
             build_cache_and_heights();
             build_surface_types();
