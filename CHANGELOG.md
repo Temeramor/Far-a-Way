@@ -20,3 +20,6 @@
 - Added Clear, Cloudy and Overcast weather presets, a weather selector, time selection and Dawn, Day, Dusk and Night time presets.
 - Added the Forward+ Windows native extension descriptor and SCons build configuration for debug and release DLLs.
 - Added smoke tests for deterministic terrain generation, world-size scaling and hierarchical LOD/mesh sampling, plus an optional native-builder check for geometry arrays and collision height-map output.
+- Added F3 access to an expanded VoxEn diagnostics panel with frame timing, FPS, native-builder availability, LOD distribution, collision counts, worker queue timings and streaming backlog.
+- Added persistent windowed/fullscreen mode and selectable window resolutions from 640 × 360 through 2560 × 1440.
+- Added shared world-space material sampling for voxel top and upper side faces, plus stronger noise variation along grass-to-rock transitions.
