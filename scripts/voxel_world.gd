@@ -285,7 +285,11 @@ func get_debug_text() -> String:
     var prediction_seconds: float = _effective_prediction_seconds()
     var estimated_work_seconds: float = _estimated_lod_pipeline_usec(0) / 1000000.0
     var lead_margin_m: float = planar_speed * (prediction_seconds - estimated_work_seconds)
-    return "VoxEn 0.3.5 | seed %d | chunks %d | LOD 0:%d 1:%d 2:%d 3:%d 4:%d 5:%d 6:%d 7:%d | colliders %d | jobs %d+%d | near pending %d | stale %d\nBuild avg/p95 ms: L0 %.1f/%.1f L1 %.1f/%.1f | refresh p95 %.2f ms | queue p95/max %.0f/%.1f ms | apply p95 %.0f ms | L0 margin %.1f m (pred %.1fs)" % [
+    var builder_mode: String = "NATIVE C++" if ClassDB.class_exists("VoxEnNativeBuilder") else "GDSCRIPT FALLBACK (SLOW)"
+    var fps: int = Engine.get_frames_per_second()
+    var frame_ms: float = 1000.0 / maxf(float(fps), 1.0)
+    return "VoxEn diagnostics | %s | FPS %d (%.1f ms) | seed %d | chunks %d | LOD 0:%d 1:%d 2:%d 3:%d 4:%d 5:%d 6:%d 7:%d | colliders %d | jobs %d running + %d queued | near pending %d | stale %d\nBuild avg/p95 ms: L0 %.1f/%.1f L1 %.1f/%.1f | refresh p95 %.2f ms | queue p95/max %.0f/%.1f ms | apply p95 %.0f ms | L0 margin %.1f m (pred %.1fs)\nControls: F3 diagnostics | M weather/time | Esc pause" % [
+        builder_mode, fps, frame_ms,
         seed_value, _chunks.size(), lod_counts[0], lod_counts[1], lod_counts[2], lod_counts[3], lod_counts[4], lod_counts[5], lod_counts[6], lod_counts[7],
         collider_count, _running_tasks.size(), _queued.size(), near_pending, _stale_result_count,
         _avg_ms(l0), _build_p95_cached_usec[0] / 1000.0, _avg_ms(l1), _build_p95_cached_usec[1] / 1000.0,
