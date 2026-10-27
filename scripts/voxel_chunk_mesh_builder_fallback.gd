@@ -59,8 +59,8 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
     var cell_size: float = float(step_voxels) * VOXEL_SIZE
     var cells_x: int = int(ceil(float(size_voxels_x) / float(step_voxels)))
     var cells_z: int = int(ceil(float(size_voxels_z) / float(step_voxels)))
-    if p_lod >= 2:
-        # Distant tiers use shared vertices rather than thousands of voxel risers.
+    if p_lod >= 1:
+        # Mid and distant tiers use shared vertices rather than thousands of voxel risers.
         _build_smooth_far_surface(
             generator, world_min_x, world_min_z, world_size_voxels,
             start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z, step_voxels, cells_x, cells_z
@@ -160,6 +160,14 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
         grid_width, halo, cells_x, cells_z, step_voxels
     )
     _build_lod_skirts(heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels, neighbor_lods)
+    var adaptive_smooth_surface: bool = p_lod == 0 and _vertices.size() > 500000
+    if adaptive_smooth_surface:
+        # Cap pathological voxel-riser geometry on very rugged tiles before uploading to the GPU.
+        _build_smooth_far_surface(
+            generator, world_min_x, world_min_z, world_size_voxels,
+            start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z, step_voxels, cells_x, cells_z
+        )
+        _build_smooth_surface_skirts(step_voxels, cells_x, cells_z)
     var smooth_shadow_data: Dictionary = _build_smooth_shadow_surface(
         generator, p_lod, world_min_x, world_min_z,
         start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z
@@ -171,6 +179,7 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
         "step_voxels": step_voxels,
         "neighbor_lods_used": neighbor_lods.duplicate(true),
         "debug_lod_colors": debug_lod_colors,
+        "adaptive_smooth_surface": adaptive_smooth_surface,
         "vertices": _vertices,
         "normals": _normals,
         "colors": _colors,
