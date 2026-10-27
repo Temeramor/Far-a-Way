@@ -871,7 +871,9 @@ struct MeshBuild {
     void build_smooth_shadow_surface() {
         // A continuous (non-voxelized) heightfield casts the terrain silhouette.
         // Bound each chunk to 256x256 cells while scaling physical sampling with LOD.
-        const int32_t shadow_step_voxels = lod <= 1 ? 5 : (10 << std::max<int32_t>(0, lod - 3));
+        // Cap shadow proxies at roughly 128x128 cells per tile; distant visible meshes
+        // no longer need a dense shadow-only mesh to preserve the mountain silhouette.
+        const int32_t shadow_step_voxels = lod <= 1 ? 5 : (lod <= 2 ? 10 : (20 << (lod - 3)));
         const int32_t shadow_cells_x = static_cast<int32_t>(
             std::ceil(static_cast<double>(size_voxels_x) / shadow_step_voxels));
         const int32_t shadow_cells_z = static_cast<int32_t>(
@@ -943,6 +945,10 @@ struct MeshBuild {
         }
 
         step_voxels = std::max<int32_t>(1, static_cast<int32_t>(request.get("step_voxels", BASE_MESH_STEP_VOXELS << lod)));
+        // Smooth distant tiles use half the source-grid density to keep each resident mesh small.
+        if (lod >= 2) {
+            step_voxels *= 2;
+        }
         cache_step_voxels = std::max<int32_t>(HEIGHT_CACHE_STEP_VOXELS, step_voxels);
         cell_size = static_cast<double>(step_voxels) * VOXEL_SIZE;
         cells_x = static_cast<int32_t>(std::ceil(static_cast<double>(size_voxels_x) / step_voxels));
