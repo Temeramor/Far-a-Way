@@ -6,7 +6,8 @@ export_presets.cfg
 
 # Native dependencies/build products
 native/godot-cpp/
-native/build/
+native/build/*
+!native/build/.gdignore
 bin/linux/*.so
 bin/windows/*.dll
 bin/android/*.so
