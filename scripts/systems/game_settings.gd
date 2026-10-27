@@ -117,13 +117,14 @@ func set_display_settings(mode: int, width: int, height: int) -> void:
 func apply_display_settings() -> void:
     if not is_inside_tree():
         return
-    var target_mode: DisplayServer.WindowMode = DisplayServer.WINDOW_MODE_FULLSCREEN if window_mode == 1 else DisplayServer.WINDOW_MODE_WINDOWED
+    var target_mode: DisplayServer.WindowMode = DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN if window_mode == 1 else DisplayServer.WINDOW_MODE_WINDOWED
     if window_mode == 0:
         DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
         DisplayServer.window_set_size(Vector2i(window_width, window_height))
         var screen_size: Vector2i = DisplayServer.screen_get_size()
         DisplayServer.window_set_position(Vector2i(maxi(0, floori(float(screen_size.x - window_width) * 0.5)), maxi(0, floori(float(screen_size.y - window_height) * 0.5))))
     else:
+        DisplayServer.window_set_size(Vector2i(window_width, window_height))
         DisplayServer.window_set_mode(target_mode)
 
 
