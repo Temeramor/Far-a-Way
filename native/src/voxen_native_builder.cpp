@@ -947,7 +947,7 @@ struct MeshBuild {
 
         step_voxels = std::max<int32_t>(1, static_cast<int32_t>(request.get("step_voxels", BASE_MESH_STEP_VOXELS << lod)));
         // Smooth distant tiles use half the source-grid density to keep each resident mesh small.
-        if (lod >= 2 && lod <= 5) {
+        if (lod >= 2 && lod <= 6) {
             step_voxels *= 2;
         }
         cache_step_voxels = std::max<int32_t>(HEIGHT_CACHE_STEP_VOXELS, step_voxels);
