@@ -17,6 +17,7 @@ var render_vertex_count: int = 0
 var render_index_count: int = 0
 var shadow_vertex_count: int = 0
 var estimated_mesh_bytes: int = 0
+var adaptive_smooth_surface: bool = false
 var debug_lod_colors: bool = false
 var neighbor_lods_used: Dictionary = {}
 
@@ -97,6 +98,7 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     render_index_count = 0
     shadow_vertex_count = 0
     estimated_mesh_bytes = 0
+    adaptive_smooth_surface = bool(data.get("adaptive_smooth_surface", false))
     if preserve_collision:
         collision_enabled = true
         set_collision_active(_render_active and wants_collision)
