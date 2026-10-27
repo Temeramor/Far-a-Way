@@ -173,7 +173,7 @@ func _on_generation_finished(_seed_value: int) -> void:
     loading_screen.visible = false
     _world_ready = true
     if weather_menu_button != null:
-        weather_menu_button.visible = true
+        weather_menu_button.visible = false
         weather_menu_button.disabled = false
     if weather_panel != null:
         weather_panel.visible = false
@@ -546,6 +546,9 @@ func _unhandled_input(event: InputEvent) -> void:
         elif _world_ready and _pause_menu != null:
             _pause_menu.open_pause()
         get_viewport().set_input_as_handled()
+    elif event.keycode == KEY_F3 or event.physical_keycode == KEY_F3:
+        _toggle_voxen_debug()
+        get_viewport().set_input_as_handled()
     elif event.keycode == KEY_M or event.physical_keycode == KEY_M:
         _set_weather_menu_open(not _weather_menu_open)
         get_viewport().set_input_as_handled()
@@ -581,33 +584,13 @@ func _process(delta: float) -> void:
 
 
 func _build_voxen_debug_ui() -> void:
-    _voxen_debug_button = Button.new()
-    _voxen_debug_button.name = "VoxEnDebugToggle"
-    _voxen_debug_button.text = "VOXEN DEBUG"
-    _voxen_debug_button.tooltip_text = "Показать статистику чанков, LOD, коллизий и очереди"
-    _voxen_debug_button.focus_mode = Control.FOCUS_NONE
-    _voxen_debug_button.position = Vector2(14.0, 14.0)
-    _voxen_debug_button.size = Vector2(150.0, 40.0)
-    _voxen_debug_button.custom_minimum_size = Vector2(150.0, 40.0)
-    _voxen_debug_button.add_theme_font_size_override("font_size", 13)
-    _voxen_debug_button.add_theme_color_override("font_color", Color(0.94, 0.96, 0.87, 1.0))
-    _voxen_debug_button.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 0.94, 1.0))
-    var button_style := StyleBoxFlat.new()
-    button_style.bg_color = Color(0.035, 0.055, 0.045, 0.91)
-    button_style.border_color = Color(0.72, 0.61, 0.34, 0.95)
-    button_style.set_border_width_all(1)
-    button_style.set_corner_radius_all(4)
-    _voxen_debug_button.add_theme_stylebox_override("normal", button_style)
-    _voxen_debug_button.pressed.connect(_toggle_voxen_debug)
-    $CanvasLayer.add_child(_voxen_debug_button)
-
     _voxen_debug_panel = PanelContainer.new()
     _voxen_debug_panel.name = "VoxEnDebugPanel"
-    _voxen_debug_panel.position = Vector2(14.0, 62.0)
+    _voxen_debug_panel.position = Vector2(14.0, 14.0)
     var view_width: float = get_viewport().get_visible_rect().size.x
     var debug_width: float = maxf(240.0, minf(790.0, view_width - 28.0))
-    _voxen_debug_panel.size = Vector2(debug_width, 180.0)
-    _voxen_debug_panel.custom_minimum_size = Vector2(minf(480.0, debug_width), 180.0)
+    _voxen_debug_panel.size = Vector2(debug_width, 360.0)
+    _voxen_debug_panel.custom_minimum_size = Vector2(minf(480.0, debug_width), 360.0)
     _voxen_debug_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
     var panel_style := StyleBoxFlat.new()
     panel_style.bg_color = Color(0.025, 0.04, 0.035, 0.88)
@@ -621,7 +604,7 @@ func _build_voxen_debug_ui() -> void:
     _voxen_debug_panel.add_theme_stylebox_override("panel", panel_style)
     _voxen_debug_label = Label.new()
     _voxen_debug_label.name = "VoxEnDebugText"
-    _voxen_debug_label.text = "VoxEn 0.3.5 — ожидание первой генерации..."
+    _voxen_debug_label.text = "VoxEn diagnostics — ожидание первой генерации...\nF3 — закрыть панель"
     _voxen_debug_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     _voxen_debug_label.add_theme_font_size_override("font_size", 12)
     _voxen_debug_label.add_theme_color_override("font_color", Color(0.91, 0.95, 0.85, 1.0))
@@ -634,8 +617,6 @@ func _toggle_voxen_debug() -> void:
     _voxen_debug_visible = not _voxen_debug_visible
     if _voxen_debug_panel != null:
         _voxen_debug_panel.visible = _voxen_debug_visible
-    if _voxen_debug_button != null:
-        _voxen_debug_button.text = "HIDE DEBUG" if _voxen_debug_visible else "VOXEN DEBUG"
     if _voxen_debug_visible and _voxen_debug_label != null:
         _voxen_debug_label.text = terrain.get_debug_text()
 
@@ -671,7 +652,7 @@ func _on_pause_menu_closed() -> void:
         return
     player.mouse_capture_paused = false
     if weather_menu_button != null:
-        weather_menu_button.visible = true
+        weather_menu_button.visible = false
 
 
 func _return_to_menu() -> void:
