@@ -117,10 +117,12 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
         _mesh_shader_material.set_shader_parameter("lod_index", lod)
         mesh_material = _mesh_shader_material
 
+    var render_vertices_data: PackedVector3Array = data.get("vertices", PackedVector3Array())
+    var render_indices_data: PackedInt32Array = data.get("indices", PackedInt32Array())
     var shadow_vertices: PackedVector3Array = data.get("smooth_shadow_vertices", PackedVector3Array())
     var shadow_indices: PackedInt32Array = data.get("smooth_shadow_indices", PackedInt32Array())
-    render_vertex_count = (data.get("vertices", PackedVector3Array()) as PackedVector3Array).size()
-    render_index_count = (data.get("indices", PackedInt32Array()) as PackedInt32Array).size()
+    render_vertex_count = render_vertices_data.size()
+    render_index_count = render_indices_data.size()
     shadow_vertex_count = shadow_vertices.size()
     # Conservative estimate for GPU position/normal/colour buffers and triangle indices.
     estimated_mesh_bytes = render_vertex_count * 28 + render_index_count * 4 + shadow_vertex_count * 24 + shadow_indices.size() * 4
