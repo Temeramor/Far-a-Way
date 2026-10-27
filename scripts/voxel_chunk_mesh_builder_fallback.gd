@@ -56,13 +56,14 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
     var cell_size: float = float(step_voxels) * VOXEL_SIZE
     var cells_x: int = int(ceil(float(size_voxels_x) / float(step_voxels)))
     var cells_z: int = int(ceil(float(size_voxels_z) / float(step_voxels)))
-    if p_lod == 7:
-        # The farthest level has no collisions or visible voxel risers. Build only the
-        # smooth, shared-vertex surface and its lower-density landform-shadow proxy.
+    if p_lod >= 2:
+        # Distant tiers use shared vertices rather than thousands of voxel risers.
         _build_smooth_far_surface(
             generator, world_min_x, world_min_z, world_size_voxels,
             start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z, step_voxels, cells_x, cells_z
         )
+        if p_lod < 7:
+            _build_smooth_surface_skirts(step_voxels, cells_x, cells_z)
         var far_shadow_data: Dictionary = _build_smooth_shadow_surface(
             generator, p_lod, world_min_x, world_min_z,
             start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z
@@ -302,7 +303,7 @@ func _build_smooth_far_surface(
             var color: Color = _material_color(
                 VoxelTerrainGenerator.ROCK if rock_weight >= 0.5 else VoxelTerrainGenerator.GRASS
             )
-            color.a = 0.965 + clampf(rock_weight, 0.0, 1.0) * 0.025
+            color.a = float(246 + roundi(clampf(rock_weight, 0.0, 1.0) * 6.0)) / 255.0
             _colors[index] = color
 
     var cursor: int = 0
@@ -319,6 +320,26 @@ func _build_smooth_far_surface(
             _indices[cursor + 4] = top_right
             _indices[cursor + 5] = bottom_right
             cursor += 6
+
+
+func _add_smooth_skirt_segment(top_a: Vector3, top_b: Vector3, normal: Vector3, depth: float, alpha: float) -> void:
+    var low_a := Vector3(top_a.x, top_a.y - depth, top_a.z)
+    var low_b := Vector3(top_b.x, top_b.y - depth, top_b.z)
+    var skirt_color: Color = _material_color(VoxelTerrainGenerator.GRASS)
+    skirt_color.a = alpha
+    _add_quad(low_a, top_a, top_b, low_b, normal, skirt_color)
+
+
+func _build_smooth_surface_skirts(step_voxels: int, cells_x: int, cells_z: int) -> void:
+    # Downward perimeter skirts cover gaps between adjacent LOD tiles.
+    var width: int = cells_x + 1
+    var depth: float = maxf(8.0, float(step_voxels) * VOXEL_SIZE * 8.0)
+    for z in range(cells_z):
+        _add_smooth_skirt_segment(_vertices[(z + 1) * width], _vertices[z * width], Vector3.LEFT, depth, SKIRT_ALPHA_LEFT)
+        _add_smooth_skirt_segment(_vertices[z * width + cells_x], _vertices[(z + 1) * width + cells_x], Vector3.RIGHT, depth, SKIRT_ALPHA_RIGHT)
+    for x in range(cells_x):
+        _add_smooth_skirt_segment(_vertices[x + 1], _vertices[x], Vector3(0.0, 0.0, -1.0), depth, SKIRT_ALPHA_NORTH)
+        _add_smooth_skirt_segment(_vertices[cells_z * width + x], _vertices[cells_z * width + x + 1], Vector3(0.0, 0.0, 1.0), depth, SKIRT_ALPHA_SOUTH)
 
 
 func _build_smooth_shadow_surface(
@@ -474,7 +495,7 @@ func _top_face_color(material_type: int, rock_weight: float) -> Color:
     var color: Color = _material_color(material_type)
     # Alpha 0.965–0.990 encodes the smoothly interpolated grass/rock weight.
     # It is above the skirt-tag range; RGB remains usable for the debug LOD view.
-    color.a = 0.965 + clampf(rock_weight, 0.0, 1.0) * 0.025
+    color.a = float(246 + roundi(clampf(rock_weight, 0.0, 1.0) * 6.0)) / 255.0
     return color
 
 
@@ -634,8 +655,8 @@ func _add_segmented_side_face(
             _emit_side_segment(point_a, point_b, normal, soil_start, top_start, VoxelTerrainGenerator.SOIL, vertical_first, edge_alpha)
         var encoded_alpha: float = -1.0
         if surface_rock_weight >= 0.0:
-            # 0.951–0.958 identifies the upper voxel side without colliding with skirt tags.
-            encoded_alpha = 0.951 + clampf(surface_rock_weight, 0.0, 1.0) * 0.007
+            # Stable 8-bit codes 240..245 keep grassy sides outside the skirt discard range.
+            encoded_alpha = float(240 + roundi(clampf(surface_rock_weight, 0.0, 1.0) * 5.0)) / 255.0
         _emit_side_segment(point_a, point_b, normal, top_start, high_height_voxels, top_material, vertical_first, edge_alpha, encoded_alpha)
         return
 
