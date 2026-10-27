@@ -10,6 +10,8 @@ const MAX_FLIGHT_FOV: float = 120.0
 const DEFAULT_LOD0_DISTANCE_M: float = 64.0
 const DEFAULT_SHADOW_MODE: int = 1
 const DEFAULT_VIEW_DISTANCE_M: float = 4096.0
+const DEFAULT_WINDOW_WIDTH: int = 1280
+const DEFAULT_WINDOW_HEIGHT: int = 720
 
 var flight_speed_multiplier: float = DEFAULT_FLIGHT_SPEED_MULTIPLIER
 var flight_fov: float = DEFAULT_FLIGHT_FOV
@@ -17,6 +19,9 @@ var flight_fov: float = DEFAULT_FLIGHT_FOV
 var lod0_distance_m: float = DEFAULT_LOD0_DISTANCE_M
 var shadow_mode: int = DEFAULT_SHADOW_MODE
 var view_distance_m: float = DEFAULT_VIEW_DISTANCE_M
+var window_mode: int = 0 # 0 = windowed, 1 = fullscreen
+var window_width: int = DEFAULT_WINDOW_WIDTH
+var window_height: int = DEFAULT_WINDOW_HEIGHT
 var requested_seed: int = 1337
 var has_requested_seed: bool = false
 
@@ -28,6 +33,7 @@ func request_new_game(seed_value: int) -> void:
 
 func _ready() -> void:
     load_settings()
+    apply_display_settings()
 
 
 func load_settings() -> void:
@@ -46,6 +52,10 @@ func load_settings() -> void:
         MIN_FLIGHT_FOV, MAX_FLIGHT_FOV
     )
     _set_fixed_graphics_defaults()
+    window_mode = clampi(int(config.get_value("display", "mode", 0)), 0, 1)
+    window_width = int(config.get_value("display", "width", DEFAULT_WINDOW_WIDTH))
+    window_height = int(config.get_value("display", "height", DEFAULT_WINDOW_HEIGHT))
+    _normalise_resolution()
 
     # Discard persisted AA, shadow, LOD and distance experiments after upgrading.
     var changed := false
@@ -85,11 +95,50 @@ func _save_all_settings() -> bool:
         config.erase_section("lod")
     config.set_value("flight", "speed_multiplier", flight_speed_multiplier)
     config.set_value("flight", "fov", flight_fov)
+    config.set_value("display", "mode", window_mode)
+    config.set_value("display", "width", window_width)
+    config.set_value("display", "height", window_height)
     var error: Error = config.save(SETTINGS_PATH)
     if error != OK:
         push_warning("Не удалось сохранить настройки: " + error_string(error))
         return false
     return true
+
+
+func set_display_settings(mode: int, width: int, height: int) -> void:
+    window_mode = clampi(mode, 0, 1)
+    window_width = width
+    window_height = height
+    _normalise_resolution()
+    apply_display_settings()
+    _save_all_settings()
+
+
+func apply_display_settings() -> void:
+    if not is_inside_tree():
+        return
+    var target_mode: DisplayServer.WindowMode = DisplayServer.WINDOW_MODE_FULLSCREEN if window_mode == 1 else DisplayServer.WINDOW_MODE_WINDOWED
+    if window_mode == 0:
+        DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+        DisplayServer.window_set_size(Vector2i(window_width, window_height))
+        var screen_size: Vector2i = DisplayServer.screen_get_size()
+        DisplayServer.window_set_position(Vector2i(maxi(0, (screen_size.x - window_width) / 2), maxi(0, (screen_size.y - window_height) / 2)))
+    else:
+        DisplayServer.window_set_mode(target_mode)
+
+
+func _normalise_resolution() -> void:
+    var allowed: Array[Vector2i] = [Vector2i(640, 360), Vector2i(800, 450), Vector2i(1024, 576), Vector2i(1280, 720), Vector2i(1366, 768), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440)]
+    var chosen := Vector2i(window_width, window_height)
+    var best: Vector2i = allowed[0]
+    var best_distance: int = 2147483647
+    for size in allowed:
+        var distance: int = absi(size.x - chosen.x) + absi(size.y - chosen.y)
+        if distance < best_distance:
+            best = size
+            best_distance = distance
+    window_width = best.x
+    window_height = best.y
 
 
 func reset_to_defaults() -> void:
@@ -107,3 +156,6 @@ func _set_fixed_graphics_defaults() -> void:
     lod0_distance_m = DEFAULT_LOD0_DISTANCE_M
     shadow_mode = DEFAULT_SHADOW_MODE
     view_distance_m = DEFAULT_VIEW_DISTANCE_M
+    window_mode = 0
+    window_width = DEFAULT_WINDOW_WIDTH
+    window_height = DEFAULT_WINDOW_HEIGHT
