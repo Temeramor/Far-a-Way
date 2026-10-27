@@ -24,9 +24,10 @@ In the world:
 - **WASD / arrow keys:** move.
 - **Mouse:** look around. Click to capture the mouse; pressing **Esc** releases it when the pause menu is opened.
 - **Double-tap Space:** enable or disable flight. Flight follows the camera direction and uses the configured speed multiplier and FOV.
-- **Esc:** open or close pause. The pause menu has Continue, Settings and Return to Menu actions. Its current Settings page shows the Forward+ / MSAA baseline notice.
-- **M:** open or close the weather selector.
-- **VOXEN DEBUG:** the on-screen debug control opens streaming, LOD, collision and worker-task diagnostics.
+- **Esc:** open or close pause. The pause menu has Continue, Settings and Return to Menu actions.
+- **F3:** open or close the VoxEn diagnostics overlay, with FPS, frame time, LOD distribution, worker queue timings, chunk geometry counts and video-memory usage.
+- **M:** open or close the weather and time menu.
+- **Settings:** choose windowed or fullscreen mode and a resolution from 640 × 360 to 2560 × 1440. Windowed mode resizes to the selected dimensions.
 
 ## Procedural terrain
 
@@ -38,18 +39,18 @@ The surface material blends grass and rock according to slope. The stylised pale
 
 The world is divided into terrain chunks, generated in the background and prioritised as the player moves. Eight mesh sampling tiers progressively reduce geometry detail with distance:
 
-| LOD | Sampling step |
-|---|---:|
-| LOD0 | 0.1 m |
-| LOD1 | 0.2 m |
-| LOD2 | 0.4 m |
-| LOD3 | 0.8 m |
-| LOD4 | 1.6 m |
-| LOD5 | 3.2 m |
-| LOD6 | 6.4 m |
-| LOD7 | 12.8 m |
+| LOD | Source-grid step | Distant surface |
+|---|---:|---|
+| LOD0 | 0.1 m | Voxel surface |
+| LOD1 | 0.2 m | Voxel surface |
+| LOD2 | 0.4 m | Shared-vertex surface, 0.8 m |
+| LOD3 | 0.8 m | Shared-vertex surface, 1.6 m |
+| LOD4 | 1.6 m | Shared-vertex surface, 3.2 m |
+| LOD5 | 3.2 m | Shared-vertex surface, 6.4 m |
+| LOD6 | 6.4 m | Shared-vertex surface |
+| LOD7 | 12.8 m | Shared-vertex surface |
 
-The default LOD0 boundary is 64 m, followed by a short 20 cm ring from 64 to 80 m; the later boundaries expand by powers of two to cover the distant landscape. The farthest tier uses a smooth shared-vertex heightfield surface, preserving broad mountain silhouettes without distant block-shaped risers.
+The default LOD0 boundary is 64 m, followed by a short 20 cm ring from 64 to 80 m; the later boundaries expand by powers of two to cover the distant landscape. Distant tiers use shared vertices and perimeter skirts, bounding side-face geometry while retaining broad mountain silhouettes. The highest two tiers keep their configured source-grid density to preserve distant terrain shape.
 
 Parent tiles remain visible until the required child tiles are ready, helping prevent temporary holes during refinement. A border halo, stitching skirts and neighbour-aware visibility keep adjacent chunks connected. The stream manager prioritises jobs using distance, view direction, velocity prediction and measured build/queue/apply timings. The worker-task limit adjusts to available CPU cores so scene management and rendering retain processing time.
 
@@ -57,7 +58,7 @@ Parent tiles remain visible until the required child tiles are ready, helping pr
 
 The sky system animates the sun, moon, stars and cloud layers, controls atmospheric fog and environmental lighting, and advances the in-game clock. The world HUD provides three weather presets — **Clear**, **Cloudy** and **Overcast** — plus time selection and the **Dawn**, **Day**, **Dusk** and **Night** presets.
 
-Visible voxel meshes do not cast individual block shadows. Separate smooth terrain-shadow proxies cast the broader landform silhouettes, reducing the block-step shadow checkerboard. Proxy sampling is coarsened with distance; the directional shadow range is limited independently of terrain view distance, and visible surface shadowing fades at distant LODs.
+Visible voxel meshes do not cast individual block shadows. Separate smooth terrain-shadow proxies cast the broader landform silhouettes, reducing the block-step shadow checkerboard. Proxy sampling is coarsened with distance, with far proxies using a lower-density grid; the directional shadow range is limited independently of terrain view distance, and visible surface shadowing fades at distant LODs.
 
 The Forward+ renderer is selected with a baseline **MSAA ×2** profile and screen-space AA disabled. The pause-menu Settings page currently reports that baseline rather than exposing advanced graphics sliders.
 
