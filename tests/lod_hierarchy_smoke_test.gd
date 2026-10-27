@@ -94,8 +94,8 @@ func _run() -> void:
     if not bool(far_data.get("has_geometry", false)):
         errors.append("LOD7 smooth heightfield should produce visible geometry")
     var far_vertices: PackedVector3Array = far_data.get("vertices", PackedVector3Array())
-    if far_vertices.size() != 11 * 11:
-        errors.append("LOD7 low-density smooth mesh should use shared grid vertices")
+    if far_vertices.size() != 21 * 21:
+        errors.append("LOD7 smooth heightfield should use its configured shared grid step")
     var far_indices: PackedInt32Array = far_data.get("indices", PackedInt32Array())
     if far_indices.is_empty() or far_indices.size() % 3 != 0:
         errors.append("LOD7 smooth mesh triangle indices should be a non-empty multiple of three")
