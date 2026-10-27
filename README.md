@@ -42,7 +42,7 @@ The world is divided into terrain chunks, generated in the background and priori
 | LOD | Source-grid step | Distant surface |
 |---|---:|---|
 | LOD0 | 0.1 m | Voxel surface |
-| LOD1 | 0.2 m | Voxel surface |
+| LOD1 | 0.2 m | Shared-vertex surface |
 | LOD2 | 0.4 m | Shared-vertex surface, 0.8 m |
 | LOD3 | 0.8 m | Shared-vertex surface, 1.6 m |
 | LOD4 | 1.6 m | Shared-vertex surface, 3.2 m |
