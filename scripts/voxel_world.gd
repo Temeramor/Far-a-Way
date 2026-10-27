@@ -263,12 +263,18 @@ func get_debug_text() -> String:
     var lod_counts: Array[int] = [0, 0, 0, 0, 0, 0, 0, 0]
     var collider_count: int = 0
     var near_pending: int = 0
+    var render_vertices: int = 0
+    var render_indices: int = 0
+    var estimated_mesh_bytes: int = 0
     for coord_value in _chunks.keys():
         var chunk: VoxelTerrainChunk = _chunks[coord_value] as VoxelTerrainChunk
         if chunk.lod >= 0 and chunk.lod < lod_counts.size():
             lod_counts[chunk.lod] += 1
         if chunk.collision_active:
             collider_count += 1
+        render_vertices += chunk.render_vertex_count
+        render_indices += chunk.render_index_count
+        estimated_mesh_bytes += chunk.estimated_mesh_bytes
     for coord_value in _wanted.keys():
         var coord: Vector2i = coord_value
         var request: Dictionary = _wanted[coord]
@@ -288,9 +294,13 @@ func get_debug_text() -> String:
     var builder_mode: String = "NATIVE C++" if ClassDB.class_exists("VoxEnNativeBuilder") else "GDSCRIPT FALLBACK (SLOW)"
     var fps: int = Engine.get_frames_per_second()
     var frame_ms: float = 1000.0 / maxf(float(fps), 1.0)
-    return "VoxEn diagnostics | %s | FPS %d (%.1f ms) | seed %d | chunks %d | LOD 0:%d 1:%d 2:%d 3:%d 4:%d 5:%d 6:%d 7:%d | colliders %d | jobs %d running + %d queued | near pending %d | stale %d\nBuild avg/p95 ms: L0 %.1f/%.1f L1 %.1f/%.1f | refresh p95 %.2f ms | queue p95/max %.0f/%.1f ms | apply p95 %.0f ms | L0 margin %.1f m (pred %.1fs)\nControls: F3 diagnostics | M weather/time | Esc pause" % [
+    var video_memory_mb: float = float(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED)) / 1048576.0
+    var primitives: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
+    var mesh_memory_mb: float = float(estimated_mesh_bytes) / 1048576.0
+    return "VoxEn diagnostics | %s | FPS %d (%.1f ms) | seed %d | chunks %d | LOD 0:%d 1:%d 2:%d 3:%d 4:%d 5:%d 6:%d 7:%d | verts %d | indices %d | mesh est. %.1f MiB | GPU %.1f MiB | prims %d | colliders %d | jobs %d running + %d queued | near pending %d | stale %d\nBuild avg/p95 ms: L0 %.1f/%.1f L1 %.1f/%.1f | refresh p95 %.2f ms | queue p95/max %.0f/%.1f ms | apply p95 %.0f ms | L0 margin %.1f m (pred %.1fs)\nControls: F3 diagnostics | M weather/time | Esc pause" % [
         builder_mode, fps, frame_ms,
         seed_value, _chunks.size(), lod_counts[0], lod_counts[1], lod_counts[2], lod_counts[3], lod_counts[4], lod_counts[5], lod_counts[6], lod_counts[7],
+        render_vertices, render_indices, mesh_memory_mb, video_memory_mb, primitives,
         collider_count, _running_tasks.size(), _queued.size(), near_pending, _stale_result_count,
         _avg_ms(l0), _build_p95_cached_usec[0] / 1000.0, _avg_ms(l1), _build_p95_cached_usec[1] / 1000.0,
         _refresh_p95_cached_usec / 1000.0, _queue_wait_p95_cached_usec / 1000.0,
