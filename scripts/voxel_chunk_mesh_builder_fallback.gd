@@ -54,7 +54,7 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
 
     var step_voxels: int = maxi(1, int(request.get("step_voxels", BASE_MESH_STEP_VOXELS << lod)))
     # Use a lower sample density for distant smooth meshes; actual tile bounds remain unchanged.
-    if p_lod >= 2:
+    if p_lod >= 2 and p_lod <= 5:
         step_voxels *= 2
     var cell_size: float = float(step_voxels) * VOXEL_SIZE
     var cells_x: int = int(ceil(float(size_voxels_x) / float(step_voxels)))
