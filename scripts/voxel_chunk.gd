@@ -78,6 +78,10 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     var collision_body := get_node_or_null("VoxelCollision") as StaticBody3D
     var preserve_collision: bool = wants_collision and collision_enabled and collision_body != null
     _retire_current_generation(preserve_collision)
+    # Release the replaced generation before uploading its successor. Keeping both generations
+    # alive during ArrayMesh creation can temporarily double GPU memory and trigger Vulkan OOM.
+    while retire_one_old_node():
+        pass
     _mesh_shader_material = null
     coord = data.get("coord", Vector2i.ZERO)
     lod = int(data.get("lod", -1))
