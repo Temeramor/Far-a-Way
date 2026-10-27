@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0.1 — 2026-10-26
+## 0.1.0.1 — 2026-10-27
 
 - Added a Windows x86-64 first-person exploration project built with Godot 4.7.2 and the Forward+ renderer.
 - Added a main menu with New Game, Settings and Exit, deterministic world-seed input, and a loading screen with generation progress.
