@@ -368,7 +368,15 @@ func _build_smooth_shadow_surface(
     # Keep the shadow mesh bounded to 256x256 cells per chunk: at distance its spacing
     # increases with LOD, while remaining finer than the visible voxel silhouette.
     # Keep shadow proxies at or below roughly 128x128 cells per tile.
-    var shadow_step_voxels: int = 5 if p_lod <= 1 else (10 if p_lod <= 2 else (20 << (p_lod - 3) if p_lod <= 4 else (160 << (p_lod - 5))))
+    var shadow_step_voxels: int
+    if p_lod <= 1:
+        shadow_step_voxels = 5
+    elif p_lod == 2:
+        shadow_step_voxels = 10
+    elif p_lod <= 4:
+        shadow_step_voxels = 20 << (p_lod - 3)
+    else:
+        shadow_step_voxels = 160 << (p_lod - 5)
     var shadow_cells_x: int = ceili(float(size_voxels_x) / float(shadow_step_voxels))
     var shadow_cells_z: int = ceili(float(size_voxels_z) / float(shadow_step_voxels))
     var shadow_width: int = shadow_cells_x + 1
