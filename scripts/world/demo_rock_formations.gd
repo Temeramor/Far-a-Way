@@ -114,7 +114,7 @@ func _rebuild_for_seed(new_seed: int) -> void:
     )
 
 
-func _east_entrance_rocks() -> Array[Dictionary]:
+func _east_entrance_rocks() -> Array:
     return [
         {"x": 299.644, "z": 424.309, "rx": 12.0, "ry": 9.0, "rz": 11.0, "id": 1},
         {"x": 318.179, "z": 421.731, "rx": 12.0, "ry": 8.0, "rz": 10.0, "id": 2},
@@ -130,7 +130,7 @@ func _east_entrance_rocks() -> Array[Dictionary]:
     ]
 
 
-func _west_entrance_rocks() -> Array[Dictionary]:
+func _west_entrance_rocks() -> Array:
     return [
         {"x": 807.937, "z": 467.411, "rx": 17.0, "ry": 12.0, "rz": 16.0, "id": 21},
         {"x": 766.019, "z": 452.605, "rx": 15.0, "ry": 10.0, "rz": 14.0, "id": 22},
