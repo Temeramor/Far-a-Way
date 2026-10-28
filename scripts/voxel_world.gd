@@ -19,7 +19,7 @@ const FallbackBuilderScript = preload("res://scripts/voxel_chunk_mesh_builder_fa
 
 @export_category("Streaming and LOD")
 @export_range(512.0, 8192.0, 256.0) var render_distance_m: float = 4096.0
-@export_range(0.5, 1.0, 0.05) var lod_transition_pixels: float = 1.0
+const LOD_TRANSITION_PIXELS: float = 1.0
 @export_range(0.02, 0.10, 0.01) var lod_hysteresis_ratio: float = 0.05
 @export_range(1, 8, 1) var max_concurrent_mesh_jobs: int = 2
 @export_range(1, 4, 1) var max_mesh_applies_per_frame: int = 2
@@ -207,12 +207,9 @@ func _prepare_world_for_epoch(epoch: int) -> void:
     _last_refresh_chunk = Vector2i(-2147483648, -2147483648)
     _refresh_streaming()
 
-func set_lod_settings(lod0_distance: float) -> void:
-    # Legacy API: translate the requested distance into the screen-space pixel budget.
-    var screen_height: float = float(_current_viewport_pixel_size().y)
-    var projection_scale: float = screen_height / (2.0 * tan(deg_to_rad(DESIGN_FOV_DEGREES) * 0.5))
-    var requested: float = clampf(lod0_distance, 32.0, 256.0)
-    lod_transition_pixels = clampf(VOXEL_SIZE * 2.0 * projection_scale / requested, 0.5, 1.0)
+func set_lod_settings(_legacy_lod0_distance: float) -> void:
+    # Compatibility with older scene controllers. Detail now follows viewport pixels,
+    # not the former fixed metre threshold.
     _refresh_lod_boundaries()
     if _world_started:
         _refresh_streaming()
@@ -254,15 +251,15 @@ func get_lod_boundary_m_for_height(lod_index: int, screen_height: float, target_
     if lod_index < 0 or lod_index > 6:
         return INF
     var safe_height: float = maxf(screen_height, 1.0)
-    var pixel_target: float = lod_transition_pixels if target_pixels <= 0.0 else clampf(target_pixels, 0.5, 1.0)
+    var pixel_target: float = LOD_TRANSITION_PIXELS if target_pixels <= 0.0 else clampf(target_pixels, 0.5, 1.0)
     var projection_scale: float = safe_height / (2.0 * tan(deg_to_rad(DESIGN_FOV_DEGREES) * 0.5))
     var next_cell_size_m: float = VOXEL_SIZE * float(2 << lod_index)
     return next_cell_size_m * projection_scale / pixel_target
 
 
 func _current_viewport_pixel_size() -> Vector2i:
-    var viewport_size: Vector2 = get_viewport().get_visible_rect().size
-    return Vector2i(maxi(1, roundi(viewport_size.x)), maxi(1, roundi(viewport_size.y)))
+    var viewport_size: Vector2i = get_viewport().size
+    return Vector2i(maxi(1, viewport_size.x), maxi(1, viewport_size.y))
 
 
 func get_mesh_step_voxels(lod_index: int) -> int:
