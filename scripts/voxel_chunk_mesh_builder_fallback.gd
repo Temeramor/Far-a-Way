@@ -363,8 +363,7 @@ func _average_surface_rock_weight(weights: PackedFloat32Array, cells_x: int, cor
 
 func _top_face_color(material_type: int, rock_weight: float) -> Color:
     var color: Color = _material_color(material_type)
-    # Alpha 0.965–0.990 encodes the smoothly interpolated grass/rock weight.
-    # It is above the skirt-tag range; RGB remains usable for the debug LOD view.
+    # Stable byte codes 246..252 encode the grass/rock blend independently of skirt tags.
     color.a = float(246 + roundi(clampf(rock_weight, 0.0, 1.0) * 6.0)) / 255.0
     return color
 
