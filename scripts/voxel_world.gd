@@ -1,6 +1,8 @@
 extends Node3D
 class_name VoxelWorld
 
+signal terrain_seed_changed(new_seed: int)
+
 var _native_fallback_warning_shown: bool = false
 
 const VOXEL_SIZE: float = 0.2
@@ -19,7 +21,7 @@ const FallbackBuilderScript = preload("res://scripts/voxel_chunk_mesh_builder_fa
 
 @export_category("Streaming and LOD")
 @export_range(512.0, 8192.0, 256.0) var render_distance_m: float = 4096.0
-const LOD_TRANSITION_PIXELS: float = 1.0
+const LOD_TRANSITION_PIXELS: float = 0.5
 @export_range(0.02, 0.10, 0.01) var lod_hysteresis_ratio: float = 0.05
 @export_range(1, 8, 1) var max_concurrent_mesh_jobs: int = 2
 @export_range(1, 4, 1) var max_mesh_applies_per_frame: int = 2
@@ -34,6 +36,7 @@ const LOD_TRANSITION_PIXELS: float = 1.0
 var _generator: VoxelTerrainGenerator
 var _mountain_profile_cache: Array[Dictionary] = []
 var _voxel_material: ShaderMaterial
+var _prop_material_cache: Dictionary = {}
 var _player: CharacterBody3D
 var _chunks: Dictionary = {}
 var _queued: Dictionary = {}
@@ -190,6 +193,7 @@ func regenerate_with_seed(new_seed: int) -> void:
     _generator = GeneratorScript.new(seed_value, world_size_m)
     _mountain_profile_cache = _generator.get_mountain_profile()
     _apply_seed_to_material()
+    terrain_seed_changed.emit(seed_value)
     if _player != null:
         _player.set_physics_process(false)
         _player.velocity = Vector3.ZERO
@@ -248,8 +252,8 @@ func _refresh_lod_boundaries() -> void:
 
 
 func get_lod_boundary_m_for_height(lod_index: int, screen_height: float, target_pixels: float = -1.0) -> float:
-    # Switch when the NEXT voxel size projects to the target pixel footprint.
-    # At 1 px, no distant voxel grows beyond one pixel and sub-pixel mesh work is avoided.
+    # Switch using the next voxel footprint. The runtime half-pixel target keeps the
+    # outer map ring from jumping to multi-metre cells at normal viewing resolutions.
     if lod_index < 0 or lod_index > 6:
         return INF
     var safe_height: float = maxf(screen_height, 1.0)
@@ -265,9 +269,10 @@ func _current_viewport_pixel_size() -> Vector2i:
 
 
 func get_mesh_step_voxels(lod_index: int) -> int:
-    # LOD0 uses the 20 cm base voxel; each coarser tier keeps the existing step progression.
+    # Each LOD doubles cell size: 20 cm, 40 cm, 80 cm ... up to 25.6 m.
+    # The former LOD0 -> LOD1 jump was 4x and left the map rim visibly over-coarsened.
     var tier: int = clampi(lod_index, 0, 7)
-    return BASE_MESH_STEP_VOXELS if tier == 0 else BASE_MESH_STEP_VOXELS << (tier + 1)
+    return BASE_MESH_STEP_VOXELS << tier
 
 
 func is_terrain_shadow_ready() -> bool:
@@ -288,11 +293,26 @@ func is_world_coverage_ready() -> bool:
 func _apply_seed_to_material() -> void:
     if _voxel_material == null:
         return
+    _prop_material_cache.clear()
     var safe_seed: int = abs(seed_value % 2147483647)
     _voxel_material.set_shader_parameter("seed_low", float(safe_seed % 65536))
     _voxel_material.set_shader_parameter("seed_high", float(int(floor(float(safe_seed) / 65536.0))))
     _voxel_material.set_shader_parameter("debug_lod_colors", _debug_lod_colors)
 
+
+func get_voxel_prop_material(cell_size_m: float) -> ShaderMaterial:
+    if _voxel_material == null:
+        return null
+    var safe_cell_size: float = maxf(VOXEL_SIZE, cell_size_m)
+    var cache_key: String = str(roundi(safe_cell_size * 1000.0))
+    var cached: ShaderMaterial = _prop_material_cache.get(cache_key) as ShaderMaterial
+    if cached != null:
+        return cached
+    var material := _voxel_material.duplicate() as ShaderMaterial
+    material.set_shader_parameter("lod_cell_size", safe_cell_size)
+    material.set_shader_parameter("lod_index", 0)
+    _prop_material_cache[cache_key] = material
+    return material
 
 
 func get_surface_height(x: float, z: float) -> float:
