@@ -600,59 +600,107 @@ struct MeshBuild {
     }
 
     void build_exposed_side_faces() {
-        for (int32_t z = 0; z < cells_z; ++z) {
-            for (int32_t x = 0; x < cells_x; ++x) {
+        const auto emit_left_runs = [this](int32_t x, bool right_side) {
+            const double x_pos = static_cast<double>(right_side ? (x + 1) * step_voxels : x * step_voxels) * VOXEL_SIZE;
+            for (int32_t z = 0; z < cells_z;) {
                 const int32_t h = heights[grid_index(x, z)];
-                if (h <= 0) {
+                const int32_t other_h = heights[grid_index(x + (right_side ? 1 : -1), z)];
+                if (h <= other_h) {
+                    ++z;
                     continue;
                 }
-                const int32_t top_material = surface_types[static_cast<size_t>(z) * cells_x + x];
-                const double surface_weight = surface_rock_weight_at(x, z);
-                const double x0 = static_cast<double>(x * step_voxels) * VOXEL_SIZE;
-                const double x1 = static_cast<double>((x + 1) * step_voxels) * VOXEL_SIZE;
+                const int32_t material = surface_types[static_cast<size_t>(z) * cells_x + x];
+                const double base_weight = surface_rock_weight_at(x, z);
+                int32_t run = 1;
+                double weight_sum = base_weight;
+                while (z + run < cells_z) {
+                    const int32_t next_h = heights[grid_index(x, z + run)];
+                    const int32_t next_other_h = heights[grid_index(x + (right_side ? 1 : -1), z + run)];
+                    const size_t next_cell = static_cast<size_t>(z + run) * cells_x + x;
+                    const double next_weight = surface_rock_weight_at(x, z + run);
+                    if (next_h != h || next_other_h != other_h ||
+                            surface_types[next_cell] != material ||
+                            std::abs(next_weight - base_weight) > 0.10) {
+                        break;
+                    }
+                    weight_sum += next_weight;
+                    ++run;
+                }
                 const double z0 = static_cast<double>(z * step_voxels) * VOXEL_SIZE;
-                const double z1 = static_cast<double>((z + 1) * step_voxels) * VOXEL_SIZE;
-
-                const int32_t h_left = heights[grid_index(x - 1, z)];
-                if (h > h_left) {
+                const double z1 = static_cast<double>(std::min((z + run) * step_voxels, size_voxels_z)) * VOXEL_SIZE;
+                const double low_m = static_cast<double>(other_h) * VOXEL_SIZE;
+                const double high_m = static_cast<double>(h) * VOXEL_SIZE;
+                if (right_side) {
                     add_segmented_side_face(
-                        Vector3(x0, static_cast<double>(h_left) * VOXEL_SIZE, z1),
-                        Vector3(x0, static_cast<double>(h) * VOXEL_SIZE, z1),
-                        Vector3(x0, static_cast<double>(h) * VOXEL_SIZE, z0),
-                        Vector3(x0, static_cast<double>(h_left) * VOXEL_SIZE, z0),
-                        Vector3(-1.0, 0.0, 0.0), h_left, h, top_material, true, 1.0, surface_weight);
-                }
-
-                const int32_t h_right = heights[grid_index(x + 1, z)];
-                if (h > h_right) {
+                        Vector3(x_pos, low_m, z0), Vector3(x_pos, low_m, z0),
+                        Vector3(x_pos, high_m, z1), Vector3(x_pos, low_m, z1),
+                        Vector3(1.0, 0.0, 0.0), other_h, h, material, true, 1.0,
+                        weight_sum / static_cast<double>(run));
+                } else {
                     add_segmented_side_face(
-                        Vector3(x1, static_cast<double>(h_right) * VOXEL_SIZE, z0),
-                        Vector3(x1, static_cast<double>(h) * VOXEL_SIZE, z0),
-                        Vector3(x1, static_cast<double>(h) * VOXEL_SIZE, z1),
-                        Vector3(x1, static_cast<double>(h_right) * VOXEL_SIZE, z1),
-                        Vector3(1.0, 0.0, 0.0), h_right, h, top_material, true, 1.0, surface_weight);
+                        Vector3(x_pos, low_m, z1), Vector3(x_pos, high_m, z1),
+                        Vector3(x_pos, high_m, z0), Vector3(x_pos, low_m, z0),
+                        Vector3(-1.0, 0.0, 0.0), other_h, h, material, true, 1.0,
+                        weight_sum / static_cast<double>(run));
                 }
-
-                const int32_t h_north = heights[grid_index(x, z - 1)];
-                if (h > h_north) {
-                    add_segmented_side_face(
-                        Vector3(x1, static_cast<double>(h_north) * VOXEL_SIZE, z0),
-                        Vector3(x0, static_cast<double>(h_north) * VOXEL_SIZE, z0),
-                        Vector3(x0, static_cast<double>(h) * VOXEL_SIZE, z0),
-                        Vector3(x1, static_cast<double>(h) * VOXEL_SIZE, z0),
-                        Vector3(0.0, 0.0, -1.0), h_north, h, top_material, false, 1.0, surface_weight);
-                }
-
-                const int32_t h_south = heights[grid_index(x, z + 1)];
-                if (h > h_south) {
-                    add_segmented_side_face(
-                        Vector3(x0, static_cast<double>(h_south) * VOXEL_SIZE, z1),
-                        Vector3(x1, static_cast<double>(h_south) * VOXEL_SIZE, z1),
-                        Vector3(x1, static_cast<double>(h) * VOXEL_SIZE, z1),
-                        Vector3(x0, static_cast<double>(h) * VOXEL_SIZE, z1),
-                        Vector3(0.0, 0.0, 1.0), h_south, h, top_material, false, 1.0, surface_weight);
-                }
+                z += run;
             }
+        };
+
+        const auto emit_z_runs = [this](int32_t z, bool south_side) {
+            const double z_pos = static_cast<double>(south_side ? (z + 1) * step_voxels : z * step_voxels) * VOXEL_SIZE;
+            for (int32_t x = 0; x < cells_x;) {
+                const int32_t h = heights[grid_index(x, z)];
+                const int32_t other_h = heights[grid_index(x, z + (south_side ? 1 : -1))];
+                if (h <= other_h) {
+                    ++x;
+                    continue;
+                }
+                const int32_t material = surface_types[static_cast<size_t>(z) * cells_x + x];
+                const double base_weight = surface_rock_weight_at(x, z);
+                int32_t run = 1;
+                double weight_sum = base_weight;
+                while (x + run < cells_x) {
+                    const int32_t next_h = heights[grid_index(x + run, z)];
+                    const int32_t next_other_h = heights[grid_index(x + run, z + (south_side ? 1 : -1))];
+                    const size_t next_cell = static_cast<size_t>(z) * cells_x + x + run;
+                    const double next_weight = surface_rock_weight_at(x + run, z);
+                    if (next_h != h || next_other_h != other_h ||
+                            surface_types[next_cell] != material ||
+                            std::abs(next_weight - base_weight) > 0.10) {
+                        break;
+                    }
+                    weight_sum += next_weight;
+                    ++run;
+                }
+                const double x0 = static_cast<double>(x * step_voxels) * VOXEL_SIZE;
+                const double x1 = static_cast<double>(std::min((x + run) * step_voxels, size_voxels_x)) * VOXEL_SIZE;
+                const double low_m = static_cast<double>(other_h) * VOXEL_SIZE;
+                const double high_m = static_cast<double>(h) * VOXEL_SIZE;
+                if (south_side) {
+                    add_segmented_side_face(
+                        Vector3(x0, low_m, z_pos), Vector3(x1, low_m, z_pos),
+                        Vector3(x1, high_m, z_pos), Vector3(x0, high_m, z_pos),
+                        Vector3(0.0, 0.0, 1.0), other_h, h, material, false, 1.0,
+                        weight_sum / static_cast<double>(run));
+                } else {
+                    add_segmented_side_face(
+                        Vector3(x1, low_m, z_pos), Vector3(x0, low_m, z_pos),
+                        Vector3(x0, high_m, z_pos), Vector3(x1, high_m, z_pos),
+                        Vector3(0.0, 0.0, -1.0), other_h, h, material, false, 1.0,
+                        weight_sum / static_cast<double>(run));
+                }
+                x += run;
+            }
+        };
+
+        for (int32_t x = 0; x < cells_x; ++x) {
+            emit_left_runs(x, false);
+            emit_left_runs(x, true);
+        }
+        for (int32_t z = 0; z < cells_z; ++z) {
+            emit_z_runs(z, false);
+            emit_z_runs(z, true);
         }
     }
 
