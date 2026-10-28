@@ -113,6 +113,32 @@ func _run() -> void:
             errors.append("LOD7 vertex heights should align to its 12.8 m voxel lattice")
             break
 
+    # The final LOD7 root is not a full multiple of the 12.8 m voxel step.
+    # Its final partial cells must sample inside the world instead of becoming zero-height columns.
+    var edge_data: Dictionary = far_builder.build_mesh_data({
+        "coord": Vector2i.ZERO,
+        "request": {
+            "lod": 7, "start_x": 81920, "start_z": 81920,
+            "size_x": 18080, "size_z": 18080, "step_voxels": 128,
+            "collision": false, "distance": 2000.0, "priority": 0.0
+        },
+        "neighbor_lods": {"left": -1, "right": -1, "north": -1, "south": -1},
+        "seed": 1337,
+        "world_min_x": -5000.0, "world_min_z": -5000.0,
+        "world_size_voxels": 100000,
+        "terrain_world_size_m": 10000.0,
+        "mountain_profile": far_generator.get_mountain_profile(),
+        "build_collision": false
+    })
+    var edge_vertices: PackedVector3Array = edge_data.get("vertices", PackedVector3Array())
+    var edge_normals: PackedVector3Array = edge_data.get("normals", PackedVector3Array())
+    var edge_top_height: float = 0.0
+    for vertex_index in range(edge_vertices.size()):
+        if absf(edge_vertices[vertex_index].x - 1808.0) < 0.001 and edge_normals[vertex_index].y > 0.9:
+            edge_top_height = maxf(edge_top_height, edge_vertices[vertex_index].y)
+    if edge_top_height <= 0.0:
+        errors.append("The partial final LOD7 tile should retain terrain height at the world edge")
+
     # LOD2 also uses voxel faces; a small tile keeps the fallback smoke test quick.
     var compact_data: Dictionary = far_builder.build_mesh_data({
         "coord": Vector2i.ZERO,
