@@ -362,7 +362,7 @@ void fragment() {
         ROUGHNESS = 0.96;
     } else if (lod_index >= 3) {
         // Keep a deterministic colour per voxel at every distance. Only the palette detail
-        // simplifies with LOD: the cell size follows the same 20 cm-to-51.2 m voxel ladder.
+        // simplifies with LOD: the cell size follows the same 20 cm-to-25.6 m voxel ladder.
         float lod_voxel_size = lod_cell_size;
         if (is_top_surface || is_surface_side) {
             ALBEDO = mix(
