@@ -458,6 +458,7 @@ func _refresh_streaming() -> void:
         # fine-detail chunks cached along a high-speed flight path.
         if existing_lod == 7:
             old_chunk.set_render_active(false)
+            _update_neighbor_chunk_skirts(existing_coord)
             if old_chunk.mesh_ready:
                 old_chunk._retire_current_generation()
             continue
@@ -472,8 +473,10 @@ func _refresh_streaming() -> void:
             _chunks.erase(existing_coord)
             _completed_jobs.erase(existing_coord)
             _queued.erase(existing_coord)
+            _update_neighbor_chunk_skirts(existing_coord)
         else:
             old_chunk.set_render_active(false)
+            _update_neighbor_chunk_skirts(existing_coord)
     for coord_value in wanted.keys():
         var coord: Vector2i = coord_value
         var request: Dictionary = wanted[coord]
