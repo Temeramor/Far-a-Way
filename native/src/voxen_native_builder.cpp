@@ -153,7 +153,7 @@ struct NoiseSet {
     }
 
     double surface_rock_weight(double slope, double x, double z) const {
-        const double transition_noise = transition->get_noise_2d(x * 0.008, z * 0.008) * 0.05;
+        const double transition_noise = transition->get_noise_2d(x * 0.008, z * 0.008) * 0.12;
         const double normal_slope = 1.0 - 1.0 / std::sqrt(1.0 + slope * slope);
         return smoothstep(0.30, 0.48, normal_slope + transition_noise);
     }
