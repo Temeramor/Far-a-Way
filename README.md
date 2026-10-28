@@ -1,4 +1,4 @@
-# Far a Way 0.1.0.3
+# Far a Way 0.1.0.4
 
 Far a Way is a first-person exploration prototype focused on a large procedural voxel landscape. The project uses **Godot 4.7.2**, the **Forward+ renderer**, and a native C++ GDExtension for the CPU-intensive terrain chunk builder.
 
@@ -9,9 +9,12 @@ Far a Way is a first-person exploration prototype focused on a large procedural 
 - **World:** seeded landscape with a default area of 2 × 2 km.
 - **Base terrain resolution:** 20 cm voxel cells on X, Y and Z.
 - **Default terrain view distance:** 4,096 m.
-- **Version:** `0.1.0.3`.
+- **Coarsest voxel cell:** 25.6 m at the farthest LOD.
+- **Version:** `0.1.0.4`.
 
 The terrain is generated as height columns: each horizontal position has one generated surface height. Meshes and collisions are streamed around the player instead of creating a node for each voxel.
+
+The scene also includes code-generated voxel rock clusters at the two demo tunnel entrances, a hollow rock arch, and blue, purple and red crystal groups. Their X/Z anchors are adapted from `Terrain/demo/Demo.tscn`; each group samples the current procedural surface after a seed change. No Terrain3D heightmap or imported demo mesh is used.
 
 ## Main menu and controls
 
