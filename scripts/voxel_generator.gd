@@ -71,7 +71,7 @@ func _create_mountain_ranges() -> void:
     var rng := RandomNumberGenerator.new()
     rng.seed = int(seed_value) + 17011
     # Reduce chain density on smaller maps without changing the seeded chain-based algorithm.
-    var range_count: int = clampi(roundi(3.0 * sqrtf(mountain_scale)), 2, 5)
+    var range_count: int = clampi(roundi(3.0 * sqrt(mountain_scale)), 2, 5)
     var narrow_offset: float = 600.0 * mountain_scale
     var wide_offset: float = 1050.0 * mountain_scale
     for _range_index in range(range_count):
