@@ -400,7 +400,19 @@ struct MeshBuild {
         if (edge_alpha >= 0.95) {
             // The upper exposed voxel carries the same blend as its top face.
             const int32_t top_start = std::max(low_height_voxels, high_height_voxels - step_voxels);
-            if (top_material == ROCK) {
+            double encoded_alpha = -1.0;
+            if (surface_rock_weight >= 0.0) {
+                const int32_t alpha_code = 240 + static_cast<int32_t>(std::lround(
+                    std::clamp(surface_rock_weight, 0.0, 1.0) * 5.0));
+                encoded_alpha = static_cast<double>(alpha_code) / 255.0;
+            }
+            if (lod >= 3) {
+                // Distant layer detail is smaller than a pixel. Keep the voxel riser,
+                // but merge lower soil/rock bands into a single segment.
+                const int32_t lower_material = top_material == ROCK ? ROCK : SOIL;
+                emit_side_segment(point_a, point_b, normal, low_height_voxels, top_start,
+                    lower_material, vertical_first, edge_alpha);
+            } else if (top_material == ROCK) {
                 emit_side_segment(point_a, point_b, normal, low_height_voxels, top_start,
                     ROCK, vertical_first, edge_alpha);
             } else {
@@ -410,18 +422,17 @@ struct MeshBuild {
                 emit_side_segment(point_a, point_b, normal, soil_start, top_start,
                     SOIL, vertical_first, edge_alpha);
             }
-            double encoded_alpha = -1.0;
-            if (surface_rock_weight >= 0.0) {
-                const int32_t alpha_code = 240 + static_cast<int32_t>(std::lround(
-                    std::clamp(surface_rock_weight, 0.0, 1.0) * 5.0));
-                encoded_alpha = static_cast<double>(alpha_code) / 255.0;
-            }
             emit_side_segment(point_a, point_b, normal, top_start, high_height_voxels,
                 top_material, vertical_first, edge_alpha, encoded_alpha);
             return;
         }
 
-        // Stitching skirts keep their original layer colours and edge-mask alpha.
+        // Stitching skirts are geometric seams; distant LODs only need one continuous band.
+        if (lod >= 3) {
+            emit_side_segment(point_a, point_b, normal, low_height_voxels, high_height_voxels,
+                top_material == ROCK ? ROCK : SOIL, vertical_first, edge_alpha);
+            return;
+        }
         if (top_material == ROCK) {
             emit_side_segment(point_a, point_b, normal, low_height_voxels, high_height_voxels,
                 ROCK, vertical_first, edge_alpha);
