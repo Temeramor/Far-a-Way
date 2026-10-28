@@ -68,7 +68,7 @@ Parent tiles remain visible until the required child coverage is ready. Their hi
 
 The sky system animates the sun, moon, stars and cloud layers, controls atmospheric fog and environmental lighting, and advances the in-game clock. The world HUD provides three weather presets — **Clear**, **Cloudy** and **Overcast** — plus time selection and the **Dawn**, **Day**, **Dusk** and **Night** presets.
 
-Visible voxel meshes do not cast individual block shadows. Separate smooth terrain-shadow proxies cast broad landform silhouettes and use lower-density grids with distance. Proxy generation is limited to chunks within approximately 1.2 km of the player; visible surface shadowing fades at distant LODs.
+Visible voxel meshes never cast shadows. The native C++ chunk builder generates a separate continuous, non-voxel heightfield proxy used only to cast broad mountain and hill silhouettes; individual block faces do not enter the shadow map. Each proxy is lowered by half the current LOD cell height plus 2 cm to reduce false self-shadowing on the voxel surface it represents. Proxy generation is limited to chunks within 1,200 m of the player to bound CPU and GPU work. Directional shadow attenuation on visible voxel tops is fixed by tier: **LOD0 20%, LOD1 15%, LOD2 10%, LOD3 5%, and LOD4–LOD7 0%**. These values are shadow strength (the fraction of direct-light attenuation applied), not the amount of light retained. Smooth proxies may still cast broad landform shadows onto nearer tiers even when distant voxel surfaces do not receive them.
 
 The Forward+ renderer is selected with a baseline **MSAA ×2** profile and screen-space AA disabled. The pause-menu Settings page currently reports that baseline rather than exposing advanced graphics sliders.
 
@@ -130,6 +130,7 @@ With Godot 4.7.2 installed, check resource import and script parsing:
 godot --headless --editor --path . --quit
 godot --headless --path . --script res://tests/terrain_smoke_test.gd
 godot --headless --path . --script res://tests/lod_hierarchy_smoke_test.gd
+godot --headless --path . --script res://tests/shadow_lod_smoke_test.gd
 ```
 
 After building the Windows DLL, also run the native smoke test:
