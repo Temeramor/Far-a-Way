@@ -49,7 +49,7 @@ var _last_refresh_chunk := Vector2i(-2147483648, -2147483648)
 var _last_viewport_size := Vector2i.ZERO
 var _lod_boundaries_m: Array[float] = [INF, INF, INF, INF, INF, INF, INF]
 var _hierarchy_visibility_dirty: bool = true
-var _active_skirts_dirty: bool = true
+var _dirty_hierarchy_roots: Dictionary = {}
 var _world_size_voxels: int
 var _chunk_size_voxels: int
 var _world_min_x: float
@@ -111,7 +111,6 @@ func _process(delta: float) -> void:
         _last_viewport_size = viewport_size
         _refresh_lod_boundaries()
         _hierarchy_visibility_dirty = true
-        _active_skirts_dirty = true
 
     _refresh_timer += delta
     if _refresh_timer >= streaming_refresh_interval_s and _world_started:
@@ -135,10 +134,12 @@ func _process(delta: float) -> void:
     if _hierarchy_visibility_dirty:
         _reconcile_hierarchy_visibility()
         _hierarchy_visibility_dirty = false
-        _active_skirts_dirty = true
-    if _active_skirts_dirty:
-        _refresh_active_skirts()
-        _active_skirts_dirty = false
+        _dirty_hierarchy_roots.clear()
+    elif not _dirty_hierarchy_roots.is_empty():
+        var dirty_roots: Array = _dirty_hierarchy_roots.keys()
+        _dirty_hierarchy_roots.clear()
+        for root_key in dirty_roots:
+            _update_lod_subtree_visibility(root_key, true)
     _retire_stale_resources()
     _try_finish_startup_loading()
 
@@ -500,7 +501,6 @@ func _refresh_streaming() -> void:
         else:
             _queued.erase(coord)
     _hierarchy_visibility_dirty = true
-    _active_skirts_dirty = true
     _record_timing(_refresh_usec_samples, Time.get_ticks_usec() - refresh_started_usec, 96)
 
 func _update_chunk_skirt_visibility(coord: Vector2i, chunk: VoxelTerrainChunk) -> void:
@@ -542,13 +542,6 @@ func _update_neighbor_chunk_skirts(coord: Vector2i) -> void:
         var neighbor: VoxelTerrainChunk = _chunks.get(neighbor_key) as VoxelTerrainChunk
         if neighbor != null and neighbor.mesh_ready and neighbor._render_active:
             _update_chunk_skirt_visibility(neighbor_key, neighbor)
-
-func _refresh_active_skirts() -> void:
-    for key_value in _chunks.keys():
-        var key: Vector2i = key_value
-        var chunk: VoxelTerrainChunk = _chunks[key] as VoxelTerrainChunk
-        if chunk != null and chunk.mesh_ready and chunk._render_active:
-            _update_chunk_skirt_visibility(key, chunk)
 
 func _chunk_bounds(coord: Vector2i) -> Dictionary:
     var parts: Dictionary = _decode_lod_key(coord)
@@ -747,10 +740,8 @@ func _apply_completed_jobs() -> void:
         chunk.apply_mesh_data(record["data"], _voxel_material)
         _update_chunk_skirt_visibility(coord, chunk)
         _update_neighbor_chunk_skirts(coord)
+        _mark_hierarchy_dirty_for(coord)
         applied += 1
-    if applied > 0:
-        _hierarchy_visibility_dirty = true
-        _active_skirts_dirty = true
 
 
 
@@ -912,6 +903,14 @@ func _reconcile_hierarchy_visibility() -> void:
         for tx in range(root_tiles):
             _update_lod_subtree_visibility(_make_lod_key(7, tx, tz), true)
 
+func _mark_hierarchy_dirty_for(coord: Vector2i) -> void:
+    var lod_index: int = clampi(floori(float(coord.x) / float(LOD_KEY_STRIDE)), 0, 7)
+    var tile_x: int = coord.x - lod_index * LOD_KEY_STRIDE
+    var shift: int = 7 - lod_index
+    var root_key := _make_lod_key(7, tile_x >> shift, coord.y >> shift)
+    _dirty_hierarchy_roots[root_key] = true
+
+
 func _update_lod_subtree_visibility(coord: Vector2i, ancestors_visible: bool) -> void:
     if not _wanted.has(coord):
         return
@@ -926,7 +925,10 @@ func _update_lod_subtree_visibility(coord: Vector2i, ancestors_visible: bool) ->
     var chunk: VoxelTerrainChunk = _chunks.get(coord) as VoxelTerrainChunk
     var node_active: bool = ancestors_visible and (not parent or not children_ready) and chunk != null and chunk.mesh_ready
     if chunk != null:
+        var was_active: bool = chunk._render_active
         chunk.set_render_active(node_active, bool(request.get("collision", false)))
+        if was_active != node_active:
+            _update_neighbor_chunk_skirts(coord)
         # Once all children cover a fallback tile, its GPU mesh is no longer needed.
         if parent and children_ready and chunk.mesh_ready:
             chunk._retire_current_generation()
