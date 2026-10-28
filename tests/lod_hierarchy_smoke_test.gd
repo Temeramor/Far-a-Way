@@ -199,6 +199,40 @@ func _run() -> void:
     world._update_lod_subtree_visibility(leaf_key, true)
     world._wanted.erase(leaf_key)
 
+    # A hidden parent is a reusable fallback cache, not a disposable mesh generation.
+    var fallback_parent_key: Vector2i = world._make_lod_key(1, 78, 78)
+    var fallback_parent := VoxelTerrainChunk.new()
+    fallback_parent.name = "FallbackParentCacheTest"
+    fallback_parent.mesh_ready = true
+    fallback_parent._render_active = false
+    world.add_child(fallback_parent)
+    world._chunks[fallback_parent_key] = fallback_parent
+    world._wanted[fallback_parent_key] = {"lod": 1, "fallback": true, "collision": false}
+    for child_z in range(2):
+        for child_x in range(2):
+            var child_key: Vector2i = world._make_lod_key(0, 156 + child_x, 156 + child_z)
+            var ready_child := VoxelTerrainChunk.new()
+            ready_child.name = "FallbackChildCacheTest_%d_%d" % [child_x, child_z]
+            ready_child.mesh_ready = true
+            world.add_child(ready_child)
+            world._chunks[child_key] = ready_child
+            world._wanted[child_key] = {"lod": 0, "fallback": false, "collision": false}
+    world._update_lod_subtree_visibility(fallback_parent_key, true)
+    if not fallback_parent.mesh_ready:
+        errors.append("Hidden fallback-parent geometry should remain cached after child coverage becomes ready")
+
+    # A near collider must remain enabled even when its visual mesh is hidden beneath a parent.
+    var hidden_collision_chunk := VoxelTerrainChunk.new()
+    hidden_collision_chunk.name = "HiddenCollisionCoverageTest"
+    world.add_child(hidden_collision_chunk)
+    hidden_collision_chunk.collision_enabled = true
+    hidden_collision_chunk.set_render_active(false, true)
+    if not hidden_collision_chunk.collision_active:
+        errors.append("Collision coverage should remain active for a hidden but requested terrain chunk")
+    hidden_collision_chunk.set_render_active(false, false)
+    if hidden_collision_chunk.collision_active:
+        errors.append("Collision coverage should deactivate when the chunk no longer requests collision")
+
     world.queue_free()
     await process_frame
     if errors.is_empty():
