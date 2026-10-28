@@ -174,7 +174,6 @@ struct MeshBuild {
     NoiseSet noise;
     Vector2i coord;
     int lod = 0;
-    bool debug_lod_colors = false;
     bool want_collision = false;
     bool build_collision = false;
 
@@ -834,7 +833,6 @@ struct MeshBuild {
         const Dictionary request = job_data.get("request", Dictionary());
         lod = static_cast<int32_t>(request.get("lod", 0));
         neighbor_lods = job_data.get("neighbor_lods", Dictionary());
-        debug_lod_colors = static_cast<bool>(job_data.get("debug_lod_colors", false));
         world_min_x = static_cast<double>(job_data.get("world_min_x", 0.0));
         world_min_z = static_cast<double>(job_data.get("world_min_z", 0.0));
         world_size_voxels = static_cast<int32_t>(job_data.get("world_size_voxels", 0));
@@ -913,7 +911,6 @@ struct MeshBuild {
         out["lod"] = lod;
         out["step_voxels"] = step_voxels;
         out["neighbor_lods_used"] = neighbor_lods.duplicate(true);
-        out["debug_lod_colors"] = debug_lod_colors;
         out["vertices"] = packed_vertices;
         out["normals"] = packed_normals;
         out["colors"] = packed_colors;
