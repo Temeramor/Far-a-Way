@@ -4,7 +4,7 @@ class_name VoxelTerrainChunk
 ## Holds render/collision resources for one chunk; the native builder performs expensive CPU mesh work.
 ## Mesh/physics nodes are attached on the main thread and replaced GPU resources are retired gradually.
 
-const VOXEL_SIZE: float = 0.1
+const VOXEL_SIZE: float = 0.2
 const FallbackBuilderScript = preload("res://scripts/voxel_chunk_mesh_builder_fallback.gd")
 
 var coord: Vector2i = Vector2i.ZERO

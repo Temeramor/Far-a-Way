@@ -1,4 +1,4 @@
-# Far a Way 0.1.0.1
+# Far a Way 0.1.0.2
 
 Far a Way is a first-person exploration prototype focused on a large procedural voxel landscape. The project uses **Godot 4.7.2**, the **Forward+ renderer**, and a native C++ GDExtension for the CPU-intensive terrain chunk builder.
 
@@ -6,10 +6,10 @@ Far a Way is a first-person exploration prototype focused on a large procedural 
 
 - **Platform:** Windows x86-64.
 - **Renderer:** Forward+.
-- **World:** seeded landscape with a default area of 10 × 10 km.
-- **Base terrain resolution:** 10 cm voxel height steps.
+- **World:** seeded landscape with a default area of 2 × 2 km.
+- **Base terrain resolution:** 20 cm voxel cells on X, Y and Z.
 - **Default terrain view distance:** 4,096 m.
-- **Version:** `0.1.0.1`.
+- **Version:** `0.1.0.2`.
 
 The terrain is generated as height columns: each horizontal position has one generated surface height. Meshes and collisions are streamed around the player instead of creating a node for each voxel.
 
@@ -32,9 +32,9 @@ In the world:
 
 ## Procedural terrain
 
-The landscape uses a seed-controlled set of layered noise fields and seeded mountain chains. Mountain height and width scale with world size. Height samples remain continuous while cached/interpolated; visible geometry quantises height to the active LOD cell step, from 10 cm at LOD0 to 25.6 m at LOD7, so distant cells keep voxel-like proportions.
+The 2 × 2 km landscape uses layered seeded noise and two seeded mountain chains (six connected ridge segments). Mountain height, width, lateral irregularity and the spawn-area fade scale with the world size; ridge noise adds modest rocky roughness without changing the chain-based generation method. Height samples remain continuous while cached/interpolated; visible geometry quantises height to the active LOD cell step, from 20 cm at LOD0 to 51.2 m at LOD7, so distant cells keep voxel-like proportions.
 
-The surface material blends grass and rock according to slope. Every LOD keeps a discrete colour sample per current voxel cell, from 10 cm at LOD0 to 25.6 m at LOD7, rather than fading to a uniform colour with screen distance. Near tiers retain varied palette detail and Voronoi-style cracks; far tiers simplify those calculations while keeping cell-to-cell colour differences. The upper voxel's vertical faces use the same grass/rock surface treatment as its top face, and material transitions are smoothed across chunk borders.
+The surface material blends grass and rock according to slope. Every LOD keeps a discrete colour sample per current voxel cell, from 20 cm at LOD0 to 51.2 m at LOD7, rather than fading to a uniform colour with screen distance. Near tiers retain varied palette detail and Voronoi-style cracks; far tiers simplify those calculations while keeping cell-to-cell colour differences. The upper voxel's vertical faces use the same grass/rock surface treatment as its top face, and material transitions are smoothed across chunk borders.
 
 ## Chunk streaming and level of detail
 
@@ -42,14 +42,14 @@ The world is divided into terrain chunks, generated in the background and priori
 
 | LOD | Horizontal and vertical voxel step |
 |---|---:|
-| LOD0 | 0.1 m |
-| LOD1 | 0.4 m |
-| LOD2 | 0.8 m |
-| LOD3 | 1.6 m |
-| LOD4 | 3.2 m |
-| LOD5 | 6.4 m |
-| LOD6 | 12.8 m |
-| LOD7 | 25.6 m |
+| LOD0 | 0.2 m |
+| LOD1 | 0.8 m |
+| LOD2 | 1.6 m |
+| LOD3 | 3.2 m |
+| LOD4 | 6.4 m |
+| LOD5 | 12.8 m |
+| LOD6 | 25.6 m |
+| LOD7 | 51.2 m |
 
 Every visible LOD uses voxel faces. Greedy merging of top faces and matching side runs, plus exposed risers and stitching skirts, preserve the block style; the invisible smooth heightfield is reserved for terrain-shadow proxies. Each LOD quantises both horizontal and vertical detail to its own voxel step, so the farthest levels remain voxel terrain rather than a smooth heightfield.
 
@@ -57,10 +57,10 @@ LOD boundaries are calculated from the active viewport height and an 82° design
 
 | Resolution | LOD0→1 | 1→2 | 2→3 | 3→4 | 4→5 | 5→6 | 6→7 |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| 720p | 166 m | 331 m | 663 m | 1,325 m | 2,651 m | 5,301 m | 10,602 m |
-| 900p | 207 m | 414 m | 828 m | 1,657 m | 3,313 m | 6,626 m | 13,252 m |
-| 1080p | 248 m | 497 m | 994 m | 1,988 m | 3,976 m | 7,951 m | 15,902 m |
-| 1440p (2K-class) | 331 m | 663 m | 1,325 m | 2,650 m | 5,301 m | 10,602 m | 21,204 m |
+| 720p | 331 m | 663 m | 1,325 m | 2,650 m | 5,301 m | 10,602 m | 21,204 m |
+| 900p | 414 m | 828 m | 1,657 m | 3,313 m | 6,626 m | 13,252 m | 26,504 m |
+| 1080p | 497 m | 994 m | 1,988 m | 3,976 m | 7,951 m | 15,903 m | 31,805 m |
+| 1440p (2K-class) | 663 m | 1,325 m | 2,650 m | 5,301 m | 10,602 m | 21,204 m | 42,407 m |
 
 Parent tiles remain visible until the required child coverage is ready. Their hidden meshes stay cached while nearby child LODs are active, so crossing a tile boundary can restore a parent immediately instead of rebuilding the full tile. Near terrain colliders remain active even while their visual chunks are hidden beneath a fallback parent, and collision jobs are prioritised ahead of non-critical visual detail. A border halo, stitching skirts and neighbour-aware visibility keep adjacent chunks connected. The stream manager uses Euclidean 3D distance to the generated terrain surface, including altitude during flight, and prioritises jobs using view direction, velocity prediction and measured build/queue/apply timings. Full hierarchy scans are coalesced to one refresh, while mesh uploads update only the affected LOD root and adjacent skirts.
 
@@ -122,7 +122,7 @@ The extension descriptor is `bin/voxen_native.gdextension`; output DLLs belong u
 
 ## Current limits and verification
 
-The terrain is a height-column model rather than a full 3D voxel volume. It does not currently support arbitrary voxel editing, persistent terrain modification, enclosed caves or overhangs. Chunk collision uses height-map data consistent with this terrain model.
+The 2 × 2 km terrain is a height-column model rather than a full 3D voxel volume. It does not currently support arbitrary voxel editing, persistent terrain modification, enclosed caves or overhangs. Chunk collision uses height-map data consistent with this terrain model.
 
 With Godot 4.7.2 installed, check resource import and script parsing:
 

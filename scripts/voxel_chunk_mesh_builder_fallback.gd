@@ -4,7 +4,7 @@ class_name VoxelChunkMeshBuilderFallback
 ## CPU-only block-terrain mesh builder. This class touches packed arrays and noise fields only;
 ## the SceneTree, RenderingServer and physics resources are handled by the main-thread wrapper.
 
-const VOXEL_SIZE: float = 0.1
+const VOXEL_SIZE: float = 0.2
 const BASE_MESH_STEP_VOXELS: int = 1
 const HEIGHT_CACHE_STEP_VOXELS: int = 5
 const LOD_SKIRT_DEPTH_VOXELS: int = 80

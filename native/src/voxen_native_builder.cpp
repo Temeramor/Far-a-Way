@@ -23,7 +23,8 @@ using namespace godot;
 
 namespace {
 
-constexpr double VOXEL_SIZE = 0.1;
+constexpr double VOXEL_SIZE = 0.2;
+constexpr double REFERENCE_WORLD_SIZE_M = 10000.0;
 constexpr int32_t BASE_MESH_STEP_VOXELS = 1;
 constexpr int HEIGHT_CACHE_STEP_VOXELS = 5;
 constexpr int LOD_SKIRT_DEPTH_VOXELS = 80;
@@ -39,7 +40,7 @@ constexpr int ROCK = 3;
 
 struct NoiseSet {
     int64_t seed_value = 0;
-    double world_size_m = 10000.0;
+    double world_size_m = 2000.0;
     Ref<FastNoiseLite> macro;
     Ref<FastNoiseLite> hills;
     Ref<FastNoiseLite> detail;
@@ -139,10 +140,11 @@ struct NoiseSet {
         height += mountain_height;
         if (mountain_height > 1.0) {
             const double mountain_mask = std::clamp(mountain_height / 900.0, 0.0, 1.0);
-            height += mountain_mask * (micro_value * 34.0 + detail_value * 22.0);
+            height += mountain_mask * (micro_value * 42.0 + detail_value * 28.0);
         }
         const double point_length = std::sqrt(x * x + z * z);
-        const double spawn_fade = 1.0 - smoothstep(420.0, 1420.0, point_length);
+        const double world_scale = world_size_m / REFERENCE_WORLD_SIZE_M;
+        const double spawn_fade = 1.0 - smoothstep(420.0 * world_scale, 1420.0 * world_scale, point_length);
         const double spawn_height = 25.0 + macro_value * 3.0 + detail_value * 0.8;
         height = height * (1.0 - spawn_fade) + spawn_height * spawn_fade;
         return std::max(VOXEL_SIZE, std::clamp(height, -80.0, 1600.0));

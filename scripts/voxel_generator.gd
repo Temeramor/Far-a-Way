@@ -1,10 +1,10 @@
 extends RefCounted
 class_name VoxelTerrainGenerator
 
-## Seeded terrain profile sampled as 10 cm voxel columns.
+## Seeded terrain profile sampled as 20 cm voxel columns.
 ## Chunk meshing is streamed; no world-sized height array or per-voxel Node allocation is used.
 
-const VOXEL_SIZE: float = 0.1
+const VOXEL_SIZE: float = 0.2
 const AIR: int = 0
 const GRASS: int = 1
 const SOIL: int = 2
@@ -16,7 +16,7 @@ const MAX_SURFACE_CACHE_ENTRIES: int = 131072
 const REFERENCE_WORLD_SIZE_M: float = 10000.0
 
 var seed_value: int = 1337
-var world_size_m: float = 10000.0
+var world_size_m: float = 2000.0
 var _macro_noise: FastNoiseLite
 var _hill_noise: FastNoiseLite
 var _detail_noise: FastNoiseLite
@@ -32,7 +32,7 @@ var _mountain_phases: Array[float] = []
 var _surface_height_cache: Dictionary = {}
 
 
-func _init(p_seed: int = 1337, p_world_size_m: float = 10000.0) -> void:
+func _init(p_seed: int = 1337, p_world_size_m: float = 2000.0) -> void:
     seed_value = p_seed
     world_size_m = maxf(256.0, p_world_size_m)
     _create_noise_fields()
@@ -67,9 +67,14 @@ func _create_mountain_ranges() -> void:
     _mountain_widths.clear()
     _mountain_heights.clear()
     _mountain_phases.clear()
+    var mountain_scale: float = world_size_m / REFERENCE_WORLD_SIZE_M
     var rng := RandomNumberGenerator.new()
     rng.seed = int(seed_value) + 17011
-    for _range_index in range(3):
+    # Reduce chain density on smaller maps without changing the seeded chain-based algorithm.
+    var range_count: int = clampi(roundi(3.0 * sqrtf(mountain_scale)), 2, 5)
+    var narrow_offset: float = 600.0 * mountain_scale
+    var wide_offset: float = 1050.0 * mountain_scale
+    for _range_index in range(range_count):
         var angle: float = rng.randf_range(0.0, PI)
         var direction := Vector2(cos(angle), sin(angle))
         var side := Vector2(-direction.y, direction.x)
@@ -79,15 +84,13 @@ func _create_mountain_ranges() -> void:
         )
         var half_length: float = world_size_m * rng.randf_range(0.23, 0.34)
         var points: Array[Vector2] = [
-            center - direction * half_length + side * rng.randf_range(-600.0, 600.0),
-            center - direction * half_length * 0.34 + side * rng.randf_range(-1050.0, 1050.0),
-            center + direction * half_length * 0.30 + side * rng.randf_range(-1050.0, 1050.0),
-            center + direction * half_length + side * rng.randf_range(-600.0, 600.0)
+            center - direction * half_length + side * rng.randf_range(-narrow_offset, narrow_offset),
+            center - direction * half_length * 0.34 + side * rng.randf_range(-wide_offset, wide_offset),
+            center + direction * half_length * 0.30 + side * rng.randf_range(-wide_offset, wide_offset),
+            center + direction * half_length + side * rng.randf_range(-narrow_offset, narrow_offset)
         ]
-        # The source project defines these dimensions in world metres, not voxel counts.
-        # The 10 km reference defines the intended mountain scale; smaller maps
-        # proportionally shrink mountain height and width instead of producing huge peaks.
-        var mountain_scale: float = world_size_m / REFERENCE_WORLD_SIZE_M
+        # Scale mountain height, width and lateral irregularity together with map size.
+        # This keeps the range profile coherent on the smaller 2 km landscape.
         var range_height: float = rng.randf_range(850.0, 1320.0) * mountain_scale
         var range_width: float = rng.randf_range(540.0, 930.0) * mountain_scale
         var phase: float = rng.randf_range(0.0, TAU)
@@ -165,6 +168,7 @@ func _calculate_surface_height(x: float, z: float) -> float:
     var height: float = 26.0 + macro * 17.0 + hills * 10.0
     height += maxf(hills - 0.12, 0.0) * 18.0
     height += detail * 3.8
+    var world_scale: float = world_size_m / REFERENCE_WORLD_SIZE_M
     var mountain_height: float = 0.0
     var point := Vector2(x, z)
     for segment_index in range(_mountain_starts.size()):
@@ -192,8 +196,8 @@ func _calculate_surface_height(x: float, z: float) -> float:
     height += mountain_height
     if mountain_height > 1.0:
         var mountain_mask: float = clampf(mountain_height / 900.0, 0.0, 1.0)
-        height += mountain_mask * (micro_ridge * 34.0 + detail * 22.0)
-    var spawn_fade: float = 1.0 - _smoothstep(420.0, 1420.0, point.length())
+        height += mountain_mask * (micro_ridge * 42.0 + detail * 28.0)
+    var spawn_fade: float = 1.0 - _smoothstep(420.0 * world_scale, 1420.0 * world_scale, point.length())
     var spawn_height: float = 25.0 + macro * 3.0 + detail * 0.8
     height = lerpf(height, spawn_height, spawn_fade)
     # Column meshing starts at Y=0; preserve the profile while ensuring at least one voxel of ground.

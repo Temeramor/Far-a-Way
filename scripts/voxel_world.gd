@@ -3,7 +3,7 @@ class_name VoxelWorld
 
 var _native_fallback_warning_shown: bool = false
 
-const VOXEL_SIZE: float = 0.1
+const VOXEL_SIZE: float = 0.2
 const LOD_KEY_STRIDE: int = 100000
 const BASE_MESH_STEP_VOXELS: int = 1
 const DESIGN_FOV_DEGREES: float = 82.0
@@ -12,7 +12,7 @@ const ChunkScript = preload("res://scripts/voxel_chunk.gd")
 const FallbackBuilderScript = preload("res://scripts/voxel_chunk_mesh_builder_fallback.gd")
 
 @export_category("Voxel world")
-@export_range(256.0, 20000.0, 256.0) var world_size_m: float = 10000.0
+@export_range(256.0, 20000.0, 1.0) var world_size_m: float = 2000.0
 @export_range(8.0, 32.0, 8.0) var chunk_size_m: float = 32.0
 @export var seed_value: int = 1337
 @export var auto_start_on_ready: bool = true
@@ -265,7 +265,7 @@ func _current_viewport_pixel_size() -> Vector2i:
 
 
 func get_mesh_step_voxels(lod_index: int) -> int:
-    # Preserve 10 cm at LOD0. Starting at LOD1, double the old step to reduce coarse mesh density.
+    # LOD0 uses the 20 cm base voxel; each coarser tier keeps the existing step progression.
     var tier: int = clampi(lod_index, 0, 7)
     return BASE_MESH_STEP_VOXELS if tier == 0 else BASE_MESH_STEP_VOXELS << (tier + 1)
 

@@ -7,16 +7,18 @@ func _initialize() -> void:
 func _run() -> void:
     var world := VoxelWorld.new()
     world.auto_start_on_ready = false
-    world.world_size_m = 10000.0
+    world.world_size_m = 2000.0
     world.chunk_size_m = 32.0
     root.add_child(world)
     await process_frame
+    # Keep the test's map-corner assertions meaningful on the compact 2 km world.
+    world.render_distance_m = 1024.0
 
     var errors: Array[String] = []
 
     # Screen-space transitions: the next LOD's cell reaches one pixel at each boundary.
     var screen_heights: Array[int] = [720, 900, 1080, 1440]
-    var expected_first_boundary: Array[float] = [165.6, 207.0, 248.4, 331.0]
+    var expected_first_boundary: Array[float] = [331.2, 414.0, 496.8, 662.0]
     for i in range(screen_heights.size()):
         var screen_height: int = screen_heights[i]
         var first_boundary: float = world.get_lod_boundary_m_for_height(0, float(screen_height), 1.0)
@@ -56,23 +58,23 @@ func _run() -> void:
                 lod, expected_steps_voxels[lod], world.get_mesh_step_voxels(lod)
             ])
 
-    # The root LOD7 tile is 4.096 km across with 25.6 m cells. The centre root should refine and
-    # the far corner should remain outside the 4 km streaming radius.
+    # The whole 2 km world fits in one LOD7 root (51.2 m cells). The centre should refine,
+    # while the outer corner should remain outside this test's 1,024 m streaming radius.
     var distance_requests: Dictionary = {}
     var root_count: int = ceili(float(world._world_size_voxels) / float(world._chunk_size_voxels * 128))
-    if root_count != 3:
-        errors.append("10 km map should need 3 LOD7 roots per axis, got %d" % root_count)
+    if root_count != 1:
+        errors.append("2 km map should fit in one LOD7 root per axis, got %d" % root_count)
     for root_z in range(root_count):
         for root_x in range(root_count):
             world._collect_lod_tiles(
                 7, root_x, root_z, Vector2.ZERO, Vector2(0.0, -1.0),
                 distance_requests
             )
-    var nearby_root: Dictionary = distance_requests.get(world._make_lod_key(7, 1, 1), {})
+    var nearby_root: Dictionary = distance_requests.get(world._make_lod_key(7, 0, 0), {})
     if nearby_root.is_empty() or not bool(nearby_root.get("fallback", false)):
         errors.append("The root containing the player should refine to child LODs")
-    if distance_requests.has(world._make_lod_key(7, 2, 2)):
-        errors.append("A remote corner root outside the render distance should not be requested")
+    if distance_requests.has(world._make_lod_key(0, 62, 62)):
+        errors.append("The remote corner chunk outside the render distance should not be requested")
 
     # LOD distance is spherical in XYZ: at the same XZ position, gaining altitude
     # should move the requested leaf from detailed LOD0 to a coarser tier.
@@ -89,32 +91,32 @@ func _run() -> void:
                 7, root_x, root_z, Vector2.ZERO, Vector2(0.0, -1.0),
                 high_altitude_requests, ground_y + 500.0
             )
-    var player_ground_key: Vector2i = world._make_lod_key(0, 156, 156)
+    var player_ground_key: Vector2i = world._make_lod_key(0, 31, 31)
     if not low_altitude_requests.has(player_ground_key):
         errors.append("LOD selection should retain LOD0 near the terrain at low altitude")
     if high_altitude_requests.has(player_ground_key):
         errors.append("LOD selection should become coarser directly above the same XZ tile at high altitude")
 
-    var last_root := world._chunk_bounds(world._make_lod_key(7, 2, 2))
-    if not is_equal_approx(float(last_root["width"]), 1808.0):
-        errors.append("Last LOD7 edge tile should be clipped to 1808 m")
+    var last_root := world._chunk_bounds(world._make_lod_key(7, 0, 0))
+    if not is_equal_approx(float(last_root["width"]), 2000.0):
+        errors.append("The single LOD7 root should cover the 2,000 m world width")
 
     # LOD7 remains voxel geometry: quad-expanded face vertices, not a shared smooth heightfield.
-    var far_generator := VoxelTerrainGenerator.new(1337, 10000.0)
+    var far_generator := VoxelTerrainGenerator.new(1337, 2000.0)
     var fallback_builder_script = load("res://scripts/voxel_chunk_mesh_builder_fallback.gd")
     var far_builder = fallback_builder_script.new()
     var far_data: Dictionary = far_builder.build_mesh_data({
         "coord": Vector2i.ZERO,
         "request": {
-            "lod": 7, "start_x": 70000, "start_z": 60000,
+            "lod": 7, "start_x": 7000, "start_z": 6000,
             "size_x": 2560, "size_z": 2560, "step_voxels": 256,
             "collision": false, "distance": 0.0, "priority": 0.0
         },
         "neighbor_lods": {"left": -1, "right": -1, "north": -1, "south": -1},
         "seed": 1337,
-        "world_min_x": -5000.0, "world_min_z": -5000.0,
-        "world_size_voxels": 100000,
-        "terrain_world_size_m": 10000.0,
+        "world_min_x": -1000.0, "world_min_z": -1000.0,
+        "world_size_voxels": 10000,
+        "terrain_world_size_m": 2000.0,
         "mountain_profile": far_generator.get_mountain_profile(),
         "debug_lod_colors": false,
         "build_collision": false
@@ -127,11 +129,11 @@ func _run() -> void:
     var far_indices: PackedInt32Array = far_data.get("indices", PackedInt32Array())
     if far_indices.is_empty() or far_indices.size() % 3 != 0:
         errors.append("LOD7 voxel mesh triangle indices should be a non-empty multiple of three")
-    var far_step_m: float = 25.6
+    var far_step_m: float = 51.2
     for vertex_index in range(0, far_vertices.size(), 37):
         var quantised_height: float = far_vertices[vertex_index].y / far_step_m
         if absf(quantised_height - roundf(quantised_height)) > 0.001:
-            errors.append("LOD7 vertex heights should align to its 25.6 m voxel lattice")
+            errors.append("LOD7 vertex heights should align to its 51.2 m voxel lattice")
             break
 
     # The final LOD7 root is not a full multiple of the 25.6 m voxel step.
@@ -139,15 +141,15 @@ func _run() -> void:
     var edge_data: Dictionary = far_builder.build_mesh_data({
         "coord": Vector2i.ZERO,
         "request": {
-            "lod": 7, "start_x": 81920, "start_z": 81920,
-            "size_x": 18080, "size_z": 18080, "step_voxels": 256,
+            "lod": 7, "start_x": 8192, "start_z": 8192,
+            "size_x": 1808, "size_z": 1808, "step_voxels": 256,
             "collision": false, "distance": 2000.0, "priority": 0.0
         },
         "neighbor_lods": {"left": -1, "right": -1, "north": -1, "south": -1},
         "seed": 1337,
-        "world_min_x": -5000.0, "world_min_z": -5000.0,
-        "world_size_voxels": 100000,
-        "terrain_world_size_m": 10000.0,
+        "world_min_x": -1000.0, "world_min_z": -1000.0,
+        "world_size_voxels": 10000,
+        "terrain_world_size_m": 2000.0,
         "mountain_profile": far_generator.get_mountain_profile(),
         "build_collision": false
     })
@@ -155,7 +157,7 @@ func _run() -> void:
     var edge_normals: PackedVector3Array = edge_data.get("normals", PackedVector3Array())
     var edge_top_height: float = 0.0
     for vertex_index in range(edge_vertices.size()):
-        if absf(edge_vertices[vertex_index].x - 1808.0) < 0.001 and edge_normals[vertex_index].y > 0.9:
+        if absf(edge_vertices[vertex_index].x - 361.6) < 0.001 and edge_normals[vertex_index].y > 0.9:
             edge_top_height = maxf(edge_top_height, edge_vertices[vertex_index].y)
     if edge_top_height <= 0.0:
         errors.append("The partial final LOD7 tile should retain terrain height at the world edge")
@@ -164,15 +166,15 @@ func _run() -> void:
     var compact_data: Dictionary = far_builder.build_mesh_data({
         "coord": Vector2i.ZERO,
         "request": {
-            "lod": 2, "start_x": 70000, "start_z": 60000,
+            "lod": 2, "start_x": 7000, "start_z": 6000,
             "size_x": 128, "size_z": 128, "step_voxels": 8,
             "collision": false, "distance": 100.0, "priority": 0.0
         },
         "neighbor_lods": {"left": 2, "right": 2, "north": 2, "south": 2},
         "seed": 1337,
-        "world_min_x": -5000.0, "world_min_z": -5000.0,
-        "world_size_voxels": 100000,
-        "terrain_world_size_m": 10000.0,
+        "world_min_x": -1000.0, "world_min_z": -1000.0,
+        "world_size_voxels": 10000,
+        "terrain_world_size_m": 2000.0,
         "mountain_profile": far_generator.get_mountain_profile(),
         "debug_lod_colors": false,
         "build_collision": false
@@ -188,9 +190,9 @@ func _run() -> void:
     if compact_indices.is_empty() or compact_indices.size() % 3 != 0:
         errors.append("LOD2 mesh triangle indices should be a non-empty multiple of three")
     for vertex_index in range(0, compact_vertices.size(), 19):
-        var quantised_height: float = compact_vertices[vertex_index].y / 0.8
+        var quantised_height: float = compact_vertices[vertex_index].y / 1.6
         if absf(quantised_height - roundf(quantised_height)) > 0.001:
-            errors.append("LOD2 vertex heights should align to its 0.8 m voxel lattice")
+            errors.append("LOD2 vertex heights should align to its 1.6 m voxel lattice")
             break
 
     # Regression: leaf visibility must safely handle a typed empty child list.

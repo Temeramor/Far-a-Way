@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0.2 — 2026-10-29
+
+- Reduced the default procedural map from 10 × 10 km to 2 × 2 km.
+- Adapted mountain generation to the compact map: two seeded chains instead of three, with mountain heights, widths, lateral offsets and spawn-area fade scaled consistently to world size.
+- Added slightly stronger ridge-detail noise to give rock formations more surface roughness while preserving the existing seeded chain algorithm.
+- Doubled base voxel dimensions on X, Y and Z from 0.1 m to 0.2 m. Updated all LOD geometry, distant voxel cell sizes, native and fallback mesh builders, collision sampling, tests and documentation to match (LOD7 now uses 51.2 m cells).
+
 ## 0.1.0.1 — 2026-10-28
 
 - Added a Windows x86-64 first-person exploration project built with Godot 4.7.2 and the Forward+ renderer.

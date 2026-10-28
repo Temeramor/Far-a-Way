@@ -11,7 +11,7 @@ func _run_native_builder_test() -> void:
         return
 
     var generator_script = load("res://scripts/voxel_generator.gd")
-    var generator = generator_script.new(123456, 10000.0)
+    var generator = generator_script.new(123456, 2000.0)
     var builder: Object = ClassDB.instantiate("VoxEnNativeBuilder")
     if builder == null:
         push_error("VoxEnNativeBuilder exists in ClassDB but could not be instantiated.")
@@ -23,8 +23,8 @@ func _run_native_builder_test() -> void:
         "coord": Vector2i.ZERO,
         "request": {
             "lod": 0,
-            "start_x": 50000,
-            "start_z": 50000,
+            "start_x": 5000,
+            "start_z": 5000,
             "size_x": 64,
             "size_z": 64,
             "step_voxels": 1,
@@ -39,10 +39,10 @@ func _run_native_builder_test() -> void:
             "south": -1
         },
         "seed": 123456,
-        "world_min_x": -5000.0,
-        "world_min_z": -5000.0,
-        "world_size_voxels": 100000,
-        "terrain_world_size_m": 10000.0,
+        "world_min_x": -1000.0,
+        "world_min_z": -1000.0,
+        "world_size_voxels": 10000,
+        "terrain_world_size_m": 2000.0,
         "mountain_profile": generator.get_mountain_profile(),
         "debug_lod_colors": false,
         "build_collision": true
