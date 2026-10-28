@@ -177,7 +177,6 @@ struct MeshBuild {
     bool debug_lod_colors = false;
     bool want_collision = false;
     bool build_collision = false;
-    bool adaptive_smooth_surface = false;
 
     double world_min_x = 0.0;
     double world_min_z = 0.0;
@@ -307,17 +306,7 @@ struct MeshBuild {
     }
 
     Color material_color(int32_t material_type) const {
-        if (debug_lod_colors) {
-            switch (lod) {
-                case 0: return rgb8(237, 71, 71);
-                case 1: return rgb8(232, 161, 47);
-                case 2: return rgb8(53, 201, 178);
-                case 3: return rgb8(84, 126, 232);
-                case 4: return rgb8(177, 107, 224);
-                case 5: return rgb8(235, 86, 180);
-                default: return rgb8(90, 190, 235);
-            }
-        }
+        // LOD diagnostic colours are selected by the shader uniform, not baked into geometry.
         switch (material_type) {
             case GRASS: return rgb8(54, 164, 42);
             case SOIL: return rgb8(128, 96, 68);
@@ -410,12 +399,12 @@ struct MeshBuild {
 
         if (edge_alpha >= 0.95) {
             // The upper exposed voxel carries the same blend as its top face.
-            const int32_t top_start = std::max(low_height_voxels, high_height_voxels - 1);
+            const int32_t top_start = std::max(low_height_voxels, high_height_voxels - step_voxels);
             if (top_material == ROCK) {
                 emit_side_segment(point_a, point_b, normal, low_height_voxels, top_start,
                     ROCK, vertical_first, edge_alpha);
             } else {
-                const int32_t soil_start = std::max(low_height_voxels, high_height_voxels - 5);
+                const int32_t soil_start = std::max(low_height_voxels, high_height_voxels - step_voxels * 5);
                 emit_side_segment(point_a, point_b, normal, low_height_voxels, soil_start,
                     ROCK, vertical_first, edge_alpha);
                 emit_side_segment(point_a, point_b, normal, soil_start, top_start,
@@ -438,8 +427,8 @@ struct MeshBuild {
                 ROCK, vertical_first, edge_alpha);
             return;
         }
-        const int32_t skirt_top_start = std::max(low_height_voxels, high_height_voxels - 1);
-        const int32_t skirt_soil_start = std::max(low_height_voxels, high_height_voxels - 5);
+        const int32_t skirt_top_start = std::max(low_height_voxels, high_height_voxels - step_voxels);
+        const int32_t skirt_soil_start = std::max(low_height_voxels, high_height_voxels - step_voxels * 5);
         emit_side_segment(point_a, point_b, normal, low_height_voxels, skirt_soil_start,
             ROCK, vertical_first, edge_alpha);
         emit_side_segment(point_a, point_b, normal, skirt_soil_start, skirt_top_start,
@@ -489,6 +478,16 @@ struct MeshBuild {
             }
         }
         heights = raw_heights;
+        // Keep voxel proportions consistent: at each LOD the vertical quantisation step
+        // matches the horizontal cell size, so distant samples remain voxel-like.
+        if (step_voxels > 1) {
+            for (int32_t &height : heights) {
+                if (height <= 0) continue;
+                height = std::max<int32_t>(
+                    step_voxels,
+                    ((height + step_voxels / 2) / step_voxels) * step_voxels);
+            }
+        }
     }
 
     void build_surface_types() {
@@ -946,10 +945,6 @@ struct MeshBuild {
         }
 
         step_voxels = std::max<int32_t>(1, static_cast<int32_t>(request.get("step_voxels", BASE_MESH_STEP_VOXELS << lod)));
-        // Smooth distant tiles use half the source-grid density to keep each resident mesh small.
-        if (lod >= 2 && lod <= 6) {
-            step_voxels *= 2;
-        }
         cache_step_voxels = std::max<int32_t>(HEIGHT_CACHE_STEP_VOXELS, step_voxels);
         cell_size = static_cast<double>(step_voxels) * VOXEL_SIZE;
         cells_x = static_cast<int32_t>(std::ceil(static_cast<double>(size_voxels_x) / step_voxels));
@@ -957,41 +952,26 @@ struct MeshBuild {
 
         noise.configure_from_job(job_data, static_cast<double>(world_size_voxels) * VOXEL_SIZE);
 
-        if (lod >= 1) {
-            // Mid and distant tiers use shared vertices instead of thousands of independent voxel risers.
-            // This bounds mesh memory and avoids long-frame GPU uploads when travelling quickly.
-            build_smooth_far_surface();
-            if (lod < 7) {
-                build_smooth_surface_skirts();
-            }
-        } else {
-            build_cache_and_heights();
-            build_surface_types();
+        // Every LOD stays voxel-based. Only the cell size changes with distance;
+        // shared smooth heightfields are reserved for invisible shadow proxies.
+        build_cache_and_heights();
+        build_surface_types();
 
-            const size_t base_cells = static_cast<size_t>(cells_x) * cells_z;
-            vertices.reserve(base_cells * 8);
-            normals.reserve(base_cells * 8);
-            colors.reserve(base_cells * 8);
-            indices.reserve(base_cells * 12);
+        const size_t base_cells = static_cast<size_t>(cells_x) * cells_z;
+        vertices.reserve(base_cells * 6);
+        normals.reserve(base_cells * 6);
+        colors.reserve(base_cells * 6);
+        indices.reserve(base_cells * 9);
 
-            build_greedy_top_faces();
-            build_exposed_side_faces();
-            build_lod_skirts();
+        build_greedy_top_faces();
+        build_exposed_side_faces();
+        build_lod_skirts();
 
-            constexpr size_t MAX_NEAR_DETAIL_VERTICES = 500000;
-            if (lod == 0 && vertices.size() > MAX_NEAR_DETAIL_VERTICES) {
-                // Highly rugged near tiles can create hundreds of thousands of tiny riser quads.
-                // Preserve their sampled silhouette with a compact shared-vertex surface to cap uploads.
-                adaptive_smooth_surface = true;
-                vertices.clear();
-                normals.clear();
-                colors.clear();
-                indices.clear();
-                build_smooth_far_surface();
-                build_smooth_surface_skirts();
-            }
+        // Terrain-shadow proxies are useful near the camera, but expensive and invisible
+        // outside the shadow range. Avoid their CPU noise sampling and GPU upload at distance.
+        if (static_cast<double>(request.get("distance", 0.0)) <= 1200.0) {
+            build_smooth_shadow_surface();
         }
-        build_smooth_shadow_surface();
 
         PackedVector3Array packed_vertices;
         PackedVector3Array packed_normals;
@@ -1029,7 +1009,6 @@ struct MeshBuild {
         out["step_voxels"] = step_voxels;
         out["neighbor_lods_used"] = neighbor_lods.duplicate(true);
         out["debug_lod_colors"] = debug_lod_colors;
-        out["adaptive_smooth_surface"] = adaptive_smooth_surface;
         out["vertices"] = packed_vertices;
         out["normals"] = packed_normals;
         out["colors"] = packed_colors;
