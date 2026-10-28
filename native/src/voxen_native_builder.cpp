@@ -105,17 +105,19 @@ struct NoiseSet {
     }
 
     double surface_height(double x, double z) const {
-        const double macro_value = macro->get_noise_2d(x * 0.00028, z * 0.00028);
-        const double hills_value = hills->get_noise_2d(x * 0.00115, z * 0.00115);
-        const double detail_value = detail->get_noise_2d(x * 0.0048, z * 0.0048);
-        const double ridge_detail = (ridges->get_noise_2d(x * 0.00082, z * 0.00082) + 1.0) * 0.5;
-        const double micro_value = micro_ridge->get_noise_2d(x * 0.0034, z * 0.0034);
+        const double frequency_scale = std::clamp(REFERENCE_WORLD_SIZE_M / std::max(world_size_m, 1.0), 0.35, 6.0);
+        const double macro_value = macro->get_noise_2d(x * 0.00028 * frequency_scale, z * 0.00028 * frequency_scale);
+        const double hills_value = hills->get_noise_2d(x * 0.00115 * frequency_scale, z * 0.00115 * frequency_scale);
+        const double detail_value = detail->get_noise_2d(x * 0.0048 * frequency_scale, z * 0.0048 * frequency_scale);
+        const double ridge_detail = (ridges->get_noise_2d(x * 0.00082 * frequency_scale, z * 0.00082 * frequency_scale) + 1.0) * 0.5;
+        const double micro_value = micro_ridge->get_noise_2d(x * 0.0034 * frequency_scale, z * 0.0034 * frequency_scale);
 
         double height = 26.0 + macro_value * 17.0 + hills_value * 10.0;
         height += std::max(hills_value - 0.12, 0.0) * 18.0;
         height += detail_value * 3.8;
 
         const double world_scale = world_size_m / REFERENCE_WORLD_SIZE_M;
+        height += std::pow(std::max(ridge_detail - 0.58, 0.0), 1.7) * (12.0 + 38.0 * world_scale);
         double mountain_height = 0.0;
         for (const MountainSegment &segment : mountain_segments) {
             const double along = std::clamp(
@@ -129,12 +131,14 @@ struct NoiseSet {
             const double broad_radius = segment.width * 1.72;
             if (distance_squared >= broad_radius * broad_radius) continue;
             const double distance = std::sqrt(distance_squared);
-            const double broad_mask = std::clamp(1.0 - distance / broad_radius, 0.0, 1.0);
-            const double cliff_mask = std::clamp(1.0 - distance / segment.width, 0.0, 1.0);
-            const double crest_profile = 0.77 + 0.23 * std::abs(std::sin(along * 3.14159265358979323846 * 2.1 + segment.phase));
-            const double rough_profile = 0.79 + 0.21 * ridge_detail;
-            const double foothills = std::pow(broad_mask, 1.28) * (segment.height * 0.39 + 75.0 * world_scale);
-            const double crest = std::pow(cliff_mask, 0.94) * segment.height * crest_profile * rough_profile;
+            const double flank_warp = (detail_value * 0.60 + micro_value * 0.40) * segment.width * 0.11;
+            const double shaped_distance = std::max(0.0, distance + flank_warp);
+            const double broad_mask = std::clamp(1.0 - shaped_distance / broad_radius, 0.0, 1.0);
+            const double cliff_mask = std::clamp(1.0 - shaped_distance / segment.width, 0.0, 1.0);
+            const double crest_profile = 0.72 + 0.28 * std::abs(std::sin(along * 3.14159265358979323846 * 2.1 + segment.phase));
+            const double rough_profile = 0.72 + 0.28 * ridge_detail;
+            const double foothills = std::pow(broad_mask, 1.36) * (segment.height * 0.36 + 75.0 * world_scale);
+            const double crest = std::pow(cliff_mask, 0.82) * segment.height * crest_profile * rough_profile;
             mountain_height = std::max(mountain_height, std::max(foothills, crest));
         }
 
@@ -155,7 +159,8 @@ struct NoiseSet {
     }
 
     double surface_rock_weight(double slope, double x, double z) const {
-        const double transition_noise = transition->get_noise_2d(x * 0.008, z * 0.008) * 0.12;
+        const double frequency_scale = std::clamp(REFERENCE_WORLD_SIZE_M / std::max(world_size_m, 1.0), 0.35, 6.0);
+        const double transition_noise = transition->get_noise_2d(x * 0.008 * frequency_scale, z * 0.008 * frequency_scale) * 0.12;
         const double normal_slope = 1.0 - 1.0 / std::sqrt(1.0 + slope * slope);
         return smoothstep(0.30, 0.48, normal_slope + transition_noise);
     }

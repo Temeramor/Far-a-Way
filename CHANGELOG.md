@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0.3 — 2026-10-29
+
+- Adapted terrain-noise frequencies to world size so the 2 × 2 km map retains large hills, secondary ridges and fine-scale relief instead of a near-uniform macro field.
+- Improved seeded mountain chains with noise-warped flanks, sharper multi-crest profiles and scaled secondary spurs, keeping the same procedural map and six ridge segments.
+- Expanded the voxel rock shader with generated mineral bedding, broken strata, weathered pitting, grain flecks, varied roughness and multi-scale fractures. Broad stone detail remains available on distant LODs while sub-pixel cracks are simplified.
+- Kept rock textures procedural in the shader; no external image textures or non-reference rock placements were added.
+
 ## 0.1.0.2 — 2026-10-29
 
 - Reduced the default procedural map from 10 × 10 km to 2 × 2 km.

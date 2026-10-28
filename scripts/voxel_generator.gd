@@ -52,12 +52,15 @@ func _make_noise(noise_seed: int, frequency_value: float, octave_count: int, fra
 
 
 func _create_noise_fields() -> void:
-    _macro_noise = _make_noise(seed_value + 101, 0.00028, 4, FastNoiseLite.FRACTAL_FBM)
-    _hill_noise = _make_noise(seed_value + 307, 0.00115, 4, FastNoiseLite.FRACTAL_FBM)
-    _detail_noise = _make_noise(seed_value + 503, 0.0048, 3, FastNoiseLite.FRACTAL_FBM)
-    _ridge_noise = _make_noise(seed_value + 709, 0.00082, 5, FastNoiseLite.FRACTAL_RIDGED)
-    _micro_ridge_noise = _make_noise(seed_value + 907, 0.0034, 3, FastNoiseLite.FRACTAL_RIDGED)
-    _transition_noise = _make_noise(seed_value + 1301, 0.008, 2, FastNoiseLite.FRACTAL_FBM)
+    # Keep the old terrain's relative landform size on a 2 km map. Otherwise the
+    # macro field is wider than the whole world and the landscape becomes bland.
+    var frequency_scale: float = clampf(REFERENCE_WORLD_SIZE_M / world_size_m, 0.35, 6.0)
+    _macro_noise = _make_noise(seed_value + 101, 0.00028 * frequency_scale, 4, FastNoiseLite.FRACTAL_FBM)
+    _hill_noise = _make_noise(seed_value + 307, 0.00115 * frequency_scale, 4, FastNoiseLite.FRACTAL_FBM)
+    _detail_noise = _make_noise(seed_value + 503, 0.0048 * frequency_scale, 3, FastNoiseLite.FRACTAL_FBM)
+    _ridge_noise = _make_noise(seed_value + 709, 0.00082 * frequency_scale, 5, FastNoiseLite.FRACTAL_RIDGED)
+    _micro_ridge_noise = _make_noise(seed_value + 907, 0.0034 * frequency_scale, 3, FastNoiseLite.FRACTAL_RIDGED)
+    _transition_noise = _make_noise(seed_value + 1301, 0.008 * frequency_scale, 2, FastNoiseLite.FRACTAL_FBM)
 
 
 func _create_mountain_ranges() -> void:
@@ -169,6 +172,8 @@ func _calculate_surface_height(x: float, z: float) -> float:
     height += maxf(hills - 0.12, 0.0) * 18.0
     height += detail * 3.8
     var world_scale: float = world_size_m / REFERENCE_WORLD_SIZE_M
+    # A restrained ridged-noise layer adds secondary spurs between the main ranges.
+    height += pow(maxf(ridge_detail - 0.58, 0.0), 1.7) * (12.0 + 38.0 * world_scale)
     var mountain_height: float = 0.0
     var point := Vector2(x, z)
     for segment_index in range(_mountain_starts.size()):
@@ -186,12 +191,16 @@ func _calculate_surface_height(x: float, z: float) -> float:
         var distance: float = sqrt(distance_squared)
         var peak_height: float = _mountain_heights[segment_index]
         var phase: float = _mountain_phases[segment_index]
-        var broad_mask: float = clampf(1.0 - distance / broad_radius, 0.0, 1.0)
-        var cliff_mask: float = clampf(1.0 - distance / width, 0.0, 1.0)
-        var crest_profile: float = 0.77 + 0.23 * absf(sin(along * PI * 2.1 + phase))
-        var rough_profile: float = 0.79 + 0.21 * ridge_detail
-        var foothills: float = pow(broad_mask, 1.28) * (peak_height * 0.39 + 75.0 * world_scale)
-        var crest: float = pow(cliff_mask, 0.94) * peak_height * crest_profile * rough_profile
+        # Domain-warp the flank by a small fraction of its width. This breaks the
+        # perfectly smooth conical/ridge cross-section into irregular rock shoulders.
+        var flank_warp: float = (detail * 0.60 + micro_ridge * 0.40) * width * 0.11
+        var shaped_distance: float = maxf(0.0, distance + flank_warp)
+        var broad_mask: float = clampf(1.0 - shaped_distance / broad_radius, 0.0, 1.0)
+        var cliff_mask: float = clampf(1.0 - shaped_distance / width, 0.0, 1.0)
+        var crest_profile: float = 0.72 + 0.28 * absf(sin(along * PI * 2.1 + phase))
+        var rough_profile: float = 0.72 + 0.28 * ridge_detail
+        var foothills: float = pow(broad_mask, 1.36) * (peak_height * 0.36 + 75.0 * world_scale)
+        var crest: float = pow(cliff_mask, 0.82) * peak_height * crest_profile * rough_profile
         mountain_height = maxf(mountain_height, maxf(foothills, crest))
     height += mountain_height
     if mountain_height > 1.0:

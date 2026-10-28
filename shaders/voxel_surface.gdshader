@@ -155,9 +155,22 @@ vec3 rock_palette(float pick) {
     return color * 0.86;
 }
 
+float rock_bedding(vec2 pixel_world, float frequency) {
+    float angle = 0.28 + fract(seed_low * 0.000017 + seed_high * 0.00011) * 0.48;
+    vec2 axis = vec2(cos(angle), sin(angle));
+    float warp_a = value_noise(pixel_world * 0.008 + vec2(13.2, seed_low * 0.00019));
+    float warp_b = value_noise(pixel_world * 0.016 + vec2(seed_high * 0.00023, 29.7));
+    float layer_coordinate = dot(pixel_world, axis) * frequency
+        + (warp_a - 0.5) * 0.72 + (warp_b - 0.5) * 0.24;
+    float phase = fract(layer_coordinate);
+    float edge = min(phase, 1.0 - phase);
+    float brokenness = value_noise(pixel_world * 0.032 + vec2(4.1, seed_low * 0.00031));
+    return (1.0 - smoothstep(0.025, 0.11, edge)) * smoothstep(0.17, 0.58, brokenness);
+}
+
 vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world, float crack_weight) {
-    // Main's richer stochastic palette and broad, natural tonal drift. Directional mineral
-    // bands and extra fissure overlays are intentionally omitted; retain the current Voronoi cracks.
+    // Layered, weathered stone: warped mineral bedding sits beneath the existing
+    // voxel-aligned fracture network, with broad hue drift and fine pitting.
     float broad_tone = value_noise(pixel_world * 0.021 + vec2(13.8, seed_low * 0.0006));
     float random_cell = hash21(pixel_cell + vec2(0.0, 21.8));
     float pick = clamp(random_cell + (broad_tone - 0.5) * 0.19, 0.001, 0.999);
@@ -175,6 +188,22 @@ vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world, float crack_weight) {
     vec3 warm_tint = mix(vec3(0.88, 0.84, 0.77), vec3(1.08, 1.045, 0.98), stone_warmth);
     vec3 smooth_tint = mix(cool_tint, warm_tint, smoothstep(0.18, 0.82, stone_warmth) * 0.62);
     base_color *= smooth_tint * stone_brightness;
+
+    float bedding = rock_bedding(pixel_world, 0.036);
+    float mineral_tone = value_noise(pixel_world * 0.047 + vec2(7.3, seed_high * 0.00027));
+    vec3 bedding_color = mix(
+        palette_color(vec3(0.135, 0.150, 0.165)),
+        palette_color(vec3(0.285, 0.275, 0.245)),
+        mineral_tone
+    );
+    base_color = mix(base_color, bedding_color, bedding * mix(0.16, 0.32, mineral_tone));
+
+    float grain = value_noise(pixel_world * 0.19 + vec2(seed_low * 0.00023, 47.1));
+    float mineral_fleck = smoothstep(0.62, 0.83, grain) * 0.12;
+    float dark_pore = 1.0 - smoothstep(0.15, 0.31, grain);
+    base_color = mix(base_color, palette_color(vec3(0.48, 0.455, 0.405)), mineral_fleck);
+    base_color = mix(base_color, palette_color(vec3(0.12, 0.13, 0.145)), dark_pore * 0.10);
+
     if (crack_weight <= 0.001) return base_color;
 
     // Gently warp the cellular field, so crack paths are irregular rather than straight
@@ -239,7 +268,15 @@ vec3 voxel_lod_rock_color(vec2 world_xz, float cell_size) {
     float pick = clamp(0.10 + cell_tone * 0.74 + (broad_tone - 0.5) * 0.18, 0.001, 0.999);
     vec3 color = rock_palette(pick);
     float warmth = hash21(cell + vec2(41.3, 12.7));
-    return color * mix(vec3(0.88, 0.92, 0.98), vec3(1.0, 0.985, 0.94), warmth);
+    color *= mix(vec3(0.88, 0.92, 0.98), vec3(1.0, 0.985, 0.94), warmth);
+
+    // Coarser LODs keep broad mineral strata and pitted colour variation without
+    // drawing sub-pixel fissures that would shimmer into moire patterns.
+    float bedding = rock_bedding(center, 0.009);
+    float mineral_tone = value_noise(center * 0.024 + vec2(14.6, seed_low * 0.00018));
+    color = mix(color, palette_color(vec3(0.14, 0.155, 0.17)), bedding * 0.26);
+    color *= mix(0.88, 1.07, mineral_tone);
+    return color;
 }
 
 vec3 voxel_lod_soil_color(vec2 world_xz, float cell_size) {
@@ -372,6 +409,17 @@ void fragment() {
             ALBEDO = rock_pixel(pixel_cell, pixel_world, rock_crack_weight);
             ROUGHNESS = 0.84;
         }
+    }
+
+    // Procedural roughness variation completes the generated rock material without
+    // disturbing the flat voxel-face normals or the existing grass/soil response.
+    if (!debug_lod_colors) {
+        float rock_mask = (is_top_surface || is_surface_side)
+            ? top_rock_amount
+            : ((COLOR.g > COLOR.r * 1.35 || COLOR.r > COLOR.g * 1.15) ? 0.0 : 1.0);
+        float roughness_field = value_noise(world_position.xz * 0.11
+            + vec2(seed_low * 0.00029, 37.4));
+        ROUGHNESS = clamp(ROUGHNESS + (roughness_field - 0.5) * 0.18 * rock_mask, 0.70, 0.99);
     }
     METALLIC = 0.0;
 }
