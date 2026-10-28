@@ -215,25 +215,6 @@ vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world, float crack_weight) {
 }
 
 
-vec3 distant_grass_color(vec2 world_xz) {
-    float broad = value_noise(world_xz * 0.0024 + vec2(seed_low * 0.00019, 9.1));
-    float medium = value_noise(world_xz * 0.0062 + vec2(5.3, seed_high * 0.00013));
-    float pick = clamp(0.18 + broad * 0.66 + (medium - 0.5) * 0.24, 0.001, 0.999);
-    return grass_palette(pick);
-}
-
-vec3 distant_rock_color(vec2 projected_world) {
-    float broad = value_noise(projected_world * 0.0015 + vec2(seed_low * 0.00011, 17.2));
-    float medium = value_noise(projected_world * vec2(0.0021, 0.0041)
-        + vec2(4.2, seed_high * 0.00015));
-    float pick = clamp(broad * 0.58 + medium * 0.42, 0.001, 0.999);
-    vec3 color = rock_palette(pick);
-    float broad_brightness = 0.84 + (broad - 0.5) * 0.16;
-    float stone_warmth = value_noise(projected_world * vec2(0.0025, 0.0060) + vec2(31.3, 8.4));
-    vec3 cool_tint = mix(vec3(0.82, 0.88, 0.96), vec3(1.0, 0.99, 0.96), stone_warmth);
-    return color * cool_tint * broad_brightness;
-}
-
 
 vec3 voxel_lod_grass_color(vec2 world_xz, float cell_size) {
     vec2 cell = floor(world_xz / cell_size);
