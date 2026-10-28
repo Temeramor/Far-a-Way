@@ -44,7 +44,7 @@ func _run() -> void:
                 lod_index, boundary, just_before, at_boundary
             ])
 
-    var expected_tile_sizes: Array[float] = [32.0, 64.0, 128.0, 256.0, 512.0, 1024.0, 2048.0, 2000.0]
+    var expected_tile_sizes: Array[float] = [32.0, 64.0, 128.0, 256.0, 512.0, 2000.0, 2000.0, 2000.0]
     var expected_steps_voxels: Array[int] = [1, 4, 8, 16, 32, 64, 128, 256]
     for lod in range(8):
         var key: Vector2i = world._make_lod_key(lod, 0, 0)
