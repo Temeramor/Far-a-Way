@@ -437,13 +437,12 @@ func _refresh_streaming() -> void:
     var player_xz := Vector2(_player.global_position.x, _player.global_position.z)
     var player_y: float = _player.global_position.y
     var heading: Vector2 = _get_streaming_heading()
-    var planar_velocity := Vector2(_player.velocity.x, _player.velocity.z)
     var wanted: Dictionary = {}
     # The coarsest roots cover the world; every descendant remains a voxel-based mesh.
     var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 128))
     for tz in range(root_tiles):
         for tx in range(root_tiles):
-            _collect_lod_tiles(7, tx, tz, player_xz, heading, planar_velocity, wanted, player_y)
+            _collect_lod_tiles(7, tx, tz, player_xz, heading, wanted, player_y)
     _wanted = wanted
     for queued_coord in _queued.keys():
         if not wanted.has(queued_coord):
@@ -573,17 +572,6 @@ func _distance_to_chunk_bounds(point: Vector2, bounds: Dictionary) -> float:
     var nearest_z: float = maxf(0.0, absf(point.y - center.y) - depth * 0.5)
     return Vector2(nearest_x, nearest_z).length()
 
-
-func _distance_to_chunk_bounds_3d(point: Vector3, bounds: Dictionary) -> float:
-    # Clamp XZ to the tile first, then measure height above the generated terrain at that point.
-    var center: Vector2 = bounds["center"]
-    var half_width: float = float(bounds["width"]) * 0.5
-    var half_depth: float = float(bounds["depth"]) * 0.5
-    var closest_x: float = clampf(point.x, center.x - half_width, center.x + half_width)
-    var closest_z: float = clampf(point.z, center.y - half_depth, center.y + half_depth)
-    var horizontal_distance: float = Vector2(point.x - closest_x, point.z - closest_z).length()
-    var terrain_y: float = _generator.get_surface_height(closest_x, closest_z)
-    return sqrt(horizontal_distance * horizontal_distance + (point.y - terrain_y) * (point.y - terrain_y))
 
 func _process_chunk_jobs() -> void:
     var worker_limit: int = maxi(1, mini(max_concurrent_mesh_jobs, maxi(1, OS.get_processor_count() - 1)))
@@ -939,7 +927,7 @@ func _update_lod_subtree_visibility(coord: Vector2i, ancestors_visible: bool) ->
     for child_key in children:
         _update_lod_subtree_visibility(child_key, children_visible)
 
-func _collect_lod_tiles(lod_index: int, tile_x: int, tile_z: int, player_xz: Vector2, heading: Vector2, planar_velocity: Vector2, wanted: Dictionary, player_y: float = 0.0) -> void:
+func _collect_lod_tiles(lod_index: int, tile_x: int, tile_z: int, player_xz: Vector2, heading: Vector2, wanted: Dictionary, player_y: float = 0.0) -> void:
     # Hot streaming path: calculate tile bounds arithmetically instead of allocating the
     # eleven-key Dictionary returned by _chunk_bounds() for every visited node.
     var key := _make_lod_key(lod_index, tile_x, tile_z)
@@ -991,7 +979,7 @@ func _collect_lod_tiles(lod_index: int, tile_x: int, tile_z: int, player_xz: Vec
     if split:
         for dz_offset in range(2):
             for dx_offset in range(2):
-                _collect_lod_tiles(lod_index - 1, tile_x * 2 + dx_offset, tile_z * 2 + dz_offset, player_xz, heading, planar_velocity, wanted, player_y)
+                _collect_lod_tiles(lod_index - 1, tile_x * 2 + dx_offset, tile_z * 2 + dz_offset, player_xz, heading, wanted, player_y)
 
 func _get_streaming_heading() -> Vector2:
     if _player == null:
