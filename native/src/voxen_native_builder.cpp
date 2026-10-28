@@ -527,10 +527,18 @@ struct MeshBuild {
                 const double dz = static_cast<double>(south_h - north_h) * VOXEL_SIZE /
                     (2.0 * macro_offset * cell_size);
                 const double slope = std::sqrt(dx * dx + dz * dz);
+                double local_sample_x = static_cast<double>(x * step_voxels) + step_voxels * 0.5;
+                double local_sample_z = static_cast<double>(z * step_voxels) + step_voxels * 0.5;
+                if (x >= 0 && x < cells_x) {
+                    local_sample_x = std::min(local_sample_x, static_cast<double>(size_voxels_x) - 0.5);
+                }
+                if (z >= 0 && z < cells_z) {
+                    local_sample_z = std::min(local_sample_z, static_cast<double>(size_voxels_z) - 0.5);
+                }
                 const double world_x = world_min_x +
-                    (static_cast<double>(start_voxel_x + x * step_voxels) + step_voxels * 0.5) * VOXEL_SIZE;
+                    (static_cast<double>(start_voxel_x) + local_sample_x) * VOXEL_SIZE;
                 const double world_z = world_min_z +
-                    (static_cast<double>(start_voxel_z + z * step_voxels) + step_voxels * 0.5) * VOXEL_SIZE;
+                    (static_cast<double>(start_voxel_z) + local_sample_z) * VOXEL_SIZE;
                 const double weight = noise.surface_rock_weight(slope, world_x, world_z);
                 surface_rock_weights[static_cast<size_t>(z + 1) * (cells_x + 2) + x + 1] = weight;
                 if (x >= 0 && x < cells_x && z >= 0 && z < cells_z) {
