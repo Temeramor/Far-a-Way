@@ -190,7 +190,7 @@ func _calculate_surface_height(x: float, z: float) -> float:
         var cliff_mask: float = clampf(1.0 - distance / width, 0.0, 1.0)
         var crest_profile: float = 0.77 + 0.23 * absf(sin(along * PI * 2.1 + phase))
         var rough_profile: float = 0.79 + 0.21 * ridge_detail
-        var foothills: float = pow(broad_mask, 1.28) * (peak_height * 0.39 + 75.0)
+        var foothills: float = pow(broad_mask, 1.28) * (peak_height * 0.39 + 75.0 * world_scale)
         var crest: float = pow(cliff_mask, 0.94) * peak_height * crest_profile * rough_profile
         mountain_height = maxf(mountain_height, maxf(foothills, crest))
     height += mountain_height

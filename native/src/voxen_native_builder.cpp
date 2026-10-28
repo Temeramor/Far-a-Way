@@ -115,6 +115,7 @@ struct NoiseSet {
         height += std::max(hills_value - 0.12, 0.0) * 18.0;
         height += detail_value * 3.8;
 
+        const double world_scale = world_size_m / REFERENCE_WORLD_SIZE_M;
         double mountain_height = 0.0;
         for (const MountainSegment &segment : mountain_segments) {
             const double along = std::clamp(
@@ -132,7 +133,7 @@ struct NoiseSet {
             const double cliff_mask = std::clamp(1.0 - distance / segment.width, 0.0, 1.0);
             const double crest_profile = 0.77 + 0.23 * std::abs(std::sin(along * 3.14159265358979323846 * 2.1 + segment.phase));
             const double rough_profile = 0.79 + 0.21 * ridge_detail;
-            const double foothills = std::pow(broad_mask, 1.28) * (segment.height * 0.39 + 75.0);
+            const double foothills = std::pow(broad_mask, 1.28) * (segment.height * 0.39 + 75.0 * world_scale);
             const double crest = std::pow(cliff_mask, 0.94) * segment.height * crest_profile * rough_profile;
             mountain_height = std::max(mountain_height, std::max(foothills, crest));
         }
@@ -143,7 +144,6 @@ struct NoiseSet {
             height += mountain_mask * (micro_value * 42.0 + detail_value * 28.0);
         }
         const double point_length = std::sqrt(x * x + z * z);
-        const double world_scale = world_size_m / REFERENCE_WORLD_SIZE_M;
         const double spawn_fade = 1.0 - smoothstep(420.0 * world_scale, 1420.0 * world_scale, point_length);
         const double spawn_height = 25.0 + macro_value * 3.0 + detail_value * 0.8;
         height = height * (1.0 - spawn_fade) + spawn_height * spawn_fade;
