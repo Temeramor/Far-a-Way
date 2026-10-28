@@ -17,7 +17,6 @@ const GeneratorScript = preload("res://scripts/voxel_generator.gd")
 var coord: Vector2i = Vector2i.ZERO
 var lod: int = -1
 var collision_enabled: bool = false
-var debug_lod_colors: bool = false
 var _active_step_voxels: int = 1
 var _vertices := PackedVector3Array()
 var _normals := PackedVector3Array()
@@ -32,7 +31,6 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
     var request: Dictionary = job_data["request"]
     var p_lod: int = int(request["lod"])
     var neighbor_lods: Dictionary = job_data["neighbor_lods"]
-    var p_debug_lod_colors: bool = bool(job_data["debug_lod_colors"])
     var world_min_x: float = float(job_data["world_min_x"])
     var world_min_z: float = float(job_data["world_min_z"])
     var world_size_voxels: int = int(job_data["world_size_voxels"])
@@ -51,7 +49,6 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
     coord = p_coord
     lod = p_lod
     collision_enabled = false
-    debug_lod_colors = p_debug_lod_colors
 
     var step_voxels: int = maxi(1, int(request.get("step_voxels", BASE_MESH_STEP_VOXELS << lod)))
     var cell_size: float = float(step_voxels) * VOXEL_SIZE
@@ -145,7 +142,6 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
         "lod": lod,
         "step_voxels": step_voxels,
         "neighbor_lods_used": neighbor_lods.duplicate(true),
-        "debug_lod_colors": debug_lod_colors,
         "vertices": _vertices,
         "normals": _normals,
         "colors": _colors,
