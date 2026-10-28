@@ -207,7 +207,7 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
             var body := StaticBody3D.new()
             body.name = "VoxelCollision"
             # Collision data is world-space terrain coverage and remains valid even if this LOD mesh is hidden under a parent fallback.
-    var should_collide: bool = bool(data.get("want_collision", false))
+            var should_collide: bool = bool(data.get("want_collision", false))
             body.collision_layer = 1 if should_collide else 0
             body.collision_mask = 1 if should_collide else 0
             body.add_child(collision_shape)
