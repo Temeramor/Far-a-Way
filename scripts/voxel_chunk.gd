@@ -17,7 +17,6 @@ var render_vertex_count: int = 0
 var render_index_count: int = 0
 var shadow_vertex_count: int = 0
 var estimated_mesh_bytes: int = 0
-var debug_lod_colors: bool = false
 var neighbor_lods_used: Dictionary = {}
 
 var _render_active: bool = true
@@ -43,7 +42,7 @@ func build(
     world_min_z: float,
     world_size_voxels: int,
     want_collision: bool,
-    p_debug_lod_colors: bool
+    _p_debug_lod_colors: bool
 ) -> void:
     var job_data := {
         "coord": p_coord,
@@ -62,7 +61,6 @@ func build(
         "world_min_x": world_min_x,
         "world_min_z": world_min_z,
         "world_size_voxels": world_size_voxels,
-        "debug_lod_colors": p_debug_lod_colors
     }
     var builder: Object = null
     if ClassDB.class_exists("VoxEnNativeBuilder"):
@@ -87,7 +85,6 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     lod = int(data.get("lod", -1))
     _shadow_mode = clampi(GameSettings.shadow_mode, 0, 1)
     mesh_step_voxels = int(data.get("step_voxels", 1 << clampi(lod, 0, 7)))
-    debug_lod_colors = bool(data.get("debug_lod_colors", false))
     neighbor_lods_used = data.get("neighbor_lods_used", {}).duplicate(true)
     collision_enabled = false
     collision_active = false
