@@ -34,7 +34,7 @@ In the world:
 
 The landscape uses a seed-controlled set of layered noise fields and seeded mountain chains. Mountain height and width scale with world size. Height samples remain continuous while cached/interpolated; visible geometry quantises height to the active LOD cell step, from 10 cm at LOD0 to 25.6 m at LOD7, so distant cells keep voxel-like proportions.
 
-The surface material blends grass and rock according to slope. Every LOD keeps a discrete colour sample per current voxel cell, from 10 cm at LOD0 to 12.8 m at LOD7, rather than fading to a uniform colour with screen distance. Near tiers retain varied palette detail and Voronoi-style cracks; far tiers simplify those calculations while keeping cell-to-cell colour differences. The upper voxel's vertical faces use the same grass/rock surface treatment as its top face, and material transitions are smoothed across chunk borders.
+The surface material blends grass and rock according to slope. Every LOD keeps a discrete colour sample per current voxel cell, from 10 cm at LOD0 to 25.6 m at LOD7, rather than fading to a uniform colour with screen distance. Near tiers retain varied palette detail and Voronoi-style cracks; far tiers simplify those calculations while keeping cell-to-cell colour differences. The upper voxel's vertical faces use the same grass/rock surface treatment as its top face, and material transitions are smoothed across chunk borders.
 
 ## Chunk streaming and level of detail
 
