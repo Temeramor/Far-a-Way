@@ -243,7 +243,7 @@ func get_lod_boundary_m(lod_index: int) -> float:
 func _refresh_lod_boundaries() -> void:
     var screen_height: float = float(maxi(1, _current_viewport_pixel_size().y))
     for i in range(_lod_boundaries_m.size()):
-        _lod_boundaries_m[i] = get_lod_boundary_m_for_height(i, screen_height, lod_transition_pixels)
+        _lod_boundaries_m[i] = get_lod_boundary_m_for_height(i, screen_height, LOD_TRANSITION_PIXELS)
 
 
 func get_lod_boundary_m_for_height(lod_index: int, screen_height: float, target_pixels: float = -1.0) -> float:
