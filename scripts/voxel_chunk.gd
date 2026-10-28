@@ -17,7 +17,6 @@ var render_vertex_count: int = 0
 var render_index_count: int = 0
 var shadow_vertex_count: int = 0
 var estimated_mesh_bytes: int = 0
-var adaptive_smooth_surface: bool = false
 var debug_lod_colors: bool = false
 var neighbor_lods_used: Dictionary = {}
 
@@ -98,7 +97,6 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     render_index_count = 0
     shadow_vertex_count = 0
     estimated_mesh_bytes = 0
-    adaptive_smooth_surface = bool(data.get("adaptive_smooth_surface", false))
     if preserve_collision:
         collision_enabled = true
         set_collision_active(_render_active and wants_collision)
@@ -127,8 +125,8 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     var shadow_indices: PackedInt32Array = data.get("smooth_shadow_indices", PackedInt32Array())
     render_vertex_count = render_vertices_data.size()
     render_index_count = render_indices_data.size()
-    if render_vertex_count > 600000 or render_vertices_data.is_empty() or render_indices_data.is_empty() or render_index_count % 3 != 0 or render_normals_data.size() != render_vertex_count or render_colors_data.size() != render_vertex_count:
-        push_warning("Voxel chunk %s LOD%d did not pass mesh upload limits (vertices=%d, indices=%d)." % [str(coord), lod, render_vertex_count, render_index_count])
+    if render_vertex_count > 1200000 or render_vertices_data.is_empty() or render_indices_data.is_empty() or render_index_count % 3 != 0 or render_normals_data.size() != render_vertex_count or render_colors_data.size() != render_vertex_count:
+        push_warning("Voxel chunk %s LOD%d exceeded mesh upload safety checks (vertices=%d, indices=%d)." % [str(coord), lod, render_vertex_count, render_index_count])
         render_vertex_count = 0
         render_index_count = 0
         return
