@@ -123,7 +123,7 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     estimated_mesh_bytes = 0
     if preserve_collision:
         collision_enabled = true
-        set_collision_active(_render_active and wants_collision)
+        set_collision_active(wants_collision)
     else:
         collision_enabled = false
         collision_active = false
