@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0.4 — 2026-10-29
+
+- Reduced the mesh-step progression to 1, 2, 4, 8 ... 128 base voxels and switched runtime LOD transitions to a half-pixel target. This removes the former 4x jump from LOD0 to LOD1 and keeps distant map edges substantially more detailed without forcing the entire map to LOD0.
+- Matched the step fallback in the GDScript mesher, chunk metadata and native C++ builder; corrected the LOD5 coverage expectation and the LOD7 edge-test scale.
+- Recreated the Terrain demo's two entrance rock clusters, long hollow stone arch and three coloured crystal groups as procedural voxel meshes. Their positions come from Demo.tscn, while heights are sampled from Far a Way's current procedural terrain; Terrain3D height data and imported demo models are not copied.
+
 ## 0.1.0.3 — 2026-10-29
 
 - Adapted terrain-noise frequencies to world size so the 2 × 2 km map retains large hills, secondary ridges and fine-scale relief instead of a near-uniform macro field.
