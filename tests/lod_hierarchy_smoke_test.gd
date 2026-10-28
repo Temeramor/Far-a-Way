@@ -207,7 +207,7 @@ func _run() -> void:
     fallback_parent._render_active = false
     world.add_child(fallback_parent)
     world._chunks[fallback_parent_key] = fallback_parent
-    world._wanted[fallback_parent_key] = {"lod": 1, "fallback": true, "collision": false}
+    world._wanted[fallback_parent_key] = {"lod": 1, "fallback": true, "collision": false, "nearest_distance": 0.0}
     for child_z in range(2):
         for child_x in range(2):
             var child_key: Vector2i = world._make_lod_key(0, 156 + child_x, 156 + child_z)
@@ -216,7 +216,7 @@ func _run() -> void:
             ready_child.mesh_ready = true
             world.add_child(ready_child)
             world._chunks[child_key] = ready_child
-            world._wanted[child_key] = {"lod": 0, "fallback": false, "collision": false}
+            world._wanted[child_key] = {"lod": 0, "fallback": false, "collision": false, "nearest_distance": 0.0}
     world._update_lod_subtree_visibility(fallback_parent_key, true)
     if not fallback_parent.mesh_ready:
         errors.append("Hidden fallback-parent geometry should remain cached after child coverage becomes ready")
