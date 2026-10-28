@@ -134,7 +134,7 @@ func _run() -> void:
             errors.append("LOD7 vertex heights should align to its 25.6 m voxel lattice")
             break
 
-    # The final LOD7 root is not a full multiple of the 12.8 m voxel step.
+    # The final LOD7 root is not a full multiple of the 25.6 m voxel step.
     # Its final partial cells must sample inside the world instead of becoming zero-height columns.
     var edge_data: Dictionary = far_builder.build_mesh_data({
         "coord": Vector2i.ZERO,
