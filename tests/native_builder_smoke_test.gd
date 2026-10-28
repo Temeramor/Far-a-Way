@@ -53,6 +53,9 @@ func _run_native_builder_test() -> void:
     var normals: PackedVector3Array = result.get("normals", PackedVector3Array())
     var colors: PackedColorArray = result.get("colors", PackedColorArray())
     var indices: PackedInt32Array = result.get("indices", PackedInt32Array())
+    var shadow_vertices: PackedVector3Array = result.get("smooth_shadow_vertices", PackedVector3Array())
+    var shadow_normals: PackedVector3Array = result.get("smooth_shadow_normals", PackedVector3Array())
+    var shadow_indices: PackedInt32Array = result.get("smooth_shadow_indices", PackedInt32Array())
 
     if not bool(result.get("has_geometry", false)) or vertices.is_empty() or indices.is_empty():
         push_error("Native builder did not return terrain geometry.")
@@ -68,6 +71,15 @@ func _run_native_builder_test() -> void:
         quit(1)
         return
 
+    if shadow_vertices.is_empty() or shadow_indices.is_empty():
+        push_error("Native builder did not return the smooth near-terrain shadow proxy.")
+        quit(1)
+        return
+    if shadow_normals.size() != shadow_vertices.size() or shadow_indices.size() % 3 != 0:
+        push_error("Native builder returned invalid smooth shadow-proxy arrays.")
+        quit(1)
+        return
+
     var collision_data: Dictionary = result.get("collision_height_map", {})
     if collision_data.is_empty():
         push_error("Native builder did not return collision height-map data.")
@@ -80,7 +92,7 @@ func _run_native_builder_test() -> void:
         quit(1)
         return
 
-    print("Native terrain builder smoke test passed. vertices=%d indices=%d collision_samples=%d" % [
-        vertices.size(), indices.size(), collision_heights.size()
+    print("Native terrain builder smoke test passed. vertices=%d indices=%d shadow_vertices=%d shadow_indices=%d collision_samples=%d" % [
+        vertices.size(), indices.size(), shadow_vertices.size(), shadow_indices.size(), collision_heights.size()
     ])
     quit()
