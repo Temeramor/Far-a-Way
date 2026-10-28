@@ -16,7 +16,7 @@ func _run() -> void:
 
     # Screen-space transitions: the next LOD's cell reaches one pixel at each boundary.
     var screen_heights: Array[int] = [720, 900, 1080, 1440]
-    var expected_first_boundary: Array[float] = [82.8, 103.5, 124.2, 165.5]
+    var expected_first_boundary: Array[float] = [165.5, 206.8, 248.4, 331.0]
     for i in range(screen_heights.size()):
         var screen_height: int = screen_heights[i]
         var first_boundary: float = world.get_lod_boundary_m_for_height(0, float(screen_height), 1.0)
@@ -43,7 +43,7 @@ func _run() -> void:
             ])
 
     var expected_tile_sizes: Array[float] = [32.0, 64.0, 128.0, 256.0, 512.0, 1024.0, 2048.0, 4096.0]
-    var expected_steps_voxels: Array[int] = [1, 2, 4, 8, 16, 32, 64, 128]
+    var expected_steps_voxels: Array[int] = [1, 4, 8, 16, 32, 64, 128, 256]
     for lod in range(8):
         var key: Vector2i = world._make_lod_key(lod, 0, 0)
         var bounds: Dictionary = world._chunk_bounds(key)
@@ -56,7 +56,7 @@ func _run() -> void:
                 lod, expected_steps_voxels[lod], world.get_mesh_step_voxels(lod)
             ])
 
-    # The root LOD7 tile is 4.096 km across. The centre root should refine and
+    # The root LOD7 tile is 4.096 km across with 25.6 m cells. The centre root should refine and
     # the far corner should remain outside the 4 km streaming radius.
     var distance_requests: Dictionary = {}
     var root_count: int = ceili(float(world._world_size_voxels) / float(world._chunk_size_voxels * 128))
@@ -107,7 +107,7 @@ func _run() -> void:
         "coord": Vector2i.ZERO,
         "request": {
             "lod": 7, "start_x": 70000, "start_z": 60000,
-            "size_x": 2560, "size_z": 2560, "step_voxels": 128,
+            "size_x": 2560, "size_z": 2560, "step_voxels": 256,
             "collision": false, "distance": 0.0, "priority": 0.0
         },
         "neighbor_lods": {"left": -1, "right": -1, "north": -1, "south": -1},
@@ -127,11 +127,11 @@ func _run() -> void:
     var far_indices: PackedInt32Array = far_data.get("indices", PackedInt32Array())
     if far_indices.is_empty() or far_indices.size() % 3 != 0:
         errors.append("LOD7 voxel mesh triangle indices should be a non-empty multiple of three")
-    var far_step_m: float = 12.8
+    var far_step_m: float = 25.6
     for vertex_index in range(0, far_vertices.size(), 37):
         var quantised_height: float = far_vertices[vertex_index].y / far_step_m
         if absf(quantised_height - roundf(quantised_height)) > 0.001:
-            errors.append("LOD7 vertex heights should align to its 12.8 m voxel lattice")
+            errors.append("LOD7 vertex heights should align to its 25.6 m voxel lattice")
             break
 
     # The final LOD7 root is not a full multiple of the 12.8 m voxel step.
@@ -140,7 +140,7 @@ func _run() -> void:
         "coord": Vector2i.ZERO,
         "request": {
             "lod": 7, "start_x": 81920, "start_z": 81920,
-            "size_x": 18080, "size_z": 18080, "step_voxels": 128,
+            "size_x": 18080, "size_z": 18080, "step_voxels": 256,
             "collision": false, "distance": 2000.0, "priority": 0.0
         },
         "neighbor_lods": {"left": -1, "right": -1, "north": -1, "south": -1},
@@ -165,7 +165,7 @@ func _run() -> void:
         "coord": Vector2i.ZERO,
         "request": {
             "lod": 2, "start_x": 70000, "start_z": 60000,
-            "size_x": 128, "size_z": 128, "step_voxels": 4,
+            "size_x": 128, "size_z": 128, "step_voxels": 8,
             "collision": false, "distance": 100.0, "priority": 0.0
         },
         "neighbor_lods": {"left": 2, "right": 2, "north": 2, "south": 2},
@@ -188,9 +188,9 @@ func _run() -> void:
     if compact_indices.is_empty() or compact_indices.size() % 3 != 0:
         errors.append("LOD2 mesh triangle indices should be a non-empty multiple of three")
     for vertex_index in range(0, compact_vertices.size(), 19):
-        var quantised_height: float = compact_vertices[vertex_index].y / 0.4
+        var quantised_height: float = compact_vertices[vertex_index].y / 0.8
         if absf(quantised_height - roundf(quantised_height)) > 0.001:
-            errors.append("LOD2 vertex heights should align to its 0.4 m voxel lattice")
+            errors.append("LOD2 vertex heights should align to its 0.8 m voxel lattice")
             break
 
     # Regression: leaf visibility must safely handle a typed empty child list.
