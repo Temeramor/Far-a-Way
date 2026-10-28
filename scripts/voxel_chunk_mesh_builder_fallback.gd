@@ -18,6 +18,7 @@ var coord: Vector2i = Vector2i.ZERO
 var lod: int = -1
 var collision_enabled: bool = false
 var debug_lod_colors: bool = false
+var _active_step_voxels: int = 1
 var _vertices := PackedVector3Array()
 var _normals := PackedVector3Array()
 var _colors := PackedColorArray()
@@ -53,48 +54,10 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
     debug_lod_colors = p_debug_lod_colors
 
     var step_voxels: int = maxi(1, int(request.get("step_voxels", BASE_MESH_STEP_VOXELS << lod)))
-    # Use a lower sample density for distant smooth meshes; actual tile bounds remain unchanged.
-    if p_lod >= 2 and p_lod <= 6:
-        step_voxels *= 2
     var cell_size: float = float(step_voxels) * VOXEL_SIZE
     var cells_x: int = int(ceil(float(size_voxels_x) / float(step_voxels)))
     var cells_z: int = int(ceil(float(size_voxels_z) / float(step_voxels)))
-    if p_lod >= 1:
-        # Mid and distant tiers use shared vertices rather than thousands of voxel risers.
-        _build_smooth_far_surface(
-            generator, world_min_x, world_min_z, world_size_voxels,
-            start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z, step_voxels, cells_x, cells_z
-        )
-        if p_lod < 7:
-            _build_smooth_surface_skirts(step_voxels, cells_x, cells_z)
-        var far_shadow_data: Dictionary = _build_smooth_shadow_surface(
-            generator, p_lod, world_min_x, world_min_z,
-            start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z
-        )
-        result = {
-            "coord": coord,
-            "lod": lod,
-            "step_voxels": step_voxels,
-            "neighbor_lods_used": neighbor_lods.duplicate(true),
-            "debug_lod_colors": debug_lod_colors,
-            "vertices": _vertices,
-            "normals": _normals,
-            "colors": _colors,
-            "indices": _indices,
-            "smooth_shadow_vertices": far_shadow_data["vertices"],
-            "smooth_shadow_normals": far_shadow_data["normals"],
-            "smooth_shadow_indices": far_shadow_data["indices"],
-            "position": Vector3(
-                world_min_x + float(start_voxel_x) * VOXEL_SIZE,
-                0.0,
-                world_min_z + float(start_voxel_z) * VOXEL_SIZE
-            ),
-            "has_geometry": not _indices.is_empty(),
-            "want_collision": false,
-            "worker_started_usec": worker_started_usec,
-            "build_usec": Time.get_ticks_usec() - build_started_usec
-        }
-        return result
+    _active_step_voxels = step_voxels
 
     var macro_offset: int = maxi(1, int(round(1.0 / cell_size)))
     var halo: int = macro_offset + 1
@@ -125,7 +88,13 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
         for gx in range(grid_width):
             var global_cell_x: float = float(start_voxel_x) + float(gx - halo) * float(step_voxels) + float(step_voxels) * 0.5
             raw_heights[gz * grid_width + gx] = _cached_height_voxels(global_cell_x, global_cell_z, height_cache, cache_width, cache_depth, cache_origin_x, cache_origin_z, cache_step_voxels, world_size_voxels)
-    var heights: PackedInt32Array = raw_heights
+    var heights: PackedInt32Array = raw_heights.duplicate()
+    # Quantise vertical heights to the same world-space step as each LOD's horizontal cell.
+    if step_voxels > 1:
+        for height_index in range(heights.size()):
+            var raw_height: int = raw_heights[height_index]
+            if raw_height > 0:
+                heights[height_index] = maxi(step_voxels, roundi(float(raw_height) / float(step_voxels)) * step_voxels)
 
     var surface_types := PackedByteArray()
     surface_types.resize(cells_x * cells_z)
@@ -160,18 +129,16 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
         grid_width, halo, cells_x, cells_z, step_voxels
     )
     _build_lod_skirts(heights, surface_types, grid_width, halo, cells_x, cells_z, step_voxels, neighbor_lods)
-    var adaptive_smooth_surface: bool = p_lod == 0 and _vertices.size() > 500000
-    if adaptive_smooth_surface:
-        # Cap pathological voxel-riser geometry on very rugged tiles before uploading to the GPU.
-        _build_smooth_far_surface(
-            generator, world_min_x, world_min_z, world_size_voxels,
-            start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z, step_voxels, cells_x, cells_z
+    var smooth_shadow_data: Dictionary = {
+        "vertices": PackedVector3Array(),
+        "normals": PackedVector3Array(),
+        "indices": PackedInt32Array()
+    }
+    if float(request.get("distance", 0.0)) <= 1200.0:
+        smooth_shadow_data = _build_smooth_shadow_surface(
+            generator, p_lod, world_min_x, world_min_z,
+            start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z
         )
-        _build_smooth_surface_skirts(step_voxels, cells_x, cells_z)
-    var smooth_shadow_data: Dictionary = _build_smooth_shadow_surface(
-        generator, p_lod, world_min_x, world_min_z,
-        start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z
-    )
 
     result = {
         "coord": coord,
@@ -179,7 +146,6 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
         "step_voxels": step_voxels,
         "neighbor_lods_used": neighbor_lods.duplicate(true),
         "debug_lod_colors": debug_lod_colors,
-        "adaptive_smooth_surface": adaptive_smooth_surface,
         "vertices": _vertices,
         "normals": _normals,
         "colors": _colors,
@@ -667,11 +633,11 @@ func _add_segmented_side_face(
 
     if edge_alpha >= 0.95:
         # The upper exposed voxel carries the same blend as its top face.
-        var top_start: int = maxi(low_height_voxels, high_height_voxels - 1)
+        var top_start: int = maxi(low_height_voxels, high_height_voxels - _active_step_voxels)
         if top_material == VoxelTerrainGenerator.ROCK:
             _emit_side_segment(point_a, point_b, normal, low_height_voxels, top_start, VoxelTerrainGenerator.ROCK, vertical_first, edge_alpha)
         else:
-            var soil_start: int = maxi(low_height_voxels, high_height_voxels - 5)
+            var soil_start: int = maxi(low_height_voxels, high_height_voxels - _active_step_voxels * 5)
             _emit_side_segment(point_a, point_b, normal, low_height_voxels, soil_start, VoxelTerrainGenerator.ROCK, vertical_first, edge_alpha)
             _emit_side_segment(point_a, point_b, normal, soil_start, top_start, VoxelTerrainGenerator.SOIL, vertical_first, edge_alpha)
         var encoded_alpha: float = -1.0
@@ -685,8 +651,8 @@ func _add_segmented_side_face(
     if top_material == VoxelTerrainGenerator.ROCK:
         _emit_side_segment(point_a, point_b, normal, low_height_voxels, high_height_voxels, VoxelTerrainGenerator.ROCK, vertical_first, edge_alpha)
         return
-    var skirt_top_start: int = maxi(low_height_voxels, high_height_voxels - 1)
-    var skirt_soil_start: int = maxi(low_height_voxels, high_height_voxels - 5)
+    var skirt_top_start: int = maxi(low_height_voxels, high_height_voxels - _active_step_voxels)
+    var skirt_soil_start: int = maxi(low_height_voxels, high_height_voxels - _active_step_voxels * 5)
     _emit_side_segment(point_a, point_b, normal, low_height_voxels, skirt_soil_start, VoxelTerrainGenerator.ROCK, vertical_first, edge_alpha)
     _emit_side_segment(point_a, point_b, normal, skirt_soil_start, skirt_top_start, VoxelTerrainGenerator.SOIL, vertical_first, edge_alpha)
     _emit_side_segment(point_a, point_b, normal, skirt_top_start, high_height_voxels, top_material, vertical_first, edge_alpha)
@@ -726,13 +692,7 @@ func _side_material_at_height(y: int, high_height_voxels: int, top_material: int
     return VoxelTerrainGenerator.ROCK
 
 func _material_color(material_type: int) -> Color:
-    if debug_lod_colors:
-        match lod:
-            0: return Color("#ed4747")
-            1: return Color("#e8a12f")
-            2: return Color("#35c9b2")
-            3: return Color("#547ee8")
-            _: return Color("#b16be0")
+    # LOD diagnostic colours are selected by a shader uniform instead of baked vertices.
     match material_type:
         VoxelTerrainGenerator.GRASS:
             return Color("#36a42a")
