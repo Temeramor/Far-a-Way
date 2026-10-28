@@ -221,6 +221,8 @@ func _build_smooth_shadow_surface(
 ) -> Dictionary:
     # The shadow-only surface stays continuous. Its sample spacing is aligned with the
     # cache lattice whenever possible, allowing the same continuous noise samples to be reused.
+    # Keep it beneath the matching voxel top to avoid the proxy shadowing its own terrain.
+    var shadow_vertical_offset: float = float(_active_step_voxels) * VOXEL_SIZE * 0.5 + 0.02
     var shadow_step_voxels: int
     if p_lod <= 1:
         shadow_step_voxels = 5
@@ -266,7 +268,7 @@ func _build_smooth_shadow_surface(
                 height_m = generator.get_surface_height(world_x, world_z)
             shadow_vertices[vertex_index] = Vector3(
                 float(local_voxel_x) * VOXEL_SIZE,
-                height_m,
+                height_m - shadow_vertical_offset,
                 float(local_voxel_z) * VOXEL_SIZE
             )
             shadow_normals[vertex_index] = Vector3.UP
