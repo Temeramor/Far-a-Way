@@ -65,7 +65,7 @@ func _run() -> void:
     for root_z in range(root_count):
         for root_x in range(root_count):
             world._collect_lod_tiles(
-                7, root_x, root_z, Vector2.ZERO, Vector2(0.0, -1.0), Vector2.ZERO,
+                7, root_x, root_z, Vector2.ZERO, Vector2(0.0, -1.0),
                 distance_requests
             )
     var nearby_root: Dictionary = distance_requests.get(world._make_lod_key(7, 1, 1), {})
