@@ -316,7 +316,7 @@ func get_debug_text() -> String:
     var render_vertices: int = 0
     var render_indices: int = 0
     var estimated_mesh_bytes: int = 0
-    var adaptive_smooth_count: int = 0
+    var shadow_vertices: int = 0
     for coord_value in _chunks.keys():
         var chunk: VoxelTerrainChunk = _chunks[coord_value] as VoxelTerrainChunk
         if chunk.lod >= 0 and chunk.lod < lod_counts.size():
@@ -326,8 +326,7 @@ func get_debug_text() -> String:
         render_vertices += chunk.render_vertex_count
         render_indices += chunk.render_index_count
         estimated_mesh_bytes += chunk.estimated_mesh_bytes
-        if chunk.adaptive_smooth_surface:
-            adaptive_smooth_count += 1
+        shadow_vertices += chunk.shadow_vertex_count
     for coord_value in _wanted.keys():
         var coord: Vector2i = coord_value
         var request: Dictionary = _wanted[coord]
@@ -350,10 +349,10 @@ func get_debug_text() -> String:
     var video_memory_mb: float = float(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED)) / 1048576.0
     var primitives: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
     var mesh_memory_mb: float = float(estimated_mesh_bytes) / 1048576.0
-    return "VoxEn diagnostics | %s | FPS %d (%.1f ms) | seed %d | chunks %d | LOD 0:%d 1:%d 2:%d 3:%d 4:%d 5:%d 6:%d 7:%d | verts %d | indices %d | mesh est. %.1f MiB | GPU %.1f MiB | prims %d | adaptive smooth %d | colliders %d | jobs %d running + %d queued | near pending %d | stale %d\nBuild avg/p95 ms: L0 %.1f/%.1f L1 %.1f/%.1f | refresh p95 %.2f ms | queue p95/max %.0f/%.1f ms | apply p95 %.0f ms | L0 margin %.1f m (pred %.1fs)\nControls: F3 diagnostics | M weather/time | Esc pause" % [
+    return "VoxEn diagnostics | %s | FPS %d (%.1f ms) | seed %d | chunks %d | LOD 0:%d 1:%d 2:%d 3:%d 4:%d 5:%d 6:%d 7:%d | verts %d | indices %d | mesh est. %.1f MiB | GPU %.1f MiB | prims %d | shadow verts %d | colliders %d | jobs %d running + %d queued | near pending %d | stale %d\nBuild avg/p95 ms: L0 %.1f/%.1f L1 %.1f/%.1f | refresh p95 %.2f ms | queue p95/max %.0f/%.1f ms | apply p95 %.0f ms | L0 margin %.1f m (pred %.1fs)\nControls: F3 diagnostics | M weather/time | Esc pause" % [
         builder_mode, fps, frame_ms,
         seed_value, _chunks.size(), lod_counts[0], lod_counts[1], lod_counts[2], lod_counts[3], lod_counts[4], lod_counts[5], lod_counts[6], lod_counts[7],
-        render_vertices, render_indices, mesh_memory_mb, video_memory_mb, primitives, adaptive_smooth_count,
+        render_vertices, render_indices, mesh_memory_mb, video_memory_mb, primitives, shadow_vertices,
         collider_count, _running_tasks.size(), _queued.size(), near_pending, _stale_result_count,
         _avg_ms(l0), _build_p95_cached_usec[0] / 1000.0, _avg_ms(l1), _build_p95_cached_usec[1] / 1000.0,
         _refresh_p95_cached_usec / 1000.0, _queue_wait_p95_cached_usec / 1000.0,
@@ -467,8 +466,9 @@ func _refresh_streaming() -> void:
             old_chunk.set_render_active(false)
             continue
         var tile_size_m: float = chunk_size_m * float(1 << existing_lod)
-        var cache_radius: float = maxf(tile_size_m, get_lod_boundary_m(existing_lod) + tile_size_m * 0.5)
-        if _distance_to_chunk_bounds_3d(_player.global_position, _chunk_bounds(existing_coord)) > cache_radius:
+        var inner_boundary: float = get_lod_boundary_m(existing_lod - 1) if existing_lod > 0 else 0.0
+        var cache_radius: float = maxf(tile_size_m, inner_boundary + tile_size_m * 1.5)
+        if _distance_to_chunk_bounds(player_xz, _chunk_bounds(existing_coord)) > cache_radius:
             old_chunk.set_render_active(false)
             old_chunk._retire_current_generation()
             remove_child(old_chunk)
@@ -931,10 +931,8 @@ func _collect_lod_tiles(lod_index: int, tile_x: int, tile_z: int, player_xz: Vec
         split = nearest < threshold
     var center: Vector2 = bounds["center"]
     var horizontal_center_distance: float = center.distance_to(player_xz)
-    var center_height: float = _generator.get_surface_height(center.x, center.y)
-    var center_distance_3d: float = Vector3(center.x, center_height, center.y).distance_to(Vector3(player_xz.x, player_y, player_xz.y))
     var req := {
-        "lod": lod_index, "fallback": split, "distance": center_distance_3d,
+        "lod": lod_index, "fallback": split, "distance": nearest,
         "nearest_distance": nearest, "priority": horizontal_center_distance - maxf(0.0, (center - player_xz).dot(heading) * 0.30),
         "collision": lod_index == 0 and nearest <= collision_distance_m,
         "start_x": int(bounds["start_x"]), "start_z": int(bounds["start_z"]),
