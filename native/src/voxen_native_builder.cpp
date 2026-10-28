@@ -790,8 +790,6 @@ struct MeshBuild {
 
     void build_smooth_shadow_surface() {
         // A continuous (non-voxelized) heightfield casts the terrain silhouette.
-        // Lower it below the matching voxel surface so it cannot self-shadow the terrain it represents.
-        const double shadow_vertical_offset = cell_size * 0.5 + 0.02;
         // Bound each chunk to 256x256 cells while scaling physical sampling with LOD.
         // Cap shadow proxies at roughly 128x128 cells per tile; distant visible meshes
         // no longer need a dense shadow-only mesh to preserve the mountain silhouette.
@@ -840,7 +838,7 @@ struct MeshBuild {
                 }
                 smooth_shadow_vertices.emplace_back(
                     static_cast<double>(local_voxel_x) * VOXEL_SIZE,
-                    height_m - shadow_vertical_offset,
+                    height_m,
                     static_cast<double>(local_voxel_z) * VOXEL_SIZE);
                 smooth_shadow_normals.emplace_back(0.0, 1.0, 0.0);
             }
