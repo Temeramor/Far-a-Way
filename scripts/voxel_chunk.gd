@@ -206,7 +206,8 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
 
             var body := StaticBody3D.new()
             body.name = "VoxelCollision"
-            var should_collide: bool = _render_active and bool(data.get("want_collision", false))
+            # Collision data is world-space terrain coverage and remains valid even if this LOD mesh is hidden under a parent fallback.
+    var should_collide: bool = bool(data.get("want_collision", false))
             body.collision_layer = 1 if should_collide else 0
             body.collision_mask = 1 if should_collide else 0
             body.add_child(collision_shape)
@@ -223,7 +224,9 @@ func set_render_active(active: bool, request_collision: bool = false) -> void:
                 child.visible = active and _should_proxy_cast_shadow()
             elif child is VisualInstance3D:
                 child.visible = active
-    var wants_active_collision: bool = active and request_collision and collision_enabled
+    # Visual hierarchy and physics coverage are independent: keep a valid near collider active
+    # while its render mesh is hidden beneath a fallback parent during a streaming transition.
+    var wants_active_collision: bool = request_collision and collision_enabled
     if collision_active != wants_active_collision:
         set_collision_active(wants_active_collision)
 
@@ -267,7 +270,7 @@ func set_skirt_visibility(visibility: Vector4) -> void:
         _mesh_shader_material.set_shader_parameter("skirt_visibility", visibility)
 
 func set_collision_active(active: bool) -> void:
-    collision_active = active and collision_enabled and _render_active
+    collision_active = active and collision_enabled
     for child in get_children():
         if child is StaticBody3D and child.name == "VoxelCollision":
             child.collision_layer = 1 if collision_active else 0
