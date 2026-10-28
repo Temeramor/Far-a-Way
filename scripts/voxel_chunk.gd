@@ -5,6 +5,7 @@ class_name VoxelTerrainChunk
 ## Mesh/physics nodes are attached on the main thread and replaced GPU resources are retired gradually.
 
 const VOXEL_SIZE: float = 0.1
+const LOD_SHADOW_STRENGTHS: Array[float] = [0.20, 0.15, 0.10, 0.05, 0.0, 0.0, 0.0, 0.0]
 const FallbackBuilderScript = preload("res://scripts/voxel_chunk_mesh_builder_fallback.gd")
 
 var coord: Vector2i = Vector2i.ZERO
@@ -232,6 +233,7 @@ func set_render_active(active: bool, request_collision: bool = false) -> void:
 
 
 func set_shadow_mode(mode: int) -> void:
+    # Backward-compatible API; shadow attenuation now follows a fixed per-LOD profile.
     _shadow_mode = clampi(mode, 0, 1)
     if _mesh_shader_material != null:
         _mesh_shader_material.set_shader_parameter("lod_shadow_strength", _shadow_receive_strength())
@@ -241,13 +243,11 @@ func set_shadow_mode(mode: int) -> void:
 
 
 func _shadow_receive_strength() -> float:
-    # Smooth heightfield shadows remain visible on the top surfaces through the
-    # 1 km shadow range. Vertical voxel risers bypass shadow attenuation in the shader.
-    if lod < 0 or lod >= 6:
+    # Shadow strength is the fraction of directional shadow attenuation applied to voxel tops.
+    # Vertical risers bypass it in the shader; LOD4+ receive no directional shadow darkening.
+    if lod < 0:
         return 0.0
-    if _shadow_mode == 0:
-        return 1.0
-    return maxf(0.0, 1.0 - float(lod) * 0.15)
+    return LOD_SHADOW_STRENGTHS[clampi(lod, 0, LOD_SHADOW_STRENGTHS.size() - 1)]
 
 
 func _should_proxy_cast_shadow() -> bool:
