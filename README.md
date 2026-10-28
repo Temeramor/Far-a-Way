@@ -34,7 +34,7 @@ In the world:
 
 The landscape uses a seed-controlled set of layered noise fields and seeded mountain chains. Mountain height and width scale with world size. Height samples remain continuous while cached/interpolated; visible geometry quantises height to the active LOD cell step, from 10 cm at LOD0 to 12.8 m at LOD7, so distant cells keep voxel-like proportions.
 
-The surface material blends grass and rock according to slope. The stylised palette uses pixel-scale colour variation and varied Voronoi-style cracks on nearer terrain; fine per-cell variation and crack calculations are reduced at distance. The upper voxel's vertical faces use the same grass/rock surface treatment as its top face, and material transitions are smoothed across chunk borders.
+The surface material blends grass and rock according to slope. Every LOD keeps a discrete colour sample per current voxel cell, from 10 cm at LOD0 to 12.8 m at LOD7, rather than fading to a uniform colour with screen distance. Near tiers retain varied palette detail and Voronoi-style cracks; far tiers simplify those calculations while keeping cell-to-cell colour differences. The upper voxel's vertical faces use the same grass/rock surface treatment as its top face, and material transitions are smoothed across chunk borders.
 
 ## Chunk streaming and level of detail
 
@@ -62,7 +62,7 @@ LOD boundaries are calculated from the active viewport height and an 82° design
 | 1080p | 124 m | 248 m | 497 m | 994 m | 1,988 m | 3,976 m | 7,951 m |
 | 1440p (2K-class) | 166 m | 331 m | 663 m | 1,325 m | 2,650 m | 5,301 m | 10,602 m |
 
-Parent tiles remain visible until the required child coverage is ready; their GPU meshes are released when child tiles can cover the same area. A border halo, stitching skirts and neighbour-aware visibility keep adjacent chunks connected. The stream manager uses 3D distance to the generated terrain surface, including altitude during flight, and prioritises jobs using view direction, velocity prediction and measured build/queue/apply timings. Full hierarchy scans are coalesced to one refresh, while mesh uploads update only the affected LOD root and adjacent skirts.
+Parent tiles remain visible until the required child coverage is ready. Their hidden meshes stay cached while nearby child LODs are active, so crossing a tile boundary can restore a parent immediately instead of rebuilding the full tile. Near terrain colliders remain active even while their visual chunks are hidden beneath a fallback parent, and collision jobs are prioritised ahead of non-critical visual detail. A border halo, stitching skirts and neighbour-aware visibility keep adjacent chunks connected. The stream manager uses Euclidean 3D distance to the generated terrain surface, including altitude during flight, and prioritises jobs using view direction, velocity prediction and measured build/queue/apply timings. Full hierarchy scans are coalesced to one refresh, while mesh uploads update only the affected LOD root and adjacent skirts.
 
 ## Lighting, weather and time of day
 
