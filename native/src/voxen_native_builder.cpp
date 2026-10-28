@@ -800,7 +800,7 @@ struct MeshBuild {
         // Bound each chunk to 256x256 cells while scaling physical sampling with LOD.
         // Cap shadow proxies at roughly 128x128 cells per tile; distant visible meshes
         // no longer need a dense shadow-only mesh to preserve the mountain silhouette.
-        const int32_t shadow_step_voxels = lod <= 1 ? 5 : (lod == 2 ? 10 : (lod <= 4 ? (24 << (lod - 3)) : (160 << (lod - 5))));
+        const int32_t shadow_step_voxels = lod <= 1 ? 5 : (lod == 2 ? 5 : (lod <= 4 ? (12 << (lod - 3)) : (80 << (lod - 5))));
         const int32_t shadow_cells_x = static_cast<int32_t>(
             std::ceil(static_cast<double>(size_voxels_x) / shadow_step_voxels));
         const int32_t shadow_cells_z = static_cast<int32_t>(
