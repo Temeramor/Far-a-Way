@@ -77,7 +77,7 @@ func _rebuild_for_seed(new_seed: int) -> void:
     if generation_token != _build_generation:
         return
 
-    _build_crystal_group(
+    await _build_crystal_group(generation_token,
         "BlueCrystalGroup", Vector2(415.722, 611.385),
         Color(0.24, 0.43, 1.0), new_seed + 503,
         [
@@ -90,7 +90,7 @@ func _rebuild_for_seed(new_seed: int) -> void:
     if generation_token != _build_generation:
         return
 
-    _build_crystal_group(
+    await _build_crystal_group(generation_token,
         "PurpleCrystalGroup", Vector2(553.318, 647.425),
         Color(0.49, 0.30, 1.0), new_seed + 709,
         [
@@ -103,7 +103,7 @@ func _rebuild_for_seed(new_seed: int) -> void:
     if generation_token != _build_generation:
         return
 
-    _build_crystal_group(
+    await _build_crystal_group(generation_token,
         "RedCrystalGroup", Vector2(711.291, 579.252),
         Color(0.82, 0.10, 0.31), new_seed + 907,
         [
@@ -142,7 +142,7 @@ func _west_entrance_rocks() -> Array[Dictionary]:
     ]
 
 
-func _build_rock_cluster(cluster_name: String, specs: Array[Dictionary], cluster_seed: int) -> void:
+func _build_rock_cluster(cluster_name: String, specs: Array, cluster_seed: int) -> void:
     var step: float = ROCK_CELL_SIZE
     var min_x: float = INF
     var min_y: float = INF
@@ -261,7 +261,9 @@ func _build_tunnel_arch(generation_token: int, terrain_seed: int) -> void:
         _add_mesh_node("ProceduralRockTunnel", mesh, origin, _world.get_voxel_prop_material(step), true)
 
 
-func _build_crystal_group(group_name: String, group_center: Vector2, crystal_color: Color, crystal_seed: int, specs: Array[Dictionary]) -> void:
+func _build_crystal_group(generation_token: int, group_name: String, group_center: Vector2, crystal_color: Color, crystal_seed: int, specs: Array) -> void:
+    if generation_token != _build_generation:
+        return
     var step: float = CRYSTAL_CELL_SIZE
     var origin_x: float = group_center.x - 5.0
     var origin_z: float = group_center.y - 5.0
@@ -302,7 +304,7 @@ func _build_crystal_group(group_name: String, group_center: Vector2, crystal_col
                         cells[Vector3i(ix, base_index + layer, iz)] = true
             if layer % 6 == 0:
                 await get_tree().process_frame
-                if _world == null:
+                if generation_token != _build_generation:
                     return
 
     var mesh := _create_voxel_mesh(cells, step)
