@@ -280,7 +280,7 @@ func is_world_coverage_ready() -> bool:
     for tz in range(root_tiles):
         for tx in range(root_tiles):
             var root_key := _make_lod_key(7, tx, tz)
-            if _distance_to_chunk_bounds(player_xz, _chunk_bounds(root_key)) > render_distance_m:
+            if not _wanted.has(root_key):
                 continue
             if not _lod_tile_coverage_ready(root_key):
                 return false
@@ -375,7 +375,7 @@ func get_startup_progress() -> float:
     for tz in range(root_tiles):
         for tx in range(root_tiles):
             var root_key := _make_lod_key(7, tx, tz)
-            if _distance_to_chunk_bounds(player_xz, _chunk_bounds(root_key)) > render_distance_m:
+            if not _wanted.has(root_key):
                 continue
             roots_total += 1
             if _lod_tile_coverage_ready(root_key):
