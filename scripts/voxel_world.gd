@@ -282,8 +282,7 @@ func is_world_coverage_ready() -> bool:
             var root_key := _make_lod_key(7, tx, tz)
             if _distance_to_chunk_bounds(player_xz, _chunk_bounds(root_key)) > render_distance_m:
                 continue
-            var root_chunk: VoxelTerrainChunk = _chunks.get(root_key) as VoxelTerrainChunk
-            if root_chunk == null or not root_chunk.mesh_ready:
+            if not _lod_tile_coverage_ready(root_key):
                 return false
     return true
 
@@ -379,8 +378,7 @@ func get_startup_progress() -> float:
             if _distance_to_chunk_bounds(player_xz, _chunk_bounds(root_key)) > render_distance_m:
                 continue
             roots_total += 1
-            var root_chunk: VoxelTerrainChunk = _chunks.get(root_key) as VoxelTerrainChunk
-            if root_chunk != null and root_chunk.mesh_ready:
+            if _lod_tile_coverage_ready(root_key):
                 roots_ready += 1
     if roots_ready < roots_total:
         return clampf(0.05 + 0.60 * float(roots_ready) / float(maxi(roots_total, 1)), 0.05, 0.65)
@@ -464,6 +462,8 @@ func _refresh_streaming() -> void:
         # fine-detail chunks cached along a high-speed flight path.
         if existing_lod == 7:
             old_chunk.set_render_active(false)
+            if old_chunk.mesh_ready:
+                old_chunk._retire_current_generation()
             continue
         var tile_size_m: float = chunk_size_m * float(1 << existing_lod)
         var inner_boundary: float = get_lod_boundary_m(existing_lod - 1) if existing_lod > 0 else 0.0
@@ -482,13 +482,17 @@ func _refresh_streaming() -> void:
         var coord: Vector2i = coord_value
         var request: Dictionary = wanted[coord]
         var chunk: VoxelTerrainChunk = _chunks.get(coord) as VoxelTerrainChunk
-        var needs_build: bool = chunk == null or not chunk.mesh_ready
-        if chunk != null:
+        var fallback_children_ready: bool = _fallback_children_ready(coord)
+        var needs_build: bool = not fallback_children_ready and (chunk == null or not chunk.mesh_ready)
+        if chunk != null and not fallback_children_ready:
             needs_build = needs_build or (
                 chunk.lod != int(request["lod"])
                 or chunk.mesh_step_voxels != int(request["step_voxels"])
                 or (bool(request["collision"]) and not chunk.collision_enabled)
             )
+        if fallback_children_ready and chunk != null and chunk.mesh_ready:
+            chunk.set_render_active(false)
+            chunk._retire_current_generation()
         if _running_job_matches(coord, request) or _completed_job_matches(coord, request):
             _queued.erase(coord)
         elif needs_build:
@@ -670,7 +674,7 @@ func _poll_worker_tasks() -> void:
         var builder = record["builder"]
         var data: Dictionary = builder.result
         if data.is_empty():
-            if _wanted.has(coord):
+            if _wanted.has(coord) and not _fallback_children_ready(coord):
                 var retry_empty: Dictionary = _wanted[coord].duplicate(true)
                 retry_empty["queued_usec"] = Time.get_ticks_usec()
                 _queued[coord] = retry_empty
@@ -683,13 +687,13 @@ func _poll_worker_tasks() -> void:
         var queue_wait_usec: int = maxi(0, int(data.get("worker_started_usec", Time.get_ticks_usec())) - int(record.get("queued_usec", Time.get_ticks_usec())))
         _max_queue_wait_usec = maxi(_max_queue_wait_usec, queue_wait_usec)
         _record_timing(_queue_wait_usec_samples, queue_wait_usec, 128)
-        if _job_record_matches_current(record, coord):
+        if _job_record_matches_current(record, coord) and not _fallback_children_ready(coord):
             record["data"] = data
             record["completed_usec"] = Time.get_ticks_usec()
             _completed_jobs[coord] = record
         else:
             _stale_result_count += 1
-            if _wanted.has(coord) and not _running_by_coord.has(coord):
+            if _wanted.has(coord) and not _running_by_coord.has(coord) and not _fallback_children_ready(coord):
                 var retry: Dictionary = _wanted[coord].duplicate(true)
                 retry["queued_usec"] = Time.get_ticks_usec()
                 _queued[coord] = retry
@@ -721,6 +725,9 @@ func _apply_completed_jobs() -> void:
         if not _completed_jobs.has(coord):
             continue
         var record: Dictionary = _completed_jobs[coord]
+        if _fallback_children_ready(coord):
+            _completed_jobs.erase(coord)
+            continue
         if not _job_record_matches_current(record, coord):
             _completed_jobs.erase(coord)
             _stale_result_count += 1
@@ -877,14 +884,32 @@ func _get_lod_tile_children(coord: Vector2i) -> Array[Vector2i]:
 
 func _all_lod_children_ready(children: Array[Vector2i]) -> bool:
     for child_key in children:
-        # _collect_lod_tiles already measured the 3D distance; reuse it instead of resampling noise.
         var child_request: Dictionary = _wanted.get(child_key, {})
         if float(child_request.get("nearest_distance", INF)) > render_distance_m:
             continue
-        var child: VoxelTerrainChunk = _chunks.get(child_key) as VoxelTerrainChunk
-        if child == null or not child.mesh_ready:
+        if not _lod_tile_coverage_ready(child_key):
             return false
     return true
+
+
+func _lod_tile_coverage_ready(coord: Vector2i) -> bool:
+    if not _wanted.has(coord):
+        return false
+    var chunk: VoxelTerrainChunk = _chunks.get(coord) as VoxelTerrainChunk
+    if chunk != null and chunk.mesh_ready:
+        return true
+    var request: Dictionary = _wanted[coord]
+    if not bool(request.get("fallback", false)):
+        return false
+    var children: Array[Vector2i] = _get_lod_tile_children(coord)
+    return not children.is_empty() and _all_lod_children_ready(children)
+
+
+func _fallback_children_ready(coord: Vector2i) -> bool:
+    if not _wanted.has(coord) or not bool(_wanted[coord].get("fallback", false)):
+        return false
+    var children: Array[Vector2i] = _get_lod_tile_children(coord)
+    return not children.is_empty() and _all_lod_children_ready(children)
 
 func _reconcile_hierarchy_visibility() -> void:
     var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 128))
@@ -907,6 +932,9 @@ func _update_lod_subtree_visibility(coord: Vector2i, ancestors_visible: bool) ->
     var node_active: bool = ancestors_visible and (not parent or not children_ready) and chunk != null and chunk.mesh_ready
     if chunk != null:
         chunk.set_render_active(node_active, bool(request.get("collision", false)))
+        # Once all children cover a fallback tile, its GPU mesh is no longer needed.
+        if parent and children_ready and chunk.mesh_ready:
+            chunk._retire_current_generation()
     var children_visible: bool = ancestors_visible and parent and children_ready
     for child_key in children:
         _update_lod_subtree_visibility(child_key, children_visible)
