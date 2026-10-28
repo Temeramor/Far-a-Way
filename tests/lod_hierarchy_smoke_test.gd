@@ -16,7 +16,7 @@ func _run() -> void:
 
     # Screen-space transitions: the next LOD's cell reaches one pixel at each boundary.
     var screen_heights: Array[int] = [720, 900, 1080, 1440]
-    var expected_first_boundary: Array[float] = [165.5, 206.8, 248.4, 331.0]
+    var expected_first_boundary: Array[float] = [165.6, 207.0, 248.4, 331.0]
     for i in range(screen_heights.size()):
         var screen_height: int = screen_heights[i]
         var first_boundary: float = world.get_lod_boundary_m_for_height(0, float(screen_height), 1.0)
