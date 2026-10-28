@@ -17,6 +17,9 @@ var render_vertex_count: int = 0
 var render_index_count: int = 0
 var shadow_vertex_count: int = 0
 var estimated_mesh_bytes: int = 0
+var mesh_upload_rejected: bool = false
+var rejected_mesh_lod: int = -1
+var rejected_mesh_step_voxels: int = -1
 var neighbor_lods_used: Dictionary = {}
 
 var _render_active: bool = true
@@ -70,6 +73,30 @@ func build(
     apply_mesh_data(builder.build_mesh_data(job_data), material)
 
 func apply_mesh_data(data: Dictionary, material: Material) -> void:
+    var incoming_lod: int = int(data.get("lod", -1))
+    var incoming_step_voxels: int = int(data.get("step_voxels", 1 << clampi(incoming_lod, 0, 7)))
+    var incoming_vertices: PackedVector3Array = data.get("vertices", PackedVector3Array())
+    var incoming_normals: PackedVector3Array = data.get("normals", PackedVector3Array())
+    var incoming_colors: PackedColorArray = data.get("colors", PackedColorArray())
+    var incoming_indices: PackedInt32Array = data.get("indices", PackedInt32Array())
+
+    # Validate before retiring a working mesh. If a terrain tile exceeds safe GPU limits,
+    # keep the current generation visible and remember the rejected request.
+    var has_geometry: bool = bool(data.get("has_geometry", false))
+    var invalid_mesh: bool = incoming_vertices.size() > 1200000 or incoming_vertices.is_empty() or incoming_indices.is_empty() or incoming_indices.size() % 3 != 0 or incoming_normals.size() != incoming_vertices.size() or incoming_colors.size() != incoming_vertices.size()
+    if has_geometry and invalid_mesh:
+        mesh_upload_rejected = true
+        rejected_mesh_lod = incoming_lod
+        rejected_mesh_step_voxels = incoming_step_voxels
+        push_warning("Voxel chunk %s LOD%d mesh rejected before GPU upload (vertices=%d, indices=%d). Existing terrain remains active." % [
+            str(data.get("coord", coord)), incoming_lod, incoming_vertices.size(), incoming_indices.size()
+        ])
+        return
+
+    mesh_upload_rejected = false
+    rejected_mesh_lod = -1
+    rejected_mesh_step_voxels = -1
+
     # Collision is based on world height, not visual LOD. Preserve an existing heightmap body
     # when only the render mesh changes so visual streaming does not churn physics resources.
     var wants_collision: bool = bool(data.get("want_collision", false))
@@ -114,19 +141,14 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
         _mesh_shader_material.set_shader_parameter("lod_index", lod)
         mesh_material = _mesh_shader_material
 
-    var render_vertices_data: PackedVector3Array = data.get("vertices", PackedVector3Array())
-    var render_normals_data: PackedVector3Array = data.get("normals", PackedVector3Array())
-    var render_colors_data: PackedColorArray = data.get("colors", PackedColorArray())
-    var render_indices_data: PackedInt32Array = data.get("indices", PackedInt32Array())
+    var render_vertices_data: PackedVector3Array = incoming_vertices
+    var render_normals_data: PackedVector3Array = incoming_normals
+    var render_colors_data: PackedColorArray = incoming_colors
+    var render_indices_data: PackedInt32Array = incoming_indices
     var shadow_vertices: PackedVector3Array = data.get("smooth_shadow_vertices", PackedVector3Array())
     var shadow_indices: PackedInt32Array = data.get("smooth_shadow_indices", PackedInt32Array())
     render_vertex_count = render_vertices_data.size()
     render_index_count = render_indices_data.size()
-    if render_vertex_count > 1200000 or render_vertices_data.is_empty() or render_indices_data.is_empty() or render_index_count % 3 != 0 or render_normals_data.size() != render_vertex_count or render_colors_data.size() != render_vertex_count:
-        push_warning("Voxel chunk %s LOD%d exceeded mesh upload safety checks (vertices=%d, indices=%d)." % [str(coord), lod, render_vertex_count, render_index_count])
-        render_vertex_count = 0
-        render_index_count = 0
-        return
     shadow_vertex_count = shadow_vertices.size()
     # Conservative estimate for GPU position/normal/colour buffers and triangle indices.
     estimated_mesh_bytes = render_vertex_count * 28 + render_index_count * 4 + shadow_vertex_count * 24 + shadow_indices.size() * 4
