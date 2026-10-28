@@ -1,7 +1,6 @@
 shader_type spatial;
 render_mode diffuse_burley, cull_back, specular_schlick_ggx;
 
-uniform float pixel_size : hint_range(0.1, 1.2, 0.05) = 0.1;
 uniform float seed_low = 240518.0;
 uniform float seed_high = 0.0;
 uniform bool debug_lod_colors = false;
@@ -235,6 +234,39 @@ vec3 distant_rock_color(vec2 projected_world) {
     return color * cool_tint * broad_brightness;
 }
 
+
+vec3 voxel_lod_grass_color(vec2 world_xz, float cell_size) {
+    vec2 cell = floor(world_xz / cell_size);
+    vec2 center = (cell + vec2(0.5)) * cell_size;
+    float cell_tone = hash21(cell + vec2(2.3, 7.1));
+    float broad_tone = value_noise(center * 0.0042 + vec2(seed_low * 0.00013, 5.7));
+    float medium_tone = value_noise(center * 0.018 + vec2(7.1, seed_high * 0.00017));
+    float pick = clamp(0.12 + cell_tone * 0.76
+        + (broad_tone - 0.5) * 0.15 + (medium_tone - 0.5) * 0.08, 0.001, 0.999);
+    return grass_palette(pick);
+}
+
+vec3 voxel_lod_rock_color(vec2 world_xz, float cell_size) {
+    vec2 cell = floor(world_xz / cell_size);
+    vec2 center = (cell + vec2(0.5)) * cell_size;
+    float cell_tone = hash21(cell + vec2(19.7, 3.9));
+    float broad_tone = value_noise(center * vec2(0.0047, 0.0063)
+        + vec2(13.2, seed_high * 0.00011));
+    float pick = clamp(0.10 + cell_tone * 0.74 + (broad_tone - 0.5) * 0.18, 0.001, 0.999);
+    vec3 color = rock_palette(pick);
+    float warmth = hash21(cell + vec2(41.3, 12.7));
+    return color * mix(vec3(0.88, 0.92, 0.98), vec3(1.0, 0.985, 0.94), warmth);
+}
+
+vec3 voxel_lod_soil_color(vec2 world_xz, float cell_size) {
+    vec2 cell = floor(world_xz / cell_size);
+    vec2 center = (cell + vec2(0.5)) * cell_size;
+    float cell_tone = hash21(cell + vec2(5.7, 26.1));
+    float broad_tone = value_noise(center * 0.008 + vec2(9.2, seed_low * 0.00009));
+    float pick = clamp(0.10 + cell_tone * 0.78 + (broad_tone - 0.5) * 0.16, 0.001, 0.999);
+    return soil_palette(pick);
+}
+
 void vertex() {
     world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
     world_normal = normalize(MODEL_NORMAL_MATRIX * NORMAL);
@@ -300,74 +332,58 @@ void fragment() {
         }
         ROUGHNESS = 0.96;
     } else if (lod_index >= 3) {
-        // Distant tiers skip per-cell hashes, fine colour variation and Voronoi crack searches.
+        // Keep a deterministic colour per voxel at every distance. Only the palette detail
+        // simplifies with LOD: the cell size follows the same 10 cm-to-12.8 m voxel ladder.
+        float lod_voxel_size = 0.1 * exp2(float(clamp(lod_index, 0, 7)));
         if (is_top_surface || is_surface_side) {
-            ALBEDO = mix(distant_grass_color(world_position.xz), distant_rock_color(rock_world), top_rock_amount);
+            ALBEDO = mix(
+                voxel_lod_grass_color(world_position.xz, lod_voxel_size),
+                voxel_lod_rock_color(rock_world, lod_voxel_size),
+                top_rock_amount
+            );
             ROUGHNESS = mix(0.95, 0.84, top_rock_amount);
         } else if (COLOR.g > COLOR.r * 1.35) {
-            ALBEDO = distant_grass_color(world_position.xz);
+            ALBEDO = voxel_lod_grass_color(world_position.xz, lod_voxel_size);
             ROUGHNESS = 0.95;
         } else if (COLOR.r > COLOR.g * 1.15) {
-            ALBEDO = soil_palette(0.48);
+            ALBEDO = voxel_lod_soil_color(world_position.xz, lod_voxel_size);
             ROUGHNESS = 0.91;
         } else {
-            ALBEDO = distant_rock_color(rock_world);
+            ALBEDO = voxel_lod_rock_color(rock_world, lod_voxel_size);
             ROUGHNESS = 0.84;
         }
     } else {
-        float voxel_footprint = world_units_per_pixel / max(pixel_size, 0.1);
-        float voxel_detail_weight = 1.0 - smoothstep(0.45, 1.05, voxel_footprint);
+        // The voxel colour is sampled on the current LOD's cell lattice, without fading
+        // to a uniform distance colour. Only fine rock cracks fade when they become sub-pixel.
+        float lod_voxel_size = 0.1 * exp2(float(clamp(lod_index, 0, 7)));
         float rock_crack_footprint = world_units_per_pixel / 5.5;
         float rock_crack_weight = 1.0 - smoothstep(0.55, 1.25, rock_crack_footprint);
 
         if (is_top_surface || is_surface_side) {
-            vec3 filtered_color = mix(distant_grass_color(world_position.xz), distant_rock_color(rock_world), top_rock_amount);
-            if (voxel_detail_weight > 0.02) {
-                vec3 voxel_cell_3d = floor((world_position - normal * 0.001) / max(pixel_size, 0.1));
-                vec3 voxel_center_world = (voxel_cell_3d + vec3(0.5)) * max(pixel_size, 0.1);
-                vec2 pixel_cell = floor(voxel_center_world.xz / max(pixel_size, 0.1));
-                vec2 rock_pixel_cell = floor(rock_world / max(pixel_size, 0.1));
-                vec2 rock_pixel_world = rock_pixel_cell * max(pixel_size, 0.1);
-                vec3 detailed_color = mix(grass_pixel(pixel_cell, voxel_center_world.xz),
-                                          rock_pixel(rock_pixel_cell, rock_pixel_world, rock_crack_weight),
-                                          top_rock_amount);
-                ALBEDO = mix(filtered_color, detailed_color, voxel_detail_weight);
-            } else {
-                ALBEDO = filtered_color;
-            }
+            vec2 pixel_cell = floor(rock_world / lod_voxel_size);
+            vec2 pixel_world = (pixel_cell + vec2(0.5)) * lod_voxel_size;
+            ALBEDO = mix(
+                grass_pixel(pixel_cell, pixel_world),
+                rock_pixel(pixel_cell, pixel_world, rock_crack_weight),
+                top_rock_amount
+            );
             ROUGHNESS = mix(0.95, 0.84, top_rock_amount);
         } else if (COLOR.g > COLOR.r * 1.35) {
-            vec3 filtered_color = distant_grass_color(world_position.xz);
-            if (voxel_detail_weight > 0.02) {
-                vec3 voxel_cell_3d = floor((world_position - normal * 0.001) / max(pixel_size, 0.1));
-                vec3 voxel_center_world = (voxel_cell_3d + vec3(0.5)) * max(pixel_size, 0.1);
-                vec2 pixel_cell = floor(voxel_center_world.xz / max(pixel_size, 0.1));
-                ALBEDO = mix(filtered_color, grass_pixel(pixel_cell, voxel_center_world.xz), voxel_detail_weight);
-            } else {
-                ALBEDO = filtered_color;
-            }
+            vec2 pixel_cell = floor(world_position.xz / lod_voxel_size);
+            vec2 pixel_world = (pixel_cell + vec2(0.5)) * lod_voxel_size;
+            ALBEDO = grass_pixel(pixel_cell, pixel_world);
             ROUGHNESS = 0.95;
         } else if (COLOR.r > COLOR.g * 1.15) {
-            vec3 filtered_color = soil_palette(0.53);
-            if (voxel_detail_weight > 0.02) {
-                vec2 pixel_cell = floor(world_position.xz / max(pixel_size, 0.1));
-                float pixel_variation = hash21(pixel_cell);
-                float broad_tone = value_noise(world_position.xz * 0.035);
-                vec3 detailed_color = soil_palette(0.40 + pixel_variation * 0.20 + (broad_tone - 0.5) * 0.08);
-                ALBEDO = mix(filtered_color, detailed_color, voxel_detail_weight);
-            } else {
-                ALBEDO = filtered_color;
-            }
+            vec2 pixel_cell = floor(world_position.xz / lod_voxel_size);
+            vec2 pixel_world = (pixel_cell + vec2(0.5)) * lod_voxel_size;
+            float pixel_variation = hash21(pixel_cell);
+            float broad_tone = value_noise(pixel_world * 0.035);
+            ALBEDO = soil_palette(0.30 + pixel_variation * 0.48 + (broad_tone - 0.5) * 0.12);
             ROUGHNESS = 0.91;
         } else {
-            vec3 filtered_color = distant_rock_color(rock_world);
-            if (voxel_detail_weight > 0.02) {
-                vec2 rock_pixel_cell = floor(rock_world / max(pixel_size, 0.1));
-                vec2 rock_pixel_world = rock_pixel_cell * max(pixel_size, 0.1);
-                ALBEDO = mix(filtered_color, rock_pixel(rock_pixel_cell, rock_pixel_world, rock_crack_weight), voxel_detail_weight);
-            } else {
-                ALBEDO = filtered_color;
-            }
+            vec2 pixel_cell = floor(rock_world / lod_voxel_size);
+            vec2 pixel_world = (pixel_cell + vec2(0.5)) * lod_voxel_size;
+            ALBEDO = rock_pixel(pixel_cell, pixel_world, rock_crack_weight);
             ROUGHNESS = 0.84;
         }
     }
