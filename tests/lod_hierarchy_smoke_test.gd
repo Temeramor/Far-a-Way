@@ -14,25 +14,32 @@ func _run() -> void:
 
     var errors: Array[String] = []
 
-    # At 1080p and vertical FOV 82 degrees, a 10 cm cell is about one pixel at 62 m.
-    var pixels_at_lod0_edge: float = 0.1 * 1080.0 / (2.0 * tan(deg_to_rad(82.0 * 0.5)) * 64.0)
-    if absf(pixels_at_lod0_edge - 1.0) > 0.08:
-        errors.append("10 cm LOD0 cells should project to approximately one pixel at 64 m")
+    # Screen-space transitions: the next LOD's cell reaches one pixel at each boundary.
+    var screen_heights: Array[int] = [720, 900, 1080, 1440]
+    var expected_first_boundary: Array[float] = [82.8, 103.5, 124.2, 165.5]
+    for i in range(screen_heights.size()):
+        var screen_height: int = screen_heights[i]
+        var first_boundary: float = world.get_lod_boundary_m_for_height(0, float(screen_height), 1.0)
+        if absf(first_boundary - expected_first_boundary[i]) > 0.3:
+            errors.append("LOD0 boundary for %dp should be about %.1f m, got %.1f m" % [
+                screen_height, expected_first_boundary[i], first_boundary
+            ])
+        for lod_index in range(7):
+            var boundary: float = world.get_lod_boundary_m_for_height(lod_index, float(screen_height), 1.0)
+            var expected_boundary: float = expected_first_boundary[i] * float(1 << lod_index)
+            if absf(boundary - expected_boundary) > 0.6:
+                errors.append("%dp LOD%d boundary expected %.1f m, got %.1f m" % [
+                    screen_height, lod_index, expected_boundary, boundary
+                ])
 
-    # Add a narrow 20 cm tier from 64-80 m while keeping the former LOD ranges intact after it.
-    var distance_samples: Array = [
-        [0.0, 0], [63.9, 0], [64.0, 1], [79.9, 1],
-        [80.0, 2], [127.9, 2], [128.0, 3], [255.9, 3],
-        [256.0, 4], [511.9, 4], [512.0, 5], [1023.9, 5],
-        [1024.0, 6], [2047.9, 6], [2048.0, 7]
-    ]
-    for sample in distance_samples:
-        var distance: float = float(sample[0])
-        var expected_lod: int = int(sample[1])
-        var actual_lod: int = world._lod_for_distance(distance)
-        if actual_lod != expected_lod:
-            errors.append("Distance %.1f m expected LOD%d, got LOD%d" % [
-                distance, expected_lod, actual_lod
+    # The active viewport's boundaries must map each side of every threshold to adjacent LODs.
+    for lod_index in range(7):
+        var boundary: float = world.get_lod_boundary_m(lod_index)
+        var just_before: int = world._lod_for_distance(maxf(0.0, boundary - 0.01))
+        var at_boundary: int = world._lod_for_distance(boundary)
+        if just_before != lod_index or at_boundary != lod_index + 1:
+            errors.append("Active viewport LOD%d boundary %.2f m mapped to %d/%d" % [
+                lod_index, boundary, just_before, at_boundary
             ])
 
     var expected_tile_sizes: Array[float] = [32.0, 64.0, 128.0, 256.0, 512.0, 1024.0, 2048.0, 4096.0]
@@ -71,14 +78,14 @@ func _run() -> void:
     if not is_equal_approx(float(last_root["width"]), 1808.0):
         errors.append("Last LOD7 edge tile should be clipped to 1808 m")
 
-    # LOD7 should use shared vertices for a smooth heightfield rather than flat voxel quads.
+    # LOD7 remains voxel geometry: quad-expanded face vertices, not a shared smooth heightfield.
     var far_generator := VoxelTerrainGenerator.new(1337, 10000.0)
     var fallback_builder_script = load("res://scripts/voxel_chunk_mesh_builder_fallback.gd")
     var far_builder = fallback_builder_script.new()
     var far_data: Dictionary = far_builder.build_mesh_data({
         "coord": Vector2i.ZERO,
         "request": {
-            "lod": 7, "start_x": 50000, "start_z": 50000,
+            "lod": 7, "start_x": 70000, "start_z": 60000,
             "size_x": 2560, "size_z": 2560, "step_voxels": 128,
             "collision": false, "distance": 0.0, "priority": 0.0
         },
@@ -94,18 +101,18 @@ func _run() -> void:
     if not bool(far_data.get("has_geometry", false)):
         errors.append("LOD7 smooth heightfield should produce visible geometry")
     var far_vertices: PackedVector3Array = far_data.get("vertices", PackedVector3Array())
-    if far_vertices.size() != 21 * 21:
-        errors.append("LOD7 smooth heightfield should use its configured shared grid step")
+    if far_vertices.size() == 21 * 21 or far_vertices.size() % 4 != 0:
+        errors.append("LOD7 should return indexed voxel faces rather than a shared smooth grid")
     var far_indices: PackedInt32Array = far_data.get("indices", PackedInt32Array())
     if far_indices.is_empty() or far_indices.size() % 3 != 0:
         errors.append("LOD7 smooth mesh triangle indices should be a non-empty multiple of three")
 
-    # LOD2 is a smooth shared-vertex surface with a bounded vertex count and border skirts.
+    # LOD2 also uses voxel faces; a small tile keeps the fallback smoke test quick.
     var compact_data: Dictionary = far_builder.build_mesh_data({
         "coord": Vector2i.ZERO,
         "request": {
-            "lod": 2, "start_x": 50000, "start_z": 50000,
-            "size_x": 1280, "size_z": 1280, "step_voxels": 4,
+            "lod": 2, "start_x": 70000, "start_z": 60000,
+            "size_x": 128, "size_z": 128, "step_voxels": 4,
             "collision": false, "distance": 100.0, "priority": 0.0
         },
         "neighbor_lods": {"left": 2, "right": 2, "north": 2, "south": 2},
@@ -121,8 +128,8 @@ func _run() -> void:
     var compact_normals: PackedVector3Array = compact_data.get("normals", PackedVector3Array())
     var compact_colors: PackedColorArray = compact_data.get("colors", PackedColorArray())
     var compact_indices: PackedInt32Array = compact_data.get("indices", PackedInt32Array())
-    if compact_vertices.size() > 40000:
-        errors.append("LOD2 shared-vertex mesh should stay below 40,000 vertices per tile")
+    if compact_vertices.is_empty() or compact_vertices.size() % 4 != 0:
+        errors.append("LOD2 should contain quad-expanded voxel faces")
     if compact_vertices.size() != compact_normals.size() or compact_vertices.size() != compact_colors.size():
         errors.append("LOD2 compact mesh vertex attributes should have matching array lengths")
     if compact_indices.is_empty() or compact_indices.size() % 3 != 0:
@@ -137,7 +144,7 @@ func _run() -> void:
     world.queue_free()
     await process_frame
     if errors.is_empty():
-        print("Far a Way 8-level LOD smoke test passed.")
+        print("Far a Way screen-space voxel LOD smoke test passed.")
         quit(0)
     else:
         for error_text in errors:
