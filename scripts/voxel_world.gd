@@ -6,6 +6,7 @@ var _native_fallback_warning_shown: bool = false
 const VOXEL_SIZE: float = 0.1
 const LOD_KEY_STRIDE: int = 100000
 const BASE_MESH_STEP_VOXELS: int = 1
+const DESIGN_FOV_DEGREES: float = 82.0
 const GeneratorScript = preload("res://scripts/voxel_generator.gd")
 const ChunkScript = preload("res://scripts/voxel_chunk.gd")
 const FallbackBuilderScript = preload("res://scripts/voxel_chunk_mesh_builder_fallback.gd")
@@ -18,8 +19,8 @@ const FallbackBuilderScript = preload("res://scripts/voxel_chunk_mesh_builder_fa
 
 @export_category("Streaming and LOD")
 @export_range(512.0, 8192.0, 256.0) var render_distance_m: float = 4096.0
-@export_range(32.0, 256.0, 16.0) var lod0_distance_m: float = 64.0
-@export_range(0.0, 24.0, 2.0) var lod_hysteresis_m: float = 12.0
+@export_range(0.5, 1.0, 0.05) var lod_transition_pixels: float = 1.0
+@export_range(0.02, 0.10, 0.01) var lod_hysteresis_ratio: float = 0.05
 @export_range(1, 8, 1) var max_concurrent_mesh_jobs: int = 2
 @export_range(1, 4, 1) var max_mesh_applies_per_frame: int = 2
 @export_range(1.0, 8.0, 0.5) var max_mesh_apply_time_ms: float = 2.0
@@ -43,7 +44,11 @@ var _completed_jobs: Dictionary = {}
 var _refresh_timer: float = 0.0
 var _debug_lod_colors: bool = false
 var _last_player_position := Vector2(INF, INF)
+var _last_player_height: float = INF
 var _last_refresh_chunk := Vector2i(-2147483648, -2147483648)
+var _last_viewport_size := Vector2i.ZERO
+var _hierarchy_visibility_dirty: bool = true
+var _active_skirts_dirty: bool = true
 var _world_size_voxels: int
 var _chunk_size_voxels: int
 var _world_min_x: float
@@ -72,6 +77,7 @@ func _ready() -> void:
     _world_min_z = -world_size_m * 0.5
     _chunks_per_axis = int(ceil(float(_world_size_voxels) / float(_chunk_size_voxels)))
     render_distance_m = clampf(GameSettings.view_distance_m, 512.0, 8192.0)
+    _last_viewport_size = _current_viewport_pixel_size()
     _generator = GeneratorScript.new(seed_value, world_size_m)
     _mountain_profile_cache = _generator.get_mountain_profile()
 
@@ -97,6 +103,13 @@ func _process(delta: float) -> void:
         _build_estimate_refresh_timer = 0.0
         _refresh_build_estimate_cache()
 
+    var viewport_size := _current_viewport_pixel_size()
+    var viewport_changed: bool = viewport_size != _last_viewport_size
+    if viewport_changed:
+        _last_viewport_size = viewport_size
+        _hierarchy_visibility_dirty = true
+        _active_skirts_dirty = true
+
     _refresh_timer += delta
     if _refresh_timer >= streaming_refresh_interval_s and _world_started:
         _refresh_timer = 0.0
@@ -106,25 +119,39 @@ func _process(delta: float) -> void:
                 clampi(floori((player_position.x - _world_min_x) / chunk_size_m), 0, _chunks_per_axis - 1),
                 clampi(floori((player_position.y - _world_min_z) / chunk_size_m), 0, _chunks_per_axis - 1)
             )
-            if player_position.distance_to(_last_player_position) >= streaming_refresh_distance_m or current_chunk != _last_refresh_chunk:
+            var altitude_changed: bool = absf(_player.global_position.y - _last_player_height) >= maxf(8.0, streaming_refresh_distance_m)
+            if viewport_changed or player_position.distance_to(_last_player_position) >= streaming_refresh_distance_m or altitude_changed or current_chunk != _last_refresh_chunk:
                 _last_player_position = player_position
+                _last_player_height = _player.global_position.y
                 _last_refresh_chunk = current_chunk
                 _refresh_streaming()
 
     _poll_worker_tasks()
     _apply_completed_jobs()
     _process_chunk_jobs()
+    if _hierarchy_visibility_dirty:
+        _reconcile_hierarchy_visibility()
+        _hierarchy_visibility_dirty = false
+        _active_skirts_dirty = true
+    if _active_skirts_dirty:
+        _refresh_active_skirts()
+        _active_skirts_dirty = false
     _retire_stale_resources()
     _try_finish_startup_loading()
 
 func _unhandled_input(event: InputEvent) -> void:
     if not (event is InputEventKey and event.pressed and not event.echo):
         return
-    if event.keycode == KEY_F3:
+    # F3 is reserved for diagnostics. F4 changes only a shader uniform; chunks are not rebuilt.
+    if event.keycode == KEY_F4 or event.physical_keycode == KEY_F4:
         _debug_lod_colors = not _debug_lod_colors
         if _voxel_material != null:
             _voxel_material.set_shader_parameter("debug_lod_colors", _debug_lod_colors)
-        _refresh_streaming()
+        for chunk_value in _chunks.values():
+            var chunk: VoxelTerrainChunk = chunk_value as VoxelTerrainChunk
+            if chunk != null:
+                chunk.set_mesh_shader_parameter("debug_lod_colors", _debug_lod_colors)
+        get_viewport().set_input_as_handled()
     elif event.keycode == KEY_R:
         regenerate_with_random_seed()
 
@@ -177,11 +204,11 @@ func _prepare_world_for_epoch(epoch: int) -> void:
     _refresh_streaming()
 
 func set_lod_settings(lod0_distance: float) -> void:
-    # At 1080p and 82-degree vertical FOV, a 10 cm cell is about one pixel at 62 m.
-    var safe_distance: float = snappedf(clampf(lod0_distance, 32.0, 256.0), 16.0)
-    if is_equal_approx(lod0_distance_m, safe_distance):
-        return
-    lod0_distance_m = safe_distance
+    # Legacy API: translate the requested distance into the screen-space pixel budget.
+    var screen_height: float = float(_current_viewport_pixel_size().y)
+    var projection_scale: float = screen_height / (2.0 * tan(deg_to_rad(DESIGN_FOV_DEGREES) * 0.5))
+    var requested: float = clampf(lod0_distance, 32.0, 256.0)
+    lod_transition_pixels = clampf(VOXEL_SIZE * 2.0 * projection_scale / requested, 0.5, 1.0)
     if _world_started:
         _refresh_streaming()
 
@@ -205,14 +232,26 @@ func set_shadow_mode(mode: int) -> void:
 
 
 func get_lod_boundary_m(lod_index: int) -> float:
-    # Insert a short 20 cm ring from 64 to 80 m, then preserve the former LOD distance bands.
     if lod_index < 0 or lod_index > 6:
         return INF
-    if lod_index == 0:
-        return lod0_distance_m
-    if lod_index == 1:
-        return lod0_distance_m * 1.25
-    return lod0_distance_m * float(1 << (lod_index - 1))
+    return get_lod_boundary_m_for_height(lod_index, float(_current_viewport_pixel_size().y))
+
+
+func get_lod_boundary_m_for_height(lod_index: int, screen_height: float, target_pixels: float = -1.0) -> float:
+    # Switch when the NEXT voxel size projects to the target pixel footprint.
+    # At 1 px, no distant voxel grows beyond one pixel and sub-pixel mesh work is avoided.
+    if lod_index < 0 or lod_index > 6:
+        return INF
+    var safe_height: float = maxf(screen_height, 1.0)
+    var pixel_target: float = lod_transition_pixels if target_pixels <= 0.0 else clampf(target_pixels, 0.5, 1.0)
+    var projection_scale: float = safe_height / (2.0 * tan(deg_to_rad(DESIGN_FOV_DEGREES) * 0.5))
+    var next_cell_size_m: float = VOXEL_SIZE * float(2 << lod_index)
+    return next_cell_size_m * projection_scale / pixel_target
+
+
+func _current_viewport_pixel_size() -> Vector2i:
+    var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+    return Vector2i(maxi(1, roundi(viewport_size.x)), maxi(1, roundi(viewport_size.y)))
 
 
 func get_mesh_step_voxels(lod_index: int) -> int:
