@@ -5,7 +5,7 @@ uniform float seed_low = 240518.0;
 uniform float seed_high = 0.0;
 uniform bool debug_lod_colors = false;
 uniform vec4 skirt_visibility = vec4(1.0);
-uniform float lod_cell_size = 0.1;
+uniform float lod_cell_size = 0.2;
 uniform float side_fill : hint_range(0.0, 1.0) = 0.30;
 uniform float side_wrap : hint_range(0.0, 1.0) = 0.50;
 uniform int lod_index = 0;
@@ -319,7 +319,7 @@ void fragment() {
         ROUGHNESS = 0.96;
     } else if (lod_index >= 3) {
         // Keep a deterministic colour per voxel at every distance. Only the palette detail
-        // simplifies with LOD: the cell size follows the same 10 cm-to-25.6 m voxel ladder.
+        // simplifies with LOD: the cell size follows the same 20 cm-to-51.2 m voxel ladder.
         float lod_voxel_size = lod_cell_size;
         if (is_top_surface || is_surface_side) {
             ALBEDO = mix(
