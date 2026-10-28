@@ -2,8 +2,8 @@ extends SceneTree
 
 func _initialize() -> void:
     var generator_script := load("res://scripts/voxel_generator.gd")
-    var first = generator_script.new(123456, 2000.0
-    var second = generator_script.new(123456, 2000.0
+    var first = generator_script.new(123456, 2000.0)
+    var second = generator_script.new(123456, 2000.0)
     var half_size_world = generator_script.new(123456, 1000.0)
     var h0: float = first.get_surface_height(0.0, 0.0)
     var h1: float = second.get_surface_height(0.0, 0.0)
