@@ -777,7 +777,7 @@ struct MeshBuild {
         // Bound each chunk to 256x256 cells while scaling physical sampling with LOD.
         // Cap shadow proxies at roughly 128x128 cells per tile; distant visible meshes
         // no longer need a dense shadow-only mesh to preserve the mountain silhouette.
-        const int32_t shadow_step_voxels = lod <= 1 ? 5 : (lod <= 2 ? 10 : (lod <= 4 ? (20 << (lod - 3)) : (160 << (lod - 5))));
+        const int32_t shadow_step_voxels = lod <= 1 ? 5 : (lod == 2 ? 10 : (lod <= 4 ? (24 << (lod - 3)) : (160 << (lod - 5))));
         const int32_t shadow_cells_x = static_cast<int32_t>(
             std::ceil(static_cast<double>(size_voxels_x) / shadow_step_voxels));
         const int32_t shadow_cells_z = static_cast<int32_t>(
@@ -801,8 +801,25 @@ struct MeshBuild {
                 const int32_t local_voxel_x = std::min(x * shadow_step_voxels, size_voxels_x);
                 const double world_x = world_min_x +
                     static_cast<double>(start_voxel_x + local_voxel_x) * VOXEL_SIZE;
-                // Do not quantize or reuse the visible voxel heights here.
-                const double height_m = noise.surface_height(world_x, world_z);
+                // Reuse the continuous height cache whenever this shadow sample lies on
+                // its lattice; only misaligned border/LOD samples need a fresh noise query.
+                const int32_t global_voxel_x = start_voxel_x + local_voxel_x;
+                const int32_t global_voxel_z = start_voxel_z + local_voxel_z;
+                const int32_t cache_dx = global_voxel_x - cache_origin_x;
+                const int32_t cache_dz = global_voxel_z - cache_origin_z;
+                double height_m = 0.0;
+                if (cache_step_voxels > 0 && cache_dx >= 0 && cache_dz >= 0 &&
+                        cache_dx % cache_step_voxels == 0 && cache_dz % cache_step_voxels == 0) {
+                    const int32_t cache_x = cache_dx / cache_step_voxels;
+                    const int32_t cache_z = cache_dz / cache_step_voxels;
+                    if (cache_x >= 0 && cache_x < cache_width && cache_z >= 0 && cache_z < cache_depth) {
+                        height_m = height_cache[static_cast<size_t>(cache_z) * cache_width + cache_x] * VOXEL_SIZE;
+                    } else {
+                        height_m = noise.surface_height(world_x, world_z);
+                    }
+                } else {
+                    height_m = noise.surface_height(world_x, world_z);
+                }
                 smooth_shadow_vertices.emplace_back(
                     static_cast<double>(local_voxel_x) * VOXEL_SIZE,
                     height_m,
