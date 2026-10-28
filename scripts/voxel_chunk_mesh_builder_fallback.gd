@@ -134,7 +134,8 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
     if float(request.get("distance", 0.0)) <= 1200.0:
         smooth_shadow_data = _build_smooth_shadow_surface(
             generator, p_lod, world_min_x, world_min_z,
-            start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z
+            start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z,
+            height_cache, cache_width, cache_depth, cache_origin_x, cache_origin_z, cache_step_voxels
         )
 
     result = {
@@ -192,19 +193,23 @@ func _build_smooth_shadow_surface(
     start_voxel_x: int,
     start_voxel_z: int,
     size_voxels_x: int,
-    size_voxels_z: int
+    size_voxels_z: int,
+    height_cache: PackedFloat32Array,
+    cache_width: int,
+    cache_depth: int,
+    cache_origin_x: int,
+    cache_origin_z: int,
+    cache_step_voxels: int
 ) -> Dictionary:
-    # This is a continuous heightfield sampled independently of the visible voxel grid.
-    # Keep the shadow mesh bounded to 256x256 cells per chunk: at distance its spacing
-    # increases with LOD, while remaining finer than the visible voxel silhouette.
-    # Keep shadow proxies at or below roughly 128x128 cells per tile.
+    # The shadow-only surface stays continuous. Its sample spacing is aligned with the
+    # cache lattice whenever possible, allowing the same continuous noise samples to be reused.
     var shadow_step_voxels: int
     if p_lod <= 1:
         shadow_step_voxels = 5
     elif p_lod == 2:
         shadow_step_voxels = 10
     elif p_lod <= 4:
-        shadow_step_voxels = 20 << (p_lod - 3)
+        shadow_step_voxels = 24 << (p_lod - 3)
     else:
         shadow_step_voxels = 160 << (p_lod - 5)
     var shadow_cells_x: int = ceili(float(size_voxels_x) / float(shadow_step_voxels))
@@ -226,10 +231,24 @@ func _build_smooth_shadow_surface(
             var local_voxel_x: int = mini(x * shadow_step_voxels, size_voxels_x)
             var world_x: float = world_min_x + float(start_voxel_x + local_voxel_x) * VOXEL_SIZE
             var vertex_index: int = z * shadow_width + x
-            # get_surface_height samples the continuous generator, not quantized voxel heights.
+            # Reuse the continuous height cache for samples that lie exactly on its grid.
+            var global_voxel_x: int = start_voxel_x + local_voxel_x
+            var global_voxel_z: int = start_voxel_z + local_voxel_z
+            var cache_dx: int = global_voxel_x - cache_origin_x
+            var cache_dz: int = global_voxel_z - cache_origin_z
+            var height_m: float
+            if cache_step_voxels > 0 and cache_dx >= 0 and cache_dz >= 0 and cache_dx % cache_step_voxels == 0 and cache_dz % cache_step_voxels == 0:
+                var cache_x: int = int(cache_dx / cache_step_voxels)
+                var cache_z: int = int(cache_dz / cache_step_voxels)
+                if cache_x >= 0 and cache_x < cache_width and cache_z >= 0 and cache_z < cache_depth:
+                    height_m = height_cache[cache_z * cache_width + cache_x] * VOXEL_SIZE
+                else:
+                    height_m = generator.get_surface_height(world_x, world_z)
+            else:
+                height_m = generator.get_surface_height(world_x, world_z)
             shadow_vertices[vertex_index] = Vector3(
                 float(local_voxel_x) * VOXEL_SIZE,
-                generator.get_surface_height(world_x, world_z),
+                height_m,
                 float(local_voxel_z) * VOXEL_SIZE
             )
             shadow_normals[vertex_index] = Vector3.UP
