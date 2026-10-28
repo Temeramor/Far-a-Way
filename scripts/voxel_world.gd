@@ -47,6 +47,7 @@ var _last_player_position := Vector2(INF, INF)
 var _last_player_height: float = INF
 var _last_refresh_chunk := Vector2i(-2147483648, -2147483648)
 var _last_viewport_size := Vector2i.ZERO
+var _lod_boundaries_m: Array[float] = [INF, INF, INF, INF, INF, INF, INF]
 var _hierarchy_visibility_dirty: bool = true
 var _active_skirts_dirty: bool = true
 var _world_size_voxels: int
@@ -78,6 +79,7 @@ func _ready() -> void:
     _chunks_per_axis = int(ceil(float(_world_size_voxels) / float(_chunk_size_voxels)))
     render_distance_m = clampf(GameSettings.view_distance_m, 512.0, 8192.0)
     _last_viewport_size = _current_viewport_pixel_size()
+    _refresh_lod_boundaries()
     _generator = GeneratorScript.new(seed_value, world_size_m)
     _mountain_profile_cache = _generator.get_mountain_profile()
 
@@ -107,6 +109,7 @@ func _process(delta: float) -> void:
     var viewport_changed: bool = viewport_size != _last_viewport_size
     if viewport_changed:
         _last_viewport_size = viewport_size
+        _refresh_lod_boundaries()
         _hierarchy_visibility_dirty = true
         _active_skirts_dirty = true
 
@@ -210,6 +213,7 @@ func set_lod_settings(lod0_distance: float) -> void:
     var projection_scale: float = screen_height / (2.0 * tan(deg_to_rad(DESIGN_FOV_DEGREES) * 0.5))
     var requested: float = clampf(lod0_distance, 32.0, 256.0)
     lod_transition_pixels = clampf(VOXEL_SIZE * 2.0 * projection_scale / requested, 0.5, 1.0)
+    _refresh_lod_boundaries()
     if _world_started:
         _refresh_streaming()
 
@@ -235,7 +239,13 @@ func set_shadow_mode(mode: int) -> void:
 func get_lod_boundary_m(lod_index: int) -> float:
     if lod_index < 0 or lod_index > 6:
         return INF
-    return get_lod_boundary_m_for_height(lod_index, float(_current_viewport_pixel_size().y))
+    return _lod_boundaries_m[lod_index]
+
+
+func _refresh_lod_boundaries() -> void:
+    var screen_height: float = float(maxi(1, _current_viewport_pixel_size().y))
+    for i in range(_lod_boundaries_m.size()):
+        _lod_boundaries_m[i] = get_lod_boundary_m_for_height(i, screen_height, lod_transition_pixels)
 
 
 func get_lod_boundary_m_for_height(lod_index: int, screen_height: float, target_pixels: float = -1.0) -> float:
@@ -866,9 +876,10 @@ func _get_lod_tile_children(coord: Vector2i) -> Array[Vector2i]:
     return children
 
 func _all_lod_children_ready(children: Array[Vector2i]) -> bool:
-    var player_position: Vector3 = _player.global_position if _player != null else Vector3.ZERO
     for child_key in children:
-        if _distance_to_chunk_bounds_3d(player_position, _chunk_bounds(child_key)) > render_distance_m:
+        # _collect_lod_tiles already measured the 3D distance; reuse it instead of resampling noise.
+        var child_request: Dictionary = _wanted.get(child_key, {})
+        if float(child_request.get("nearest_distance", INF)) > render_distance_m:
             continue
         var child: VoxelTerrainChunk = _chunks.get(child_key) as VoxelTerrainChunk
         if child == null or not child.mesh_ready:
