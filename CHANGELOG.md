@@ -8,10 +8,10 @@
 - Added persistent player options for flight speed and field of view.
 - Added a 10 × 10 km procedural landscape with seeded mountain chains, layered noise, world-size-scaled relief and 10 cm base height quantisation.
 - Added slope-aware grass and rock distribution, varied grass and stone palettes, procedural rock cracks and shared material sampling across voxel tops and upper sides.
-- Added eight hierarchical voxel LOD tiers with matching horizontal and vertical cell sizes from 10 cm to 12.8 m, greedy merging of top faces and matching side runs, exposed risers and edge skirts for continuous coverage.
+- Added eight hierarchical voxel LOD tiers with matching horizontal and vertical cell sizes from 10 cm to 25.6 m, greedy merging of top faces and matching side runs, exposed risers and edge skirts for continuous coverage.
 - Added resolution-aware LOD boundaries based on viewport height and an 82° design FOV, with 5% hysteresis and a one-pixel target footprint for the next tier.
 - Added terrain-height quantisation to each active LOD cell step and 3D terrain-relative distance calculations for altitude-aware flight streaming.
-- Added per-voxel colour sampling at every LOD, with cell scale matching the 10 cm–12.8 m mesh step; far tiers simplify palette and crack calculations without fading to a uniform distance colour.
+- Added per-voxel colour sampling at every LOD, with cell scale matching the 10 cm–25.6 m mesh step; far tiers simplify palette and crack calculations without fading to a uniform distance colour.
 - Added lower-density terrain-shadow proxies within the near shadow range, cache-aligned height sampling and resource-aware fallback tile coverage.
 - Added asynchronous native C++ mesh generation, a GDScript fallback builder, collision height maps and packed vertex/index arrays.
 - Added movement-aware terrain streaming prioritised by distance, view direction, velocity prediction and measured worker timing.
@@ -23,6 +23,6 @@
 - Added a sky and time-of-day system with sun, moon, stars, cloud layers, atmospheric fog and environmental lighting.
 - Added Clear, Cloudy and Overcast weather presets, plus Dawn, Day, Dusk and Night time presets.
 - Added smooth terrain-shadow proxies that preserve broad landform silhouettes while scaling shadow sampling with distance.
-- Reduced directional shadow attenuation on visible terrain to 20%/15%/10%/5% for LOD0–LOD3 and disabled shadow reception on LOD4–LOD7. Visible voxel meshes never cast block shadows; smooth heightfield proxies are lowered beneath voxel tops to preserve broad landform shadows without darkening the surface they represent.
+- Added continuous distance-based directional shadow attenuation on upper voxel faces, fading from 20% at 40 m to 0% at 500 m. Added wrap lighting and a soft directional fill for vertical sides so they are not mistaken for shadow-map darkening. Smooth heightfield proxies retain the actual terrain height and continue to cast broad landform silhouettes.
 - Added a Windows native-extension descriptor and SCons build configuration, with compiler intermediates placed in a dedicated native build directory.
-- Added smoke tests for deterministic terrain sampling, world-size scaling, hierarchical coverage, resolution-dependent LOD boundaries, voxel-face geometry at distant tiers, mesh-array integrity, native collision-height-map output, smooth shadow-proxy arrays and the fixed per-LOD shadow profile.
+- Added smoke tests for deterministic terrain sampling, world-size scaling, hierarchical coverage, resolution-dependent LOD boundaries, voxel-face geometry at distant tiers, mesh-array integrity, native collision-height-map output, smooth shadow-proxy arrays and distance-based shadow lighting and the revised LOD cell-size profile.
