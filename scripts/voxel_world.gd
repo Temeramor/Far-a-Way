@@ -524,8 +524,7 @@ func _should_show_chunk_skirt(neighbor_coord: Vector2i, chunk: VoxelTerrainChunk
         return false
     if target_lod != chunk.lod:
         return true
-    var bounds := _chunk_bounds(neighbor_coord)
-    var neighbor_key := _find_visible_lod_key_at_point(bounds["center"])
+    var neighbor_key := _find_visible_lod_key_at_point(_chunk_center(neighbor_coord))
     var neighbor: VoxelTerrainChunk = _chunks.get(neighbor_key) as VoxelTerrainChunk
     return neighbor == null or not neighbor.mesh_ready or not neighbor._render_active or neighbor.lod != chunk.lod
 
@@ -537,10 +536,7 @@ func _update_neighbor_chunk_skirts(coord: Vector2i) -> void:
         var virtual_key := _lod_neighbor_key(coord, offset)
         if virtual_key.x < 0:
             continue
-        var bounds := _chunk_bounds(virtual_key)
-        if int(bounds["size_x"]) <= 0:
-            continue
-        var neighbor_key := _find_visible_lod_key_at_point(bounds["center"])
+        var neighbor_key := _find_visible_lod_key_at_point(_chunk_center(virtual_key))
         var neighbor: VoxelTerrainChunk = _chunks.get(neighbor_key) as VoxelTerrainChunk
         if neighbor != null and neighbor.mesh_ready and neighbor._render_active:
             _update_chunk_skirt_visibility(neighbor_key, neighbor)
@@ -770,10 +766,7 @@ func _neighbor_lods_for(coord: Vector2i) -> Dictionary:
 func _target_lod_for_neighbor(neighbor_coord: Vector2i) -> int:
     if neighbor_coord.x < 0 or neighbor_coord.y < 0:
         return -1
-    var bounds := _chunk_bounds(neighbor_coord)
-    if int(bounds["size_x"]) <= 0 or int(bounds["size_z"]) <= 0:
-        return -1
-    var visible_key := _find_visible_lod_key_at_point(bounds["center"])
+    var visible_key := _find_visible_lod_key_at_point(_chunk_center(neighbor_coord))
     var visible_chunk: VoxelTerrainChunk = _chunks.get(visible_key) as VoxelTerrainChunk
     if visible_chunk != null and visible_chunk.mesh_ready and visible_chunk._render_active:
         return visible_chunk.lod
@@ -854,8 +847,8 @@ func _get_lod_tile_children(coord: Vector2i) -> Array[Vector2i]:
     for dz in range(2):
         for dx in range(2):
             var child_key := _make_lod_key(lod_index - 1, tx * 2 + dx, tz * 2 + dz)
-            var bounds := _chunk_bounds(child_key)
-            if int(bounds["size_x"]) > 0 and int(bounds["size_z"]) > 0 and _wanted.has(child_key):
+            # Wanted children were already bounds-checked by _collect_lod_tiles.
+            if _wanted.has(child_key):
                 children.append(child_key)
     return children
 
