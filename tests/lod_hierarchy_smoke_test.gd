@@ -74,6 +74,27 @@ func _run() -> void:
     if distance_requests.has(world._make_lod_key(7, 2, 2)):
         errors.append("A remote corner root outside the render distance should not be requested")
 
+    # LOD distance is spherical in XYZ: at the same XZ position, gaining altitude
+    # should move the requested leaf from detailed LOD0 to a coarser tier.
+    var ground_y: float = world.get_surface_height(0.0, 0.0)
+    var low_altitude_requests: Dictionary = {}
+    var high_altitude_requests: Dictionary = {}
+    for root_z in range(root_count):
+        for root_x in range(root_count):
+            world._collect_lod_tiles(
+                7, root_x, root_z, Vector2.ZERO, Vector2(0.0, -1.0),
+                low_altitude_requests, ground_y + 2.0
+            )
+            world._collect_lod_tiles(
+                7, root_x, root_z, Vector2.ZERO, Vector2(0.0, -1.0),
+                high_altitude_requests, ground_y + 500.0
+            )
+    var player_ground_key: Vector2i = world._make_lod_key(0, 156, 156)
+    if not low_altitude_requests.has(player_ground_key):
+        errors.append("LOD selection should retain LOD0 near the terrain at low altitude")
+    if high_altitude_requests.has(player_ground_key):
+        errors.append("LOD selection should become coarser directly above the same XZ tile at high altitude")
+
     var last_root := world._chunk_bounds(world._make_lod_key(7, 2, 2))
     if not is_equal_approx(float(last_root["width"]), 1808.0):
         errors.append("Last LOD7 edge tile should be clipped to 1808 m")
