@@ -52,7 +52,7 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
     lod = p_lod
     collision_enabled = false
 
-    var default_step_voxels: int = BASE_MESH_STEP_VOXELS if lod == 0 else BASE_MESH_STEP_VOXELS << (lod + 1)
+    var default_step_voxels: int = BASE_MESH_STEP_VOXELS << clampi(lod, 0, 7)
     var step_voxels: int = maxi(1, int(request.get("step_voxels", default_step_voxels)))
     var cell_size: float = float(step_voxels) * VOXEL_SIZE
     var cells_x: int = int(ceil(float(size_voxels_x) / float(step_voxels)))
