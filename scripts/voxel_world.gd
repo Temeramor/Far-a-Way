@@ -255,7 +255,7 @@ func get_lod_boundary_m_for_height(lod_index: int, screen_height: float, target_
     var safe_height: float = maxf(screen_height, 1.0)
     var pixel_target: float = LOD_TRANSITION_PIXELS if target_pixels <= 0.0 else clampf(target_pixels, 0.5, 1.0)
     var projection_scale: float = safe_height / (2.0 * tan(deg_to_rad(DESIGN_FOV_DEGREES) * 0.5))
-    var next_cell_size_m: float = VOXEL_SIZE * float(2 << lod_index)
+    var next_cell_size_m: float = float(get_mesh_step_voxels(lod_index + 1)) * VOXEL_SIZE
     return next_cell_size_m * projection_scale / pixel_target
 
 
@@ -265,8 +265,9 @@ func _current_viewport_pixel_size() -> Vector2i:
 
 
 func get_mesh_step_voxels(lod_index: int) -> int:
-    # 10 cm, 20 cm, 40 cm, 80 cm ... up to the existing 12.8 m far step.
-    return BASE_MESH_STEP_VOXELS << clampi(lod_index, 0, 7)
+    # Preserve 10 cm at LOD0. Starting at LOD1, double the old step to reduce coarse mesh density.
+    var tier: int = clampi(lod_index, 0, 7)
+    return BASE_MESH_STEP_VOXELS if tier == 0 else BASE_MESH_STEP_VOXELS << (tier + 1)
 
 
 func is_terrain_shadow_ready() -> bool:
@@ -690,7 +691,7 @@ func _poll_worker_tasks() -> void:
             continue
         # Treat the request as authoritative even if an older compiled native extension
         # does not return this metadata field yet. Both mesh builders receive the same stride.
-        data["step_voxels"] = int(record["request"].get("step_voxels", BASE_MESH_STEP_VOXELS << int(record["request"]["lod"])))
+        data["step_voxels"] = int(record["request"].get("step_voxels", get_mesh_step_voxels(int(record["request"]["lod"]))))
         var lod_index: int = clampi(int(data.get("lod", record["request"]["lod"])), 0, 7)
         _record_timing(_build_usec_by_lod[lod_index], int(data.get("build_usec", 0)), 128)
         var queue_wait_usec: int = maxi(0, int(data.get("worker_started_usec", Time.get_ticks_usec())) - int(record.get("queued_usec", Time.get_ticks_usec())))
