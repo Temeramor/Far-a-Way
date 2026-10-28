@@ -499,8 +499,11 @@ func _refresh_streaming() -> void:
         var request: Dictionary = wanted[coord]
         var chunk: VoxelTerrainChunk = _chunks.get(coord) as VoxelTerrainChunk
         var fallback_children_ready: bool = _fallback_children_ready(coord)
-        var needs_build: bool = not fallback_children_ready and (chunk == null or not chunk.mesh_ready)
-        if chunk != null and not fallback_children_ready:
+        var rejected_same_mesh_request: bool = chunk != null and chunk.mesh_upload_rejected and chunk.rejected_mesh_lod == int(request["lod"]) and chunk.rejected_mesh_step_voxels == int(request["step_voxels"])
+        # A deterministic oversize/malformed mesh must not enter an endless rebuild loop.
+        # The parent LOD remains visible until this tile can produce an acceptable mesh.
+        var needs_build: bool = not rejected_same_mesh_request and not fallback_children_ready and (chunk == null or not chunk.mesh_ready)
+        if chunk != null and not fallback_children_ready and not rejected_same_mesh_request:
             needs_build = needs_build or (
                 chunk.lod != int(request["lod"])
                 or chunk.mesh_step_voxels != int(request["step_voxels"])
