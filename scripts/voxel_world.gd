@@ -621,7 +621,7 @@ func _process_chunk_jobs() -> void:
         var job_data: Dictionary = {
             "coord": coord, "request": request.duplicate(), "neighbor_lods": neighbors.duplicate(),
             "seed": seed_value, "world_min_x": _world_min_x, "world_min_z": _world_min_z,
-            "world_size_voxels": _world_size_voxels, "debug_lod_colors": _debug_lod_colors,
+            "world_size_voxels": _world_size_voxels,
             "terrain_world_size_m": world_size_m, "mountain_profile": _mountain_profile_cache,
             "build_collision": bool(request["collision"]) and not _chunk_has_collision_resource(coord)
         }
@@ -632,7 +632,7 @@ func _process_chunk_jobs() -> void:
         )
         var task_record := {
             "coord": coord, "request": request.duplicate(), "neighbors": neighbors.duplicate(),
-            "builder": builder, "epoch": _generation_epoch, "debug": _debug_lod_colors,
+            "builder": builder, "epoch": _generation_epoch,
             "seed": seed_value, "queued_usec": int(request["queued_usec"])
         }
         _running_tasks[task_id] = task_record
