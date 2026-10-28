@@ -5,7 +5,6 @@ class_name VoxelTerrainChunk
 ## Mesh/physics nodes are attached on the main thread and replaced GPU resources are retired gradually.
 
 const VOXEL_SIZE: float = 0.1
-const LOD_SHADOW_STRENGTHS: Array[float] = [0.20, 0.15, 0.10, 0.05, 0.0, 0.0, 0.0, 0.0]
 const FallbackBuilderScript = preload("res://scripts/voxel_chunk_mesh_builder_fallback.gd")
 
 var coord: Vector2i = Vector2i.ZERO
@@ -136,7 +135,7 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     if material is ShaderMaterial:
         _mesh_shader_material = (material as ShaderMaterial).duplicate() as ShaderMaterial
         _mesh_shader_material.set_shader_parameter("skirt_visibility", Vector4(1.0, 1.0, 1.0, 1.0))
-        _mesh_shader_material.set_shader_parameter("lod_shadow_strength", _shadow_receive_strength())
+        _mesh_shader_material.set_shader_parameter("lod_cell_size", float(mesh_step_voxels) * VOXEL_SIZE)
         _mesh_shader_material.set_shader_parameter("lod_index", lod)
         mesh_material = _mesh_shader_material
 
@@ -231,20 +230,10 @@ func set_render_active(active: bool, request_collision: bool = false) -> void:
 
 
 func set_shadow_mode(_mode: int) -> void:
-    # Backward-compatible API; shadow attenuation is fixed per LOD and cannot be overridden globally.
-    if _mesh_shader_material != null:
-        _mesh_shader_material.set_shader_parameter("lod_shadow_strength", _shadow_receive_strength())
+    # Legacy compatibility hook; side and top lighting are now handled by the shader.
     var shadow_proxy := get_node_or_null("TerrainShadowProxy") as MeshInstance3D
     if shadow_proxy != null:
         shadow_proxy.visible = _render_active and _should_proxy_cast_shadow()
-
-
-func _shadow_receive_strength() -> float:
-    # Shadow strength is the fraction of directional shadow attenuation applied to voxel tops.
-    # Vertical risers bypass it in the shader; LOD4+ receive no directional shadow darkening.
-    if lod < 0:
-        return 0.0
-    return LOD_SHADOW_STRENGTHS[clampi(lod, 0, LOD_SHADOW_STRENGTHS.size() - 1)]
 
 
 func _should_proxy_cast_shadow() -> bool:
