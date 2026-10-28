@@ -11,10 +11,11 @@
 - Added eight hierarchical voxel LOD tiers with matching horizontal and vertical cell sizes from 10 cm to 12.8 m, greedy merging of top faces and matching side runs, exposed risers and edge skirts for continuous coverage.
 - Added resolution-aware LOD boundaries based on viewport height and an 82° design FOV, with 5% hysteresis and a one-pixel target footprint for the next tier.
 - Added terrain-height quantisation to each active LOD cell step and 3D terrain-relative distance calculations for altitude-aware flight streaming.
+- Added per-voxel colour sampling at every LOD, with cell scale matching the 10 cm–12.8 m mesh step; far tiers simplify palette and crack calculations without fading to a uniform distance colour.
 - Added lower-density terrain-shadow proxies within the near shadow range, cache-aligned height sampling and resource-aware fallback tile coverage.
 - Added asynchronous native C++ mesh generation, a GDScript fallback builder, collision height maps and packed vertex/index arrays.
 - Added movement-aware terrain streaming prioritised by distance, view direction, velocity prediction and measured worker timing.
-- Added bounded worker scheduling, LOD-aware chunk caching, per-root hierarchy updates, local skirt updates, release of hidden parent meshes and streaming diagnostics.
+- Added bounded worker scheduling, LOD-aware chunk caching, per-root hierarchy updates and local skirt updates. Hidden parent meshes remain cached for immediate fallback during LOD topology changes, and near terrain colliders can remain active beneath hidden render meshes.
 - Added VoxEn diagnostics on F3, including FPS, frame time, LOD distribution, queued and running jobs, chunk geometry counts, estimated mesh memory, video-memory usage, shadow vertex counts and rendered primitive counts.
 - Added F4 shader-based LOD colour visualisation for live inspection of the active voxel tiers.
 - Added display options for windowed and fullscreen modes, with selectable resolutions from 640 × 360 through 2560 × 1440 and persistent preferences.
