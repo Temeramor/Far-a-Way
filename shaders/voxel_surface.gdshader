@@ -5,7 +5,9 @@ uniform float seed_low = 240518.0;
 uniform float seed_high = 0.0;
 uniform bool debug_lod_colors = false;
 uniform vec4 skirt_visibility = vec4(1.0);
-uniform float lod_shadow_strength : hint_range(0.0, 1.0, 0.05) = 1.0;
+uniform float lod_cell_size = 0.1;
+uniform float side_fill : hint_range(0.0, 1.0) = 0.30;
+uniform float side_wrap : hint_range(0.0, 1.0) = 0.50;
 uniform int lod_index = 0;
 
 varying vec3 world_position;
@@ -275,7 +277,7 @@ void fragment() {
     float world_units_per_pixel = 0.0;
     if (lod_index < 3) {
         world_units_per_pixel = max(length(dFdx(world_position)), length(dFdy(world_position)));
-        float riser_pixels = 0.1 / max(world_units_per_pixel, 0.001);
+        float riser_pixels = lod_cell_size / max(world_units_per_pixel, 0.001);
         float subpixel_riser_weight = 1.0 - smoothstep(0.65, 1.35, riser_pixels);
         float side_face_weight = 1.0 - smoothstep(0.15, 0.45, abs(normalize(world_normal).y));
         NORMAL = normalize(mix(normalize(NORMAL), view_up_direction,
@@ -315,7 +317,7 @@ void fragment() {
     } else if (lod_index >= 3) {
         // Keep a deterministic colour per voxel at every distance. Only the palette detail
         // simplifies with LOD: the cell size follows the same 10 cm-to-12.8 m voxel ladder.
-        float lod_voxel_size = 0.1 * exp2(float(clamp(lod_index, 0, 7)));
+        float lod_voxel_size = lod_cell_size;
         if (is_top_surface || is_surface_side) {
             ALBEDO = mix(
                 voxel_lod_grass_color(world_position.xz, lod_voxel_size),
@@ -336,7 +338,7 @@ void fragment() {
     } else {
         // The voxel colour is sampled on the current LOD's cell lattice, without fading
         // to a uniform distance colour. Only fine rock cracks fade when they become sub-pixel.
-        float lod_voxel_size = 0.1 * exp2(float(clamp(lod_index, 0, 7)));
+        float lod_voxel_size = lod_cell_size;
         float rock_crack_footprint = world_units_per_pixel / 5.5;
         float rock_crack_weight = 1.0 - smoothstep(0.55, 1.25, rock_crack_footprint);
 
@@ -371,28 +373,30 @@ void fragment() {
     METALLIC = 0.0;
 }
 
-// Blend directional shadow attenuation per LOD while preserving the base albedo.
+// Fade shadow-map attenuation continuously with camera distance. Shadow strength applies
+// only to the upper terrain faces; vertical sides get wrap lighting and a soft directional fill.
 void light() {
     vec3 light_normal = normalize(NORMAL);
-    float side_face_weight = 1.0 - smoothstep(0.15, 0.45, abs(normalize(world_normal).y));
-    float direct_attenuation = ATTENUATION;
+    float side = 1.0 - smoothstep(0.15, 0.45, abs(normalize(world_normal).y));
+    float shadow_strength = mix(0.20, 0.0, smoothstep(40.0, 500.0, length(VERTEX)));
+
+    float attenuation = ATTENUATION;
     if (LIGHT_IS_DIRECTIONAL) {
-        // The smooth heightfield proxy casts landform shadows. Vertical voxel risers don't
-        // receive shadow attenuation, preventing dark checkerboard bands at long distance.
-        direct_attenuation = side_face_weight > 0.5
-            ? 1.0
-            : mix(1.0, ATTENUATION, clamp(lod_shadow_strength, 0.0, 1.0));
+        attenuation = mix(mix(1.0, ATTENUATION, shadow_strength), 1.0, side);
     }
     if (LIGHT_IS_AREA) {
-        DIFFUSE_LIGHT += LIGHT_AREA_DIFFUSE_MULTIPLIER * direct_attenuation * LIGHT_COLOR;
-        SPECULAR_LIGHT += LIGHT_AREA_SPECULAR_MULTIPLIER * direct_attenuation * LIGHT_COLOR * SPECULAR_AMOUNT;
+        DIFFUSE_LIGHT += LIGHT_AREA_DIFFUSE_MULTIPLIER * attenuation * LIGHT_COLOR;
+        SPECULAR_LIGHT += LIGHT_AREA_SPECULAR_MULTIPLIER * attenuation * LIGHT_COLOR * SPECULAR_AMOUNT;
     } else {
-        float ndotl = clamp(dot(light_normal, LIGHT), 0.0, 1.0);
-        DIFFUSE_LIGHT += ndotl * direct_attenuation * LIGHT_COLOR / PI;
+        float n_dot_l = dot(light_normal, LIGHT);
+        float lambert = clamp(n_dot_l, 0.0, 1.0);
+        float wrapped = clamp((n_dot_l + side_wrap) / (1.0 + side_wrap), 0.0, 1.0);
+        float diffuse_term = mix(lambert, wrapped, side);
+        float fill = LIGHT_IS_DIRECTIONAL ? side * side_fill : 0.0;
+        DIFFUSE_LIGHT += (diffuse_term * attenuation + fill) * LIGHT_COLOR / PI;
         vec3 half_vector = normalize(LIGHT + VIEW);
         float roughness = clamp(ROUGHNESS, 0.04, 1.0);
-        float specular_lobe = pow(max(dot(light_normal, half_vector), 0.0), mix(128.0, 4.0, roughness));
-        SPECULAR_LIGHT += specular_lobe * direct_attenuation * LIGHT_COLOR
-            * SPECULAR_AMOUNT * (1.0 - roughness) * 0.08;
+        float lobe = pow(max(dot(light_normal, half_vector), 0.0), mix(128.0, 4.0, roughness));
+        SPECULAR_LIGHT += lobe * attenuation * LIGHT_COLOR * SPECULAR_AMOUNT * (1.0 - roughness) * 0.08;
     }
 }
