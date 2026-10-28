@@ -8,7 +8,7 @@
 - Added persistent player options for flight speed and field of view.
 - Added a 10 × 10 km procedural landscape with seeded mountain chains, layered noise, world-size-scaled relief and 10 cm base height quantisation.
 - Added slope-aware grass and rock distribution, varied grass and stone palettes, procedural rock cracks and shared material sampling across voxel tops and upper sides.
-- Added eight hierarchical voxel LOD tiers with matching horizontal and vertical cell sizes from 10 cm to 25.6 m, greedy merging of top faces and matching side runs, exposed risers and edge skirts for continuous coverage.
+- Added eight hierarchical voxel LOD tiers with matching horizontal and vertical cell sizes from 10 cm to 25.6 m. LOD0 remains at 10 cm; LOD1 and every coarser tier use cells twice the previous ladder's size, reducing coarse mesh density while keeping tile count and physical tile boundaries unchanged. Greedy merging of top faces and matching side runs, exposed risers and edge skirts preserve continuous coverage.
 - Added resolution-aware LOD boundaries based on viewport height and an 82° design FOV, with 5% hysteresis and a one-pixel target footprint for the next tier.
 - Added terrain-height quantisation to each active LOD cell step and 3D terrain-relative distance calculations for altitude-aware flight streaming.
 - Added per-voxel colour sampling at every LOD, with cell scale matching the 10 cm–25.6 m mesh step; far tiers simplify palette and crack calculations without fading to a uniform distance colour.
