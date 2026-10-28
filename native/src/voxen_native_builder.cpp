@@ -583,9 +583,9 @@ struct MeshBuild {
                 }
 
                 const double x0 = static_cast<double>(x * step_voxels) * VOXEL_SIZE;
-                const double x1 = static_cast<double>((x + run_x) * step_voxels) * VOXEL_SIZE;
+                const double x1 = static_cast<double>(std::min((x + run_x) * step_voxels, size_voxels_x)) * VOXEL_SIZE;
                 const double z0 = static_cast<double>(z * step_voxels) * VOXEL_SIZE;
-                const double z1 = static_cast<double>((z + run_z) * step_voxels) * VOXEL_SIZE;
+                const double z1 = static_cast<double>(std::min((z + run_z) * step_voxels, size_voxels_z)) * VOXEL_SIZE;
                 const double y = static_cast<double>(height_voxels) * VOXEL_SIZE;
                 add_quad_vertex_colors(
                     Vector3(x0, y, z0), Vector3(x0, y, z1),
@@ -600,7 +600,7 @@ struct MeshBuild {
 
     void build_exposed_side_faces() {
         const auto emit_left_runs = [this](int32_t x, bool right_side) {
-            const double x_pos = static_cast<double>(right_side ? (x + 1) * step_voxels : x * step_voxels) * VOXEL_SIZE;
+            const double x_pos = static_cast<double>(std::min(right_side ? (x + 1) * step_voxels : x * step_voxels, size_voxels_x)) * VOXEL_SIZE;
             for (int32_t z = 0; z < cells_z;) {
                 const int32_t h = heights[grid_index(x, z)];
                 const int32_t other_h = heights[grid_index(x + (right_side ? 1 : -1), z)];
@@ -647,7 +647,7 @@ struct MeshBuild {
         };
 
         const auto emit_z_runs = [this](int32_t z, bool south_side) {
-            const double z_pos = static_cast<double>(south_side ? (z + 1) * step_voxels : z * step_voxels) * VOXEL_SIZE;
+            const double z_pos = static_cast<double>(std::min(south_side ? (z + 1) * step_voxels : z * step_voxels, size_voxels_z)) * VOXEL_SIZE;
             for (int32_t x = 0; x < cells_x;) {
                 const int32_t h = heights[grid_index(x, z)];
                 const int32_t other_h = heights[grid_index(x, z + (south_side ? 1 : -1))];
@@ -706,9 +706,9 @@ struct MeshBuild {
     void build_lod_skirts() {
         const int32_t skirt_depth_voxels = std::max<int32_t>(LOD_SKIRT_DEPTH_VOXELS, step_voxels * 8);
         const double x0 = 0.0;
-        const double x1 = static_cast<double>(cells_x * step_voxels) * VOXEL_SIZE;
+        const double x1 = static_cast<double>(size_voxels_x) * VOXEL_SIZE;
         const double z0 = 0.0;
-        const double z1 = static_cast<double>(cells_z * step_voxels) * VOXEL_SIZE;
+        const double z1 = static_cast<double>(size_voxels_z) * VOXEL_SIZE;
 
         if (neighbor_lod("left") >= 0) {
             for (int32_t z = 0; z < cells_z; ++z) {
