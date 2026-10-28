@@ -24,7 +24,6 @@ var rejected_mesh_step_voxels: int = -1
 var neighbor_lods_used: Dictionary = {}
 
 var _render_active: bool = true
-var _shadow_mode: int = 1
 var _skirt_visibility_cache := Vector4(-1.0, -1.0, -1.0, -1.0)
 # Use a unique regular ShaderMaterial per chunk instead of instance uniforms.
 # Compatibility renderer hardware can impose a very low per-instance-uniform limit.
@@ -111,7 +110,6 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     _mesh_shader_material = null
     coord = data.get("coord", Vector2i.ZERO)
     lod = int(data.get("lod", -1))
-    _shadow_mode = clampi(GameSettings.shadow_mode, 0, 1)
     mesh_step_voxels = int(data.get("step_voxels", 1 << clampi(lod, 0, 7)))
     neighbor_lods_used = data.get("neighbor_lods_used", {}).duplicate(true)
     collision_enabled = false
@@ -232,9 +230,8 @@ func set_render_active(active: bool, request_collision: bool = false) -> void:
         set_collision_active(wants_active_collision)
 
 
-func set_shadow_mode(mode: int) -> void:
-    # Backward-compatible API; shadow attenuation now follows a fixed per-LOD profile.
-    _shadow_mode = clampi(mode, 0, 1)
+func set_shadow_mode(_mode: int) -> void:
+    # Backward-compatible API; shadow attenuation is fixed per LOD and cannot be overridden globally.
     if _mesh_shader_material != null:
         _mesh_shader_material.set_shader_parameter("lod_shadow_strength", _shadow_receive_strength())
     var shadow_proxy := get_node_or_null("TerrainShadowProxy") as MeshInstance3D
