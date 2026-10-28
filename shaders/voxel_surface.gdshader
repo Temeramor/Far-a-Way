@@ -158,13 +158,18 @@ vec3 rock_palette(float pick) {
 float rock_bedding(vec2 pixel_world, float frequency) {
     float angle = 0.28 + fract(seed_low * 0.000017 + seed_high * 0.00011) * 0.48;
     vec2 axis = vec2(cos(angle), sin(angle));
-    float warp_a = value_noise(pixel_world * 0.008 + vec2(13.2, seed_low * 0.00019));
-    float warp_b = value_noise(pixel_world * 0.016 + vec2(seed_high * 0.00023, 29.7));
+    // Scale the domain warp with the band spacing. Coarse LODs then sample broad,
+    // stable strata instead of aliasing high-frequency noise into a checker pattern.
+    float warp_a_frequency = max(frequency * 0.22, 0.0012);
+    float warp_b_frequency = max(frequency * 0.43, 0.0020);
+    float warp_a = value_noise(pixel_world * warp_a_frequency + vec2(13.2, seed_low * 0.00019));
+    float warp_b = value_noise(pixel_world * warp_b_frequency + vec2(seed_high * 0.00023, 29.7));
     float layer_coordinate = dot(pixel_world, axis) * frequency
         + (warp_a - 0.5) * 0.72 + (warp_b - 0.5) * 0.24;
     float phase = fract(layer_coordinate);
     float edge = min(phase, 1.0 - phase);
-    float brokenness = value_noise(pixel_world * 0.032 + vec2(4.1, seed_low * 0.00031));
+    float brokenness_frequency = max(frequency * 0.90, 0.0040);
+    float brokenness = value_noise(pixel_world * brokenness_frequency + vec2(4.1, seed_low * 0.00031));
     return (1.0 - smoothstep(0.025, 0.11, edge)) * smoothstep(0.17, 0.58, brokenness);
 }
 
@@ -272,8 +277,9 @@ vec3 voxel_lod_rock_color(vec2 world_xz, float cell_size) {
 
     // Coarser LODs keep broad mineral strata and pitted colour variation without
     // drawing sub-pixel fissures that would shimmer into moire patterns.
-    float bedding = rock_bedding(center, 0.009);
-    float mineral_tone = value_noise(center * 0.024 + vec2(14.6, seed_low * 0.00018));
+    float bedding = rock_bedding(center, 0.0042);
+    float mineral_frequency = cell_size >= 25.6 ? 0.0035 : (cell_size >= 6.4 ? 0.012 : 0.024);
+    float mineral_tone = value_noise(center * mineral_frequency + vec2(14.6, seed_low * 0.00018));
     color = mix(color, palette_color(vec3(0.14, 0.155, 0.17)), bedding * 0.26);
     color *= mix(0.88, 1.07, mineral_tone);
     return color;
@@ -417,7 +423,8 @@ void fragment() {
         float rock_mask = (is_top_surface || is_surface_side)
             ? top_rock_amount
             : ((COLOR.g > COLOR.r * 1.35 || COLOR.r > COLOR.g * 1.15) ? 0.0 : 1.0);
-        float roughness_field = value_noise(world_position.xz * 0.11
+        float roughness_frequency = lod_index >= 6 ? 0.0040 : (lod_index >= 4 ? 0.018 : 0.11);
+        float roughness_field = value_noise(world_position.xz * roughness_frequency
             + vec2(seed_low * 0.00029, 37.4));
         ROUGHNESS = clamp(ROUGHNESS + (roughness_field - 0.5) * 0.18 * rock_mask, 0.70, 0.99);
     }
