@@ -478,11 +478,19 @@ struct MeshBuild {
 
         raw_heights.resize(static_cast<size_t>(total_samples));
         for (int32_t gz = 0; gz < grid_depth; ++gz) {
-            const double global_cell_z = static_cast<double>(start_voxel_z) +
-                static_cast<double>(gz - halo) * step_voxels + static_cast<double>(step_voxels) * 0.5;
+            const int32_t local_cell_z = (gz - halo) * step_voxels;
+            double sample_local_z = static_cast<double>(local_cell_z) + static_cast<double>(step_voxels) * 0.5;
+            if (local_cell_z >= 0 && local_cell_z < size_voxels_z) {
+                sample_local_z = std::min(sample_local_z, static_cast<double>(size_voxels_z) - 0.5);
+            }
+            const double global_cell_z = static_cast<double>(start_voxel_z) + sample_local_z;
             for (int32_t gx = 0; gx < grid_width; ++gx) {
-                const double global_cell_x = static_cast<double>(start_voxel_x) +
-                    static_cast<double>(gx - halo) * step_voxels + static_cast<double>(step_voxels) * 0.5;
+                const int32_t local_cell_x = (gx - halo) * step_voxels;
+                double sample_local_x = static_cast<double>(local_cell_x) + static_cast<double>(step_voxels) * 0.5;
+                if (local_cell_x >= 0 && local_cell_x < size_voxels_x) {
+                    sample_local_x = std::min(sample_local_x, static_cast<double>(size_voxels_x) - 0.5);
+                }
+                const double global_cell_x = static_cast<double>(start_voxel_x) + sample_local_x;
                 raw_heights[static_cast<size_t>(gz) * grid_width + gx] =
                     cached_height_voxels(global_cell_x, global_cell_z);
             }
