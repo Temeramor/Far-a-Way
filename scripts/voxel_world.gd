@@ -443,7 +443,25 @@ func _refresh_streaming() -> void:
     for tz in range(root_tiles):
         for tx in range(root_tiles):
             _collect_lod_tiles(7, tx, tz, player_xz, heading, wanted, player_y)
+
+    # Detect actual LOD-tree topology changes. Player movement inside the same LOD bands
+    # only updates priorities/distances and must not trigger a full hierarchy traversal.
+    var previous_wanted: Dictionary = _wanted
+    var changed_topology: Array[Vector2i] = []
+    for previous_key_value in previous_wanted.keys():
+        var previous_key: Vector2i = previous_key_value
+        if not wanted.has(previous_key):
+            changed_topology.append(previous_key)
+        elif bool(previous_wanted[previous_key].get("fallback", false)) != bool(wanted[previous_key].get("fallback", false)):
+            changed_topology.append(previous_key)
+    for wanted_key_value in wanted.keys():
+        var wanted_key: Vector2i = wanted_key_value
+        if not previous_wanted.has(wanted_key):
+            changed_topology.append(wanted_key)
+
     _wanted = wanted
+    for changed_coord in changed_topology:
+        _mark_hierarchy_dirty_for(changed_coord)
     for queued_coord in _queued.keys():
         if not wanted.has(queued_coord):
             _queued.erase(queued_coord)
@@ -502,7 +520,6 @@ func _refresh_streaming() -> void:
             _queued[coord] = request
         else:
             _queued.erase(coord)
-    _hierarchy_visibility_dirty = true
     _record_timing(_refresh_usec_samples, Time.get_ticks_usec() - refresh_started_usec, 96)
 
 func _update_chunk_skirt_visibility(coord: Vector2i, chunk: VoxelTerrainChunk) -> void:
