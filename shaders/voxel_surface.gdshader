@@ -283,7 +283,21 @@ void fragment() {
     vec2 rock_world = world_position.xz;
 
     if (debug_lod_colors) {
-        ALBEDO = clamp(COLOR.rgb, vec3(0.0), vec3(1.0));
+        if (lod_index == 0) {
+            ALBEDO = vec3(0.93, 0.28, 0.28);
+        } else if (lod_index == 1) {
+            ALBEDO = vec3(0.91, 0.63, 0.18);
+        } else if (lod_index == 2) {
+            ALBEDO = vec3(0.21, 0.79, 0.70);
+        } else if (lod_index == 3) {
+            ALBEDO = vec3(0.33, 0.49, 0.91);
+        } else if (lod_index == 4) {
+            ALBEDO = vec3(0.69, 0.42, 0.88);
+        } else if (lod_index == 5) {
+            ALBEDO = vec3(0.92, 0.34, 0.71);
+        } else {
+            ALBEDO = vec3(0.35, 0.74, 0.92);
+        }
         ROUGHNESS = 0.96;
     } else if (lod_index >= 3) {
         // Distant tiers skip per-cell hashes, fine colour variation and Voronoi crack searches.
