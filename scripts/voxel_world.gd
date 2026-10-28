@@ -499,6 +499,10 @@ func _refresh_streaming() -> void:
         var coord: Vector2i = coord_value
         var request: Dictionary = wanted[coord]
         var chunk: VoxelTerrainChunk = _chunks.get(coord) as VoxelTerrainChunk
+        if chunk != null:
+            # Collision requests can change while the visible LOD tree stays the same.
+            # Sync the collider immediately instead of waiting for a topology change.
+            chunk.set_render_active(chunk._render_active, bool(request["collision"]))
         var fallback_children_ready: bool = _fallback_children_ready(coord)
         var rejected_same_mesh_request: bool = chunk != null and chunk.mesh_upload_rejected and chunk.rejected_mesh_lod == int(request["lod"]) and chunk.rejected_mesh_step_voxels == int(request["step_voxels"])
         # A deterministic oversize/malformed mesh must not enter an endless rebuild loop.
