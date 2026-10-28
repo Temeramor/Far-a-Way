@@ -880,7 +880,7 @@ struct MeshBuild {
             return Dictionary();
         }
 
-        step_voxels = std::max<int32_t>(1, static_cast<int32_t>(request.get("step_voxels", BASE_MESH_STEP_VOXELS << lod)));
+        step_voxels = std::max<int32_t>(1, static_cast<int32_t>(request.get("step_voxels", lod == 0 ? BASE_MESH_STEP_VOXELS : (BASE_MESH_STEP_VOXELS << (lod + 1)))));
         cache_step_voxels = std::max<int32_t>(HEIGHT_CACHE_STEP_VOXELS, step_voxels);
         cell_size = static_cast<double>(step_voxels) * VOXEL_SIZE;
         cells_x = static_cast<int32_t>(std::ceil(static_cast<double>(size_voxels_x) / step_voxels));
