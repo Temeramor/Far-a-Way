@@ -105,7 +105,13 @@ func _run() -> void:
         errors.append("LOD7 should return indexed voxel faces rather than a shared smooth grid")
     var far_indices: PackedInt32Array = far_data.get("indices", PackedInt32Array())
     if far_indices.is_empty() or far_indices.size() % 3 != 0:
-        errors.append("LOD7 smooth mesh triangle indices should be a non-empty multiple of three")
+        errors.append("LOD7 voxel mesh triangle indices should be a non-empty multiple of three")
+    var far_step_m: float = 12.8
+    for vertex_index in range(0, far_vertices.size(), 37):
+        var quantised_height: float = far_vertices[vertex_index].y / far_step_m
+        if absf(quantised_height - roundf(quantised_height)) > 0.001:
+            errors.append("LOD7 vertex heights should align to its 12.8 m voxel lattice")
+            break
 
     # LOD2 also uses voxel faces; a small tile keeps the fallback smoke test quick.
     var compact_data: Dictionary = far_builder.build_mesh_data({
@@ -134,6 +140,11 @@ func _run() -> void:
         errors.append("LOD2 compact mesh vertex attributes should have matching array lengths")
     if compact_indices.is_empty() or compact_indices.size() % 3 != 0:
         errors.append("LOD2 mesh triangle indices should be a non-empty multiple of three")
+    for vertex_index in range(0, compact_vertices.size(), 19):
+        var quantised_height: float = compact_vertices[vertex_index].y / 0.4
+        if absf(quantised_height - roundf(quantised_height)) > 0.001:
+            errors.append("LOD2 vertex heights should align to its 0.4 m voxel lattice")
+            break
 
     # Regression: leaf visibility must safely handle a typed empty child list.
     var leaf_key: Vector2i = world._make_lod_key(0, 0, 0)
