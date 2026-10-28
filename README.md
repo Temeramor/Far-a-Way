@@ -51,7 +51,7 @@ The world is divided into terrain chunks, generated in the background and priori
 | LOD6 | 6.4 m |
 | LOD7 | 12.8 m |
 
-Every visible LOD uses voxel faces. Greedy top-face merging, exposed side faces and stitching skirts preserve the block style; the invisible smooth heightfield is reserved for terrain-shadow proxies. Each LOD quantises both horizontal and vertical detail to its own voxel step, so the farthest levels remain voxel terrain rather than a smooth heightfield.
+Every visible LOD uses voxel faces. Greedy merging of top faces and matching side runs, plus exposed risers and stitching skirts, preserve the block style; the invisible smooth heightfield is reserved for terrain-shadow proxies. Each LOD quantises both horizontal and vertical detail to its own voxel step, so the farthest levels remain voxel terrain rather than a smooth heightfield.
 
 LOD boundaries are calculated from the active viewport height and an 82° design vertical FOV. The next tier's voxel step reaches one screen pixel at each boundary, and a 5% hysteresis prevents rapid switching around thresholds. The boundaries scale with resolution; at 720p, 900p, 1080p and 1440p they are:
 
@@ -62,7 +62,7 @@ LOD boundaries are calculated from the active viewport height and an 82° design
 | 1080p | 124 m | 248 m | 497 m | 994 m | 1,988 m | 3,976 m | 7,951 m |
 | 1440p (2K-class) | 166 m | 331 m | 663 m | 1,325 m | 2,650 m | 5,301 m | 10,602 m |
 
-Parent tiles remain visible until the required child coverage is ready; their GPU meshes are released when child tiles can cover the same area. A border halo, stitching skirts and neighbour-aware visibility keep adjacent chunks connected. The stream manager uses 3D distance to the generated terrain surface, including altitude during flight, and prioritises jobs using view direction, velocity prediction and measured build/queue/apply timings. Full hierarchy and skirt scans are coalesced to once per frame when needed.
+Parent tiles remain visible until the required child coverage is ready; their GPU meshes are released when child tiles can cover the same area. A border halo, stitching skirts and neighbour-aware visibility keep adjacent chunks connected. The stream manager uses 3D distance to the generated terrain surface, including altitude during flight, and prioritises jobs using view direction, velocity prediction and measured build/queue/apply timings. Full hierarchy scans are coalesced to one refresh, while mesh uploads update only the affected LOD root and adjacent skirts.
 
 ## Lighting, weather and time of day
 
