@@ -121,7 +121,8 @@ func _process(delta: float) -> void:
                 clampi(floori((player_position.x - _world_min_x) / chunk_size_m), 0, _chunks_per_axis - 1),
                 clampi(floori((player_position.y - _world_min_z) / chunk_size_m), 0, _chunks_per_axis - 1)
             )
-            var altitude_changed: bool = absf(_player.global_position.y - _last_player_height) >= maxf(8.0, streaming_refresh_distance_m)
+            # Altitude must refresh at the same cadence as horizontal travel so spherical LOD boundaries are responsive.
+            var altitude_changed: bool = absf(_player.global_position.y - _last_player_height) >= maxf(1.0, streaming_refresh_distance_m)
             if viewport_changed or player_position.distance_to(_last_player_position) >= streaming_refresh_distance_m or altitude_changed or current_chunk != _last_refresh_chunk:
                 _last_player_position = player_position
                 _last_player_height = _player.global_position.y
@@ -509,9 +510,8 @@ func _refresh_streaming() -> void:
                 or chunk.mesh_step_voxels != int(request["step_voxels"])
                 or (bool(request["collision"]) and not chunk.collision_enabled)
             )
-        if fallback_children_ready and chunk != null and chunk.mesh_ready:
-            chunk.set_render_active(false)
-            chunk._retire_current_generation()
+        # Do not retire a fallback parent just because its children are ready. Keep the
+        # mesh cached while hidden so the parent can be restored immediately when LOD topology changes.
         if _running_job_matches(coord, request) or _completed_job_matches(coord, request):
             _queued.erase(coord)
         elif needs_build:
@@ -944,9 +944,8 @@ func _update_lod_subtree_visibility(coord: Vector2i, ancestors_visible: bool) ->
         chunk.set_render_active(node_active, bool(request.get("collision", false)))
         if was_active != node_active:
             _update_neighbor_chunk_skirts(coord)
-        # Once all children cover a fallback tile, its GPU mesh is no longer needed.
-        if parent and children_ready and chunk.mesh_ready:
-            chunk._retire_current_generation()
+        # Hidden fallback-parent meshes stay cached until normal distance-based eviction.
+        # This avoids rebuilding an entire parent tile when its subtree changes near a boundary.
     var children_visible: bool = ancestors_visible and parent and children_ready
     for child_key in children:
         _update_lod_subtree_visibility(child_key, children_visible)
@@ -974,6 +973,7 @@ func _collect_lod_tiles(lod_index: int, tile_x: int, tile_z: int, player_xz: Vec
     var nearest_z: float = clampf(player_xz.y, origin_z, origin_z + depth)
     var dx: float = player_xz.x - nearest_x
     var dz: float = player_xz.y - nearest_z
+    # Euclidean distance from the player to the local terrain surface (X, Y, Z), not an XZ-only radius.
     var terrain_y: float = _generator.get_surface_height(nearest_x, nearest_z)
     var vertical_delta: float = player_y - terrain_y
     var nearest: float = sqrt(dx * dx + dz * dz + vertical_delta * vertical_delta)
@@ -1050,7 +1050,8 @@ func _deadline_priority(center: Vector2, request: Dictionary, player_xz: Vector2
         priority -= 0.07
     if bool(request["collision"]):
         var nearest: float = float(request.get("nearest_distance", center.distance_to(player_xz)))
-        priority -= clampf((collision_distance_m - nearest) / maxf(collision_distance_m, 1.0), 0.0, 1.0) * 0.35
+        # A collider must arrive before the player reaches the tile, even when visual LOD work is queued.
+        priority -= 10000.0 + clampf((collision_distance_m - nearest) / maxf(collision_distance_m, 1.0), 0.0, 1.0) * 0.35
     return priority
 
 
