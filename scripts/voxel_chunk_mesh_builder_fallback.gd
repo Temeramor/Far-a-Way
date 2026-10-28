@@ -226,11 +226,11 @@ func _build_smooth_shadow_surface(
     if p_lod <= 1:
         shadow_step_voxels = 5
     elif p_lod == 2:
-        shadow_step_voxels = 10
+        shadow_step_voxels = 5
     elif p_lod <= 4:
-        shadow_step_voxels = 24 << (p_lod - 3)
+        shadow_step_voxels = 12 << (p_lod - 3)
     else:
-        shadow_step_voxels = 160 << (p_lod - 5)
+        shadow_step_voxels = 80 << (p_lod - 5)
     var shadow_cells_x: int = ceili(float(size_voxels_x) / float(shadow_step_voxels))
     var shadow_cells_z: int = ceili(float(size_voxels_z) / float(shadow_step_voxels))
     var shadow_width: int = shadow_cells_x + 1
