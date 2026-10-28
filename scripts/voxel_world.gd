@@ -273,7 +273,6 @@ func is_terrain_shadow_ready() -> bool:
 
 func is_world_coverage_ready() -> bool:
     var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 128))
-    var player_xz: Vector2 = _player_xz()
     for tz in range(root_tiles):
         for tx in range(root_tiles):
             var root_key := _make_lod_key(7, tx, tz)
@@ -366,7 +365,6 @@ func get_startup_progress() -> float:
     if not _startup_load_pending:
         return 1.0
     var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 128))
-    var player_xz: Vector2 = _player_xz()
     var roots_total: int = 0
     var roots_ready: int = 0
     for tz in range(root_tiles):
@@ -625,7 +623,7 @@ func _process_chunk_jobs() -> void:
         _queued.erase(coord)
         var neighbors: Dictionary = _neighbor_lods_for(coord)
         var job_data: Dictionary = {
-            "coord": coord, "request": request.duplicate(true), "neighbor_lods": neighbors.duplicate(true),
+            "coord": coord, "request": request.duplicate(), "neighbor_lods": neighbors.duplicate(),
             "seed": seed_value, "world_min_x": _world_min_x, "world_min_z": _world_min_z,
             "world_size_voxels": _world_size_voxels, "debug_lod_colors": _debug_lod_colors,
             "terrain_world_size_m": world_size_m, "mountain_profile": _mountain_profile_cache,
@@ -637,7 +635,7 @@ func _process_chunk_jobs() -> void:
             "VoxEn chunk %d,%d LOD%d" % [coord.x, coord.y, int(request["lod"])]
         )
         var task_record := {
-            "coord": coord, "request": request.duplicate(true), "neighbors": neighbors.duplicate(true),
+            "coord": coord, "request": request.duplicate(), "neighbors": neighbors.duplicate(),
             "builder": builder, "epoch": _generation_epoch, "debug": _debug_lod_colors,
             "seed": seed_value, "queued_usec": int(request["queued_usec"])
         }
@@ -937,11 +935,31 @@ func _update_lod_subtree_visibility(coord: Vector2i, ancestors_visible: bool) ->
         _update_lod_subtree_visibility(child_key, children_visible)
 
 func _collect_lod_tiles(lod_index: int, tile_x: int, tile_z: int, player_xz: Vector2, heading: Vector2, planar_velocity: Vector2, wanted: Dictionary, player_y: float = 0.0) -> void:
+    # Hot streaming path: calculate tile bounds arithmetically instead of allocating the
+    # eleven-key Dictionary returned by _chunk_bounds() for every visited node.
     var key := _make_lod_key(lod_index, tile_x, tile_z)
-    var bounds := _chunk_bounds(key)
-    if int(bounds["size_x"]) <= 0 or int(bounds["size_z"]) <= 0:
+    var tile_voxels: int = _chunk_size_voxels * (1 << lod_index)
+    var tiles_axis: int = ceili(float(_world_size_voxels) / float(tile_voxels))
+    if tile_x < 0 or tile_z < 0 or tile_x >= tiles_axis or tile_z >= tiles_axis:
         return
-    var nearest: float = _distance_to_chunk_bounds_3d(Vector3(player_xz.x, player_y, player_xz.y), bounds)
+    var start_x: int = tile_x * tile_voxels
+    var start_z: int = tile_z * tile_voxels
+    var size_x: int = maxi(0, mini(tile_voxels, _world_size_voxels - start_x))
+    var size_z: int = maxi(0, mini(tile_voxels, _world_size_voxels - start_z))
+    if size_x <= 0 or size_z <= 0:
+        return
+    var origin_x: float = _world_min_x + float(start_x) * VOXEL_SIZE
+    var origin_z: float = _world_min_z + float(start_z) * VOXEL_SIZE
+    var width: float = float(size_x) * VOXEL_SIZE
+    var depth: float = float(size_z) * VOXEL_SIZE
+    var center := Vector2(origin_x + width * 0.5, origin_z + depth * 0.5)
+    var nearest_x: float = clampf(player_xz.x, origin_x, origin_x + width)
+    var nearest_z: float = clampf(player_xz.y, origin_z, origin_z + depth)
+    var dx: float = player_xz.x - nearest_x
+    var dz: float = player_xz.y - nearest_z
+    var terrain_y: float = _generator.get_surface_height(nearest_x, nearest_z)
+    var vertical_delta: float = player_y - terrain_y
+    var nearest: float = sqrt(dx * dx + dz * dz + vertical_delta * vertical_delta)
     if nearest > render_distance_m:
         return
     var boundary: float = _lod_boundary_for(lod_index - 1) if lod_index > 0 else -1.0
@@ -954,22 +972,21 @@ func _collect_lod_tiles(lod_index: int, tile_x: int, tile_z: int, player_xz: Vec
         var scaled_hysteresis: float = boundary * lod_hysteresis_ratio
         var threshold: float = boundary + scaled_hysteresis if was_split else maxf(0.0, boundary - scaled_hysteresis)
         split = nearest < threshold
-    var center: Vector2 = bounds["center"]
     var horizontal_center_distance: float = center.distance_to(player_xz)
     var req := {
         "lod": lod_index, "fallback": split, "distance": nearest,
         "nearest_distance": nearest, "priority": horizontal_center_distance - maxf(0.0, (center - player_xz).dot(heading) * 0.30),
         "collision": lod_index == 0 and nearest <= collision_distance_m,
-        "start_x": int(bounds["start_x"]), "start_z": int(bounds["start_z"]),
-        "size_x": int(bounds["size_x"]), "size_z": int(bounds["size_z"]),
+        "start_x": start_x, "start_z": start_z,
+        "size_x": size_x, "size_z": size_z,
         "tile_x": tile_x, "tile_z": tile_z, "tile_size_m": chunk_size_m * float(1 << lod_index),
         "step_voxels": get_mesh_step_voxels(lod_index)
     }
     wanted[key] = req
     if split:
-        for dz in range(2):
-            for dx in range(2):
-                _collect_lod_tiles(lod_index - 1, tile_x * 2 + dx, tile_z * 2 + dz, player_xz, heading, planar_velocity, wanted, player_y)
+        for dz_offset in range(2):
+            for dx_offset in range(2):
+                _collect_lod_tiles(lod_index - 1, tile_x * 2 + dx_offset, tile_z * 2 + dz_offset, player_xz, heading, planar_velocity, wanted, player_y)
 
 func _get_streaming_heading() -> Vector2:
     if _player == null:
