@@ -464,7 +464,7 @@ func _refresh_streaming() -> void:
         var tile_size_m: float = chunk_size_m * float(1 << existing_lod)
         var inner_boundary: float = get_lod_boundary_m(existing_lod - 1) if existing_lod > 0 else 0.0
         var cache_radius: float = maxf(tile_size_m, inner_boundary + tile_size_m * 1.5)
-        if _distance_to_chunk_bounds(player_xz, _chunk_bounds(existing_coord)) > cache_radius:
+        if _distance_to_tile_xz(player_xz, existing_coord) > cache_radius:
             old_chunk.set_render_active(false)
             old_chunk._retire_current_generation()
             remove_child(old_chunk)
@@ -560,13 +560,23 @@ func _chunk_bounds(coord: Vector2i) -> Dictionary:
     var depth: float = float(size_z) * VOXEL_SIZE
     return {"start_x": start_x, "start_z": start_z, "size_x": size_x, "size_z": size_z, "origin": Vector2(origin_x, origin_z), "center": Vector2(origin_x + width * 0.5, origin_z + depth * 0.5), "width": width, "depth": depth, "lod": lod_index, "tile_x": tile_x, "tile_z": tile_z}
 
-func _distance_to_chunk_bounds(point: Vector2, bounds: Dictionary) -> float:
-    var center: Vector2 = bounds["center"]
-    var width: float = float(bounds["width"])
-    var depth: float = float(bounds["depth"])
-    var nearest_x: float = maxf(0.0, absf(point.x - center.x) - width * 0.5)
-    var nearest_z: float = maxf(0.0, absf(point.y - center.y) - depth * 0.5)
-    return Vector2(nearest_x, nearest_z).length()
+func _distance_to_tile_xz(point: Vector2, coord: Vector2i) -> float:
+    # Fast cache eviction distance without constructing a chunk-bounds Dictionary.
+    var lod_index: int = clampi(floori(float(coord.x) / float(LOD_KEY_STRIDE)), 0, 7)
+    var tile_x: int = coord.x - lod_index * LOD_KEY_STRIDE
+    var tile_z: int = coord.y
+    var tile_voxels: int = _chunk_size_voxels * (1 << lod_index)
+    var start_x: int = tile_x * tile_voxels
+    var start_z: int = tile_z * tile_voxels
+    var size_x: int = maxi(0, mini(tile_voxels, _world_size_voxels - start_x))
+    var size_z: int = maxi(0, mini(tile_voxels, _world_size_voxels - start_z))
+    var center_x: float = _world_min_x + (float(start_x) + float(size_x) * 0.5) * VOXEL_SIZE
+    var center_z: float = _world_min_z + (float(start_z) + float(size_z) * 0.5) * VOXEL_SIZE
+    var half_width: float = float(size_x) * VOXEL_SIZE * 0.5
+    var half_depth: float = float(size_z) * VOXEL_SIZE * 0.5
+    var nearest_x: float = maxf(0.0, absf(point.x - center_x) - half_width)
+    var nearest_z: float = maxf(0.0, absf(point.y - center_z) - half_depth)
+    return sqrt(nearest_x * nearest_x + nearest_z * nearest_z)
 
 
 func _process_chunk_jobs() -> void:
