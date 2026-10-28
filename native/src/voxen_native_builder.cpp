@@ -717,10 +717,10 @@ struct MeshBuild {
                 const int32_t top = std::min(h, outer_h);
                 const int32_t low = std::max(0, top - skirt_depth_voxels);
                 add_segmented_side_face(
-                    Vector3(x0, static_cast<double>(low) * VOXEL_SIZE, static_cast<double>(z + 1) * step_voxels * VOXEL_SIZE),
-                    Vector3(x0, static_cast<double>(top) * VOXEL_SIZE, static_cast<double>(z + 1) * step_voxels * VOXEL_SIZE),
-                    Vector3(x0, static_cast<double>(top) * VOXEL_SIZE, static_cast<double>(z) * step_voxels * VOXEL_SIZE),
-                    Vector3(x0, static_cast<double>(low) * VOXEL_SIZE, static_cast<double>(z) * step_voxels * VOXEL_SIZE),
+                    Vector3(x0, static_cast<double>(low) * VOXEL_SIZE, static_cast<double>(std::min((z + 1) * step_voxels, size_voxels_z)) * VOXEL_SIZE),
+                    Vector3(x0, static_cast<double>(top) * VOXEL_SIZE, static_cast<double>(std::min((z + 1) * step_voxels, size_voxels_z)) * VOXEL_SIZE),
+                    Vector3(x0, static_cast<double>(top) * VOXEL_SIZE, static_cast<double>(std::min(z * step_voxels, size_voxels_z)) * VOXEL_SIZE),
+                    Vector3(x0, static_cast<double>(low) * VOXEL_SIZE, static_cast<double>(std::min(z * step_voxels, size_voxels_z)) * VOXEL_SIZE),
                     Vector3(-1.0, 0.0, 0.0), low, top,
                     surface_types[static_cast<size_t>(z) * cells_x], true, SKIRT_ALPHA_LEFT);
             }
@@ -732,10 +732,10 @@ struct MeshBuild {
                 const int32_t top = std::min(h, outer_h);
                 const int32_t low = std::max(0, top - skirt_depth_voxels);
                 add_segmented_side_face(
-                    Vector3(x1, static_cast<double>(low) * VOXEL_SIZE, static_cast<double>(z) * step_voxels * VOXEL_SIZE),
-                    Vector3(x1, static_cast<double>(top) * VOXEL_SIZE, static_cast<double>(z) * step_voxels * VOXEL_SIZE),
-                    Vector3(x1, static_cast<double>(top) * VOXEL_SIZE, static_cast<double>(z + 1) * step_voxels * VOXEL_SIZE),
-                    Vector3(x1, static_cast<double>(low) * VOXEL_SIZE, static_cast<double>(z + 1) * step_voxels * VOXEL_SIZE),
+                    Vector3(x1, static_cast<double>(low) * VOXEL_SIZE, static_cast<double>(std::min(z * step_voxels, size_voxels_z)) * VOXEL_SIZE),
+                    Vector3(x1, static_cast<double>(top) * VOXEL_SIZE, static_cast<double>(std::min(z * step_voxels, size_voxels_z)) * VOXEL_SIZE),
+                    Vector3(x1, static_cast<double>(top) * VOXEL_SIZE, static_cast<double>(std::min((z + 1) * step_voxels, size_voxels_z)) * VOXEL_SIZE),
+                    Vector3(x1, static_cast<double>(low) * VOXEL_SIZE, static_cast<double>(std::min((z + 1) * step_voxels, size_voxels_z)) * VOXEL_SIZE),
                     Vector3(1.0, 0.0, 0.0), low, top,
                     surface_types[static_cast<size_t>(z) * cells_x + cells_x - 1], true, SKIRT_ALPHA_RIGHT);
             }
@@ -747,10 +747,10 @@ struct MeshBuild {
                 const int32_t top = std::min(h, outer_h);
                 const int32_t low = std::max(0, top - skirt_depth_voxels);
                 add_segmented_side_face(
-                    Vector3(static_cast<double>(x + 1) * step_voxels * VOXEL_SIZE, static_cast<double>(low) * VOXEL_SIZE, z0),
-                    Vector3(static_cast<double>(x) * step_voxels * VOXEL_SIZE, static_cast<double>(low) * VOXEL_SIZE, z0),
-                    Vector3(static_cast<double>(x) * step_voxels * VOXEL_SIZE, static_cast<double>(top) * VOXEL_SIZE, z0),
-                    Vector3(static_cast<double>(x + 1) * step_voxels * VOXEL_SIZE, static_cast<double>(top) * VOXEL_SIZE, z0),
+                    Vector3(static_cast<double>(std::min((x + 1) * step_voxels, size_voxels_x)) * VOXEL_SIZE, static_cast<double>(low) * VOXEL_SIZE, z0),
+                    Vector3(static_cast<double>(std::min(x * step_voxels, size_voxels_x)) * VOXEL_SIZE, static_cast<double>(low) * VOXEL_SIZE, z0),
+                    Vector3(static_cast<double>(std::min(x * step_voxels, size_voxels_x)) * VOXEL_SIZE, static_cast<double>(top) * VOXEL_SIZE, z0),
+                    Vector3(static_cast<double>(std::min((x + 1) * step_voxels, size_voxels_x)) * VOXEL_SIZE, static_cast<double>(top) * VOXEL_SIZE, z0),
                     Vector3(0.0, 0.0, -1.0), low, top,
                     surface_types[static_cast<size_t>(x)], false, SKIRT_ALPHA_NORTH);
             }
@@ -762,10 +762,10 @@ struct MeshBuild {
                 const int32_t top = std::min(h, outer_h);
                 const int32_t low = std::max(0, top - skirt_depth_voxels);
                 add_segmented_side_face(
-                    Vector3(static_cast<double>(x) * step_voxels * VOXEL_SIZE, static_cast<double>(low) * VOXEL_SIZE, z1),
-                    Vector3(static_cast<double>(x + 1) * step_voxels * VOXEL_SIZE, static_cast<double>(low) * VOXEL_SIZE, z1),
-                    Vector3(static_cast<double>(x + 1) * step_voxels * VOXEL_SIZE, static_cast<double>(top) * VOXEL_SIZE, z1),
-                    Vector3(static_cast<double>(x) * step_voxels * VOXEL_SIZE, static_cast<double>(top) * VOXEL_SIZE, z1),
+                    Vector3(static_cast<double>(std::min(x * step_voxels, size_voxels_x)) * VOXEL_SIZE, static_cast<double>(low) * VOXEL_SIZE, z1),
+                    Vector3(static_cast<double>(std::min((x + 1) * step_voxels, size_voxels_x)) * VOXEL_SIZE, static_cast<double>(low) * VOXEL_SIZE, z1),
+                    Vector3(static_cast<double>(std::min((x + 1) * step_voxels, size_voxels_x)) * VOXEL_SIZE, static_cast<double>(top) * VOXEL_SIZE, z1),
+                    Vector3(static_cast<double>(std::min(x * step_voxels, size_voxels_x)) * VOXEL_SIZE, static_cast<double>(top) * VOXEL_SIZE, z1),
                     Vector3(0.0, 0.0, 1.0), low, top,
                     surface_types[static_cast<size_t>(cells_z - 1) * cells_x + x], false, SKIRT_ALPHA_SOUTH);
             }
