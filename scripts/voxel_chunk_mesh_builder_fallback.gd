@@ -85,9 +85,17 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
     var raw_heights := PackedInt32Array()
     raw_heights.resize(total_samples)
     for gz in range(grid_depth):
-        var global_cell_z: float = float(start_voxel_z) + float(gz - halo) * float(step_voxels) + float(step_voxels) * 0.5
+        var local_cell_z: int = (gz - halo) * step_voxels
+        var sample_local_z: float = float(local_cell_z) + float(step_voxels) * 0.5
+        if local_cell_z >= 0 and local_cell_z < size_voxels_z:
+            sample_local_z = minf(sample_local_z, float(size_voxels_z) - 0.5)
+        var global_cell_z: float = float(start_voxel_z) + sample_local_z
         for gx in range(grid_width):
-            var global_cell_x: float = float(start_voxel_x) + float(gx - halo) * float(step_voxels) + float(step_voxels) * 0.5
+            var local_cell_x: int = (gx - halo) * step_voxels
+            var sample_local_x: float = float(local_cell_x) + float(step_voxels) * 0.5
+            if local_cell_x >= 0 and local_cell_x < size_voxels_x:
+                sample_local_x = minf(sample_local_x, float(size_voxels_x) - 0.5)
+            var global_cell_x: float = float(start_voxel_x) + sample_local_x
             raw_heights[gz * grid_width + gx] = _cached_height_voxels(global_cell_x, global_cell_z, height_cache, cache_width, cache_depth, cache_origin_x, cache_origin_z, cache_step_voxels, world_size_voxels)
     var heights: PackedInt32Array = raw_heights.duplicate()
     # Quantise vertical heights to the same world-space step as each LOD's horizontal cell.
@@ -114,8 +122,14 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
             var dx: float = float(right_h - left_h) * VOXEL_SIZE / (2.0 * float(macro_offset) * cell_size)
             var dz: float = float(south_h - north_h) * VOXEL_SIZE / (2.0 * float(macro_offset) * cell_size)
             var slope: float = sqrt(dx * dx + dz * dz)
-            var world_x: float = world_min_x + (float(start_voxel_x + x * step_voxels) + float(step_voxels) * 0.5) * VOXEL_SIZE
-            var world_z: float = world_min_z + (float(start_voxel_z + z * step_voxels) + float(step_voxels) * 0.5) * VOXEL_SIZE
+            var local_sample_x: float = float(x * step_voxels) + float(step_voxels) * 0.5
+            var local_sample_z: float = float(z * step_voxels) + float(step_voxels) * 0.5
+            if x >= 0 and x < cells_x:
+                local_sample_x = minf(local_sample_x, float(size_voxels_x) - 0.5)
+            if z >= 0 and z < cells_z:
+                local_sample_z = minf(local_sample_z, float(size_voxels_z) - 0.5)
+            var world_x: float = world_min_x + (float(start_voxel_x) + local_sample_x) * VOXEL_SIZE
+            var world_z: float = world_min_z + (float(start_voxel_z) + local_sample_z) * VOXEL_SIZE
             var rock_weight: float = generator.get_surface_rock_weight(slope, world_x, world_z)
             surface_rock_weights[(z + 1) * rock_weight_width + x + 1] = rock_weight
             if x >= 0 and x < cells_x and z >= 0 and z < cells_z:
