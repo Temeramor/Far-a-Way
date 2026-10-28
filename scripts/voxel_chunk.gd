@@ -109,7 +109,7 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     _mesh_shader_material = null
     coord = data.get("coord", Vector2i.ZERO)
     lod = int(data.get("lod", -1))
-    mesh_step_voxels = int(data.get("step_voxels", 1 << clampi(lod, 0, 7)))
+    mesh_step_voxels = int(data.get("step_voxels", 1 if lod == 0 else 1 << (lod + 1)))
     neighbor_lods_used = data.get("neighbor_lods_used", {}).duplicate(true)
     collision_enabled = false
     collision_active = false
