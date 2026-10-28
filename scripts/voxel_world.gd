@@ -797,7 +797,8 @@ func _target_lod_for_neighbor(neighbor_coord: Vector2i) -> int:
     var visible_chunk: VoxelTerrainChunk = _chunks.get(visible_key) as VoxelTerrainChunk
     if visible_chunk != null and visible_chunk.mesh_ready and visible_chunk._render_active:
         return visible_chunk.lod
-    var target_key := _find_target_lod_key_at_point(bounds["center"])
+    var neighbor_center: Vector2 = _chunk_center(neighbor_coord)
+    var target_key := _find_target_lod_key_at_point(neighbor_center)
     var target: Dictionary = _wanted.get(target_key, {})
     return int(target.get("lod", -1))
 
