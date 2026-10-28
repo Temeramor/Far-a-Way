@@ -18,6 +18,8 @@ var coord: Vector2i = Vector2i.ZERO
 var lod: int = -1
 var collision_enabled: bool = false
 var _active_step_voxels: int = 1
+var _active_size_voxels_x: int = 0
+var _active_size_voxels_z: int = 0
 var _vertices := PackedVector3Array()
 var _normals := PackedVector3Array()
 var _colors := PackedColorArray()
@@ -55,6 +57,8 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
     var cells_x: int = int(ceil(float(size_voxels_x) / float(step_voxels)))
     var cells_z: int = int(ceil(float(size_voxels_z) / float(step_voxels)))
     _active_step_voxels = step_voxels
+    _active_size_voxels_x = size_voxels_x
+    _active_size_voxels_z = size_voxels_z
 
     var macro_offset: int = maxi(1, int(round(1.0 / cell_size)))
     var halo: int = macro_offset + 1
@@ -332,9 +336,9 @@ func _build_greedy_top_faces(
                     visited[(z + dz) * cells_x + x + dx] = 1
 
             var x0: float = float(x * step_voxels) * VOXEL_SIZE
-            var x1: float = float((x + run_x) * step_voxels) * VOXEL_SIZE
+            var x1: float = float(mini((x + run_x) * step_voxels, _active_size_voxels_x)) * VOXEL_SIZE
             var z0: float = float(z * step_voxels) * VOXEL_SIZE
-            var z1: float = float((z + run_z) * step_voxels) * VOXEL_SIZE
+            var z1: float = float(mini((z + run_z) * step_voxels, _active_size_voxels_z)) * VOXEL_SIZE
             var y: float = float(height_voxels) * VOXEL_SIZE
             var weight_0: float = _average_surface_rock_weight(surface_rock_weights, cells_x, x, z)
             var weight_1: float = _average_surface_rock_weight(surface_rock_weights, cells_x, x, z + run_z)
@@ -392,7 +396,7 @@ func _emit_side_runs_x(
     grid_width: int, halo: int, cells_x: int, cells_z: int, step_voxels: int,
     x: int, right_side: bool
 ) -> void:
-    var x_voxels: int = (x + (1 if right_side else 0)) * step_voxels
+    var x_voxels: int = mini((x + (1 if right_side else 0)) * step_voxels, _active_size_voxels_x)
     var x_pos: float = float(x_voxels) * VOXEL_SIZE
     var neighbour_x: int = x + (1 if right_side else -1)
     var z: int = 0
@@ -417,7 +421,7 @@ func _emit_side_runs_x(
             weight_sum += next_weight
             run += 1
         var z0: float = float(z * step_voxels) * VOXEL_SIZE
-        var z1: float = float(mini((z + run) * step_voxels, cells_z * step_voxels)) * VOXEL_SIZE
+        var z1: float = float(mini((z + run) * step_voxels, _active_size_voxels_z)) * VOXEL_SIZE
         var low_m: float = float(other_h) * VOXEL_SIZE
         var high_m: float = float(h) * VOXEL_SIZE
         if right_side:
@@ -440,7 +444,7 @@ func _emit_side_runs_z(
     grid_width: int, halo: int, cells_x: int, cells_z: int, step_voxels: int,
     z: int, south_side: bool
 ) -> void:
-    var z_voxels: int = (z + (1 if south_side else 0)) * step_voxels
+    var z_voxels: int = mini((z + (1 if south_side else 0)) * step_voxels, _active_size_voxels_z)
     var z_pos: float = float(z_voxels) * VOXEL_SIZE
     var neighbour_z: int = z + (1 if south_side else -1)
     var x: int = 0
@@ -465,7 +469,7 @@ func _emit_side_runs_z(
             weight_sum += next_weight
             run += 1
         var x0: float = float(x * step_voxels) * VOXEL_SIZE
-        var x1: float = float(mini((x + run) * step_voxels, cells_x * step_voxels)) * VOXEL_SIZE
+        var x1: float = float(mini((x + run) * step_voxels, _active_size_voxels_x)) * VOXEL_SIZE
         var low_m: float = float(other_h) * VOXEL_SIZE
         var high_m: float = float(h) * VOXEL_SIZE
         if south_side:
@@ -488,9 +492,9 @@ func _build_lod_skirts(heights: PackedInt32Array, surface_types: PackedByteArray
     # neighbouring mesh is absent or stale, then hide them once equal-LOD geometry is ready.
     # Their top aligns to the lower of the two local halo samples to avoid overlapping ordinary walls.
     var x0: float = 0.0
-    var x1: float = float(cells_x * step_voxels) * VOXEL_SIZE
+    var x1: float = float(_active_size_voxels_x) * VOXEL_SIZE
     var z0: float = 0.0
-    var z1: float = float(cells_z * step_voxels) * VOXEL_SIZE
+    var z1: float = float(_active_size_voxels_z) * VOXEL_SIZE
     var skirt_depth_voxels: int = maxi(LOD_SKIRT_DEPTH_VOXELS, step_voxels * 8)
     if int(neighbor_lods.get("left", -1)) >= 0:
         for z in range(cells_z):
