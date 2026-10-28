@@ -18,7 +18,7 @@ func _run() -> void:
 
     # Screen-space transitions: the next LOD's cell reaches one pixel at each boundary.
     var screen_heights: Array[int] = [720, 900, 1080, 1440]
-    var expected_first_boundary: Array[float] = [331.31, 414.13, 496.96, 662.61]
+    var expected_first_boundary: Array[float] = [165.66, 207.06, 248.48, 331.31]
     for i in range(screen_heights.size()):
         var screen_height: int = screen_heights[i]
         var first_boundary: float = world.get_lod_boundary_m_for_height(0, float(screen_height), 1.0)
@@ -44,8 +44,8 @@ func _run() -> void:
                 lod_index, boundary, just_before, at_boundary
             ])
 
-    var expected_tile_sizes: Array[float] = [32.0, 64.0, 128.0, 256.0, 512.0, 2000.0, 2000.0, 2000.0]
-    var expected_steps_voxels: Array[int] = [1, 4, 8, 16, 32, 64, 128, 256]
+    var expected_tile_sizes: Array[float] = [32.0, 64.0, 128.0, 256.0, 512.0, 1024.0, 2000.0, 2000.0]
+    var expected_steps_voxels: Array[int] = [1, 2, 4, 8, 16, 32, 64, 128]
     for lod in range(8):
         var key: Vector2i = world._make_lod_key(lod, 0, 0)
         var bounds: Dictionary = world._chunk_bounds(key)
@@ -58,7 +58,7 @@ func _run() -> void:
                 lod, expected_steps_voxels[lod], world.get_mesh_step_voxels(lod)
             ])
 
-    # The whole 2 km world fits in one LOD7 root (51.2 m cells). The centre should refine,
+    # The whole 2 km world fits in one LOD7 root (25.6 m cells). The centre should refine,
     # while the outer corner should remain outside this test's 1,024 m streaming radius.
     var distance_requests: Dictionary = {}
     var root_count: int = ceili(float(world._world_size_voxels) / float(world._chunk_size_voxels * 128))
@@ -129,14 +129,14 @@ func _run() -> void:
     var far_indices: PackedInt32Array = far_data.get("indices", PackedInt32Array())
     if far_indices.is_empty() or far_indices.size() % 3 != 0:
         errors.append("LOD7 voxel mesh triangle indices should be a non-empty multiple of three")
-    var far_step_m: float = 51.2
+    var far_step_m: float = 25.6
     for vertex_index in range(0, far_vertices.size(), 37):
         var quantised_height: float = far_vertices[vertex_index].y / far_step_m
         if absf(quantised_height - roundf(quantised_height)) > 0.001:
-            errors.append("LOD7 vertex heights should align to its 51.2 m voxel lattice")
+            errors.append("LOD7 vertex heights should align to its 25.6 m voxel lattice")
             break
 
-    # The final LOD7 root is not a full multiple of the 51.2 m voxel step.
+    # The final LOD7 root is not a full multiple of the 25.6 m voxel step.
     # Its final partial cells must sample inside the world instead of becoming zero-height columns.
     var edge_data: Dictionary = far_builder.build_mesh_data({
         "coord": Vector2i.ZERO,
