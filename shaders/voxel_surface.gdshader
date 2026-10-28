@@ -13,6 +13,7 @@ uniform int lod_index = 0;
 varying vec3 world_position;
 varying vec3 world_normal;
 varying vec3 view_up_direction;
+varying float camera_distance;
 
 vec3 palette_color(vec3 srgb) {
     return pow(srgb, vec3(2.2));
@@ -254,6 +255,8 @@ void vertex() {
     world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
     world_normal = normalize(MODEL_NORMAL_MATRIX * NORMAL);
     view_up_direction = normalize((VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+    // Pass view-space distance to light(); fragment-stage built-ins aren't directly available there.
+    camera_distance = length((VIEW_MATRIX * vec4(world_position, 1.0)).xyz);
 }
 
 void fragment() {
@@ -316,7 +319,7 @@ void fragment() {
         ROUGHNESS = 0.96;
     } else if (lod_index >= 3) {
         // Keep a deterministic colour per voxel at every distance. Only the palette detail
-        // simplifies with LOD: the cell size follows the same 10 cm-to-12.8 m voxel ladder.
+        // simplifies with LOD: the cell size follows the same 10 cm-to-25.6 m voxel ladder.
         float lod_voxel_size = lod_cell_size;
         if (is_top_surface || is_surface_side) {
             ALBEDO = mix(
@@ -378,7 +381,7 @@ void fragment() {
 void light() {
     vec3 light_normal = normalize(NORMAL);
     float side = 1.0 - smoothstep(0.15, 0.45, abs(normalize(world_normal).y));
-    float shadow_strength = mix(0.20, 0.0, smoothstep(40.0, 500.0, length(VERTEX)));
+    float shadow_strength = mix(0.20, 0.0, smoothstep(40.0, 500.0, camera_distance));
 
     float attenuation = ATTENUATION;
     if (LIGHT_IS_DIRECTIONAL) {
