@@ -14,7 +14,7 @@
 - Added lower-density terrain-shadow proxies within the near shadow range, cache-aligned height sampling and resource-aware fallback tile coverage.
 - Added asynchronous native C++ mesh generation, a GDScript fallback builder, collision height maps and packed vertex/index arrays.
 - Added movement-aware terrain streaming prioritised by distance, view direction, velocity prediction and measured worker timing.
-- Added bounded worker scheduling, LOD-aware chunk caching, per-root hierarchy updates, local skirt updates and release of hidden parent meshes, release of hidden parent meshes, and streaming diagnostics.
+- Added bounded worker scheduling, LOD-aware chunk caching, per-root hierarchy updates, local skirt updates, release of hidden parent meshes and streaming diagnostics.
 - Added VoxEn diagnostics on F3, including FPS, frame time, LOD distribution, queued and running jobs, chunk geometry counts, estimated mesh memory, video-memory usage, shadow vertex counts and rendered primitive counts.
 - Added F4 shader-based LOD colour visualisation for live inspection of the active voxel tiers.
 - Added display options for windowed and fullscreen modes, with selectable resolutions from 640 × 360 through 2560 × 1440 and persistent preferences.
