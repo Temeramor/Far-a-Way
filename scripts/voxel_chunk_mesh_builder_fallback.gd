@@ -553,6 +553,60 @@ func _sample_height_voxel_units(
     var world_z: float = world_min_z + global_voxel_z * VOXEL_SIZE
     return maxf(1.0, generator.get_surface_height(world_x, world_z) / VOXEL_SIZE)
 
+
+func _cached_height_voxels(
+    gx: float,
+    gz: float,
+    cache: PackedFloat32Array,
+    cache_width: int,
+    cache_depth: int,
+    origin_x: int,
+    origin_z: int,
+    cache_step_voxels: int,
+    world_size_voxels: int
+) -> int:
+    if gx < 0.0 or gz < 0.0 or gx >= float(world_size_voxels) or gz >= float(world_size_voxels):
+        return 0
+    var fx: float = (gx - float(origin_x)) / float(cache_step_voxels)
+    var fz: float = (gz - float(origin_z)) / float(cache_step_voxels)
+    var bx: int = floori(fx)
+    var bz: int = floori(fz)
+    var tx: float = clampf(fx - float(bx), 0.0, 1.0)
+    var tz: float = clampf(fz - float(bz), 0.0, 1.0)
+    var row0: float = 0.0
+    var row1: float = 0.0
+    var row2: float = 0.0
+    var row3: float = 0.0
+    var h_min: float = INF
+    var h_max: float = -INF
+    for dz in range(4):
+        var iz: int = clampi(bz + dz - 1, 0, cache_depth - 1)
+        var x0: int = clampi(bx - 1, 0, cache_width - 1)
+        var x1: int = clampi(bx, 0, cache_width - 1)
+        var x2: int = clampi(bx + 1, 0, cache_width - 1)
+        var x3: int = clampi(bx + 2, 0, cache_width - 1)
+        var p0: float = cache[iz * cache_width + x0]
+        var p1: float = cache[iz * cache_width + x1]
+        var p2: float = cache[iz * cache_width + x2]
+        var p3: float = cache[iz * cache_width + x3]
+        var interpolated_row: float = _cubic_interpolate(p0, p1, p2, p3, tx)
+        if dz == 0:
+            row0 = interpolated_row
+        elif dz == 1:
+            row1 = interpolated_row
+        elif dz == 2:
+            row2 = interpolated_row
+        else:
+            row3 = interpolated_row
+        h_min = minf(h_min, minf(minf(p0, p1), minf(p2, p3)))
+        h_max = maxf(h_max, maxf(maxf(p0, p1), maxf(p2, p3)))
+    var height: float = _cubic_interpolate(row0, row1, row2, row3, tz)
+    return maxi(1, roundi(clampf(height, h_min, h_max)))
+
+
+func _cubic_interpolate(p0: float, p1: float, p2: float, p3: float, t: float) -> float:
+    return p1 + 0.5 * t * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + t * (3.0 * (p1 - p2) + p3 - p0)))
+
 func _grid_index(x: int, z: int, grid_width: int, halo: int) -> int:
     return (z + halo) * grid_width + x + halo
 
