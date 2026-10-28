@@ -364,74 +364,110 @@ func _build_exposed_side_faces(
     cells_z: int,
     step_voxels: int
 ) -> void:
-    # The upper exposed voxel uses the same grass/rock blend as its top face.
-    # Lower exposed voxels retain their own soil/rock layers.
+    # Merge consecutive side faces that share both height levels and material weights.
+    for x in range(cells_x):
+        _emit_side_runs_x(heights, surface_types, surface_rock_weights, grid_width, halo, cells_x, cells_z, step_voxels, x, false)
+        _emit_side_runs_x(heights, surface_types, surface_rock_weights, grid_width, halo, cells_x, cells_z, step_voxels, x, true)
     for z in range(cells_z):
-        for x in range(cells_x):
-            var h: int = heights[_grid_index(x, z, grid_width, halo)]
-            if h <= 0:
-                continue
-            var top_material: int = surface_types[z * cells_x + x]
-            var surface_weight: float = _surface_rock_weight(surface_rock_weights, cells_x, x, z)
-            var x0: float = float(x * step_voxels) * VOXEL_SIZE
-            var x1: float = float((x + 1) * step_voxels) * VOXEL_SIZE
-            var z0: float = float(z * step_voxels) * VOXEL_SIZE
-            var z1: float = float((z + 1) * step_voxels) * VOXEL_SIZE
-            var h_left: int = heights[_grid_index(x - 1, z, grid_width, halo)]
-            if h > h_left:
-                _add_segmented_side_face(Vector3(x0, float(h_left) * VOXEL_SIZE, z1), Vector3(x0, float(h) * VOXEL_SIZE, z1), Vector3(x0, float(h) * VOXEL_SIZE, z0), Vector3(x0, float(h_left) * VOXEL_SIZE, z0), Vector3.LEFT, h_left, h, top_material, true, 1.0, surface_weight)
-            var h_right: int = heights[_grid_index(x + 1, z, grid_width, halo)]
-            if h > h_right:
-                _add_segmented_side_face(Vector3(x1, float(h_right) * VOXEL_SIZE, z0), Vector3(x1, float(h) * VOXEL_SIZE, z0), Vector3(x1, float(h) * VOXEL_SIZE, z1), Vector3(x1, float(h_right) * VOXEL_SIZE, z1), Vector3.RIGHT, h_right, h, top_material, true, 1.0, surface_weight)
-            var h_north: int = heights[_grid_index(x, z - 1, grid_width, halo)]
-            if h > h_north:
-                _add_segmented_side_face(Vector3(x1, float(h_north) * VOXEL_SIZE, z0), Vector3(x0, float(h_north) * VOXEL_SIZE, z0), Vector3(x0, float(h) * VOXEL_SIZE, z0), Vector3(x1, float(h) * VOXEL_SIZE, z0), Vector3(0.0, 0.0, -1.0), h_north, h, top_material, false, 1.0, surface_weight)
-            var h_south: int = heights[_grid_index(x, z + 1, grid_width, halo)]
-            if h > h_south:
-                _add_segmented_side_face(Vector3(x0, float(h_south) * VOXEL_SIZE, z1), Vector3(x1, float(h_south) * VOXEL_SIZE, z1), Vector3(x1, float(h) * VOXEL_SIZE, z1), Vector3(x0, float(h) * VOXEL_SIZE, z1), Vector3(0.0, 0.0, 1.0), h_south, h, top_material, false, 1.0, surface_weight)
+        _emit_side_runs_z(heights, surface_types, surface_rock_weights, grid_width, halo, cells_x, cells_z, step_voxels, z, false)
+        _emit_side_runs_z(heights, surface_types, surface_rock_weights, grid_width, halo, cells_x, cells_z, step_voxels, z, true)
 
 
-func _cached_height_voxels(gx: float, gz: float, cache: PackedFloat32Array, cache_width: int, cache_depth: int, origin_x: int, origin_z: int, cache_step_voxels: int, world_size_voxels: int) -> int:
-    if gx < 0.0 or gz < 0.0 or gx >= float(world_size_voxels) or gz >= float(world_size_voxels):
-        return 0
-    var fx: float = (gx - float(origin_x)) / float(cache_step_voxels)
-    var fz: float = (gz - float(origin_z)) / float(cache_step_voxels)
-    var bx: int = floori(fx)
-    var bz: int = floori(fz)
-    var tx: float = clampf(fx - float(bx), 0.0, 1.0)
-    var tz: float = clampf(fz - float(bz), 0.0, 1.0)
-    var row0: float
-    var row1: float
-    var row2: float
-    var row3: float
-    var h_min: float = INF
-    var h_max: float = -INF
-    for dz in range(4):
-        var iz: int = clampi(bz + dz - 1, 0, cache_depth - 1)
-        var x0: int = clampi(bx - 1, 0, cache_width - 1)
-        var x1: int = clampi(bx, 0, cache_width - 1)
-        var x2: int = clampi(bx + 1, 0, cache_width - 1)
-        var x3: int = clampi(bx + 2, 0, cache_width - 1)
-        var p0: float = float(cache[iz * cache_width + x0])
-        var p1: float = float(cache[iz * cache_width + x1])
-        var p2: float = float(cache[iz * cache_width + x2])
-        var p3: float = float(cache[iz * cache_width + x3])
-        var interpolated_row: float = _cubic_interpolate(p0, p1, p2, p3, tx)
-        if dz == 0:
-            row0 = interpolated_row
-        elif dz == 1:
-            row1 = interpolated_row
-        elif dz == 2:
-            row2 = interpolated_row
+func _emit_side_runs_x(
+    heights: PackedInt32Array, surface_types: PackedByteArray, surface_rock_weights: PackedFloat32Array,
+    grid_width: int, halo: int, cells_x: int, cells_z: int, step_voxels: int,
+    x: int, right_side: bool
+) -> void:
+    var x_voxels: int = (x + (1 if right_side else 0)) * step_voxels
+    var x_pos: float = float(x_voxels) * VOXEL_SIZE
+    var neighbour_x: int = x + (1 if right_side else -1)
+    var z: int = 0
+    while z < cells_z:
+        var h: int = heights[_grid_index(x, z, grid_width, halo)]
+        var other_h: int = heights[_grid_index(neighbour_x, z, grid_width, halo)]
+        if h <= other_h:
+            z += 1
+            continue
+        var cell_index: int = z * cells_x + x
+        var material: int = int(surface_types[cell_index])
+        var base_weight: float = _surface_rock_weight(surface_rock_weights, cells_x, x, z)
+        var weight_sum: float = base_weight
+        var run: int = 1
+        while z + run < cells_z:
+            var next_h: int = heights[_grid_index(x, z + run, grid_width, halo)]
+            var next_other_h: int = heights[_grid_index(neighbour_x, z + run, grid_width, halo)]
+            var next_material: int = int(surface_types[(z + run) * cells_x + x])
+            var next_weight: float = _surface_rock_weight(surface_rock_weights, cells_x, x, z + run)
+            if next_h != h or next_other_h != other_h or next_material != material or absf(next_weight - base_weight) > 0.10:
+                break
+            weight_sum += next_weight
+            run += 1
+        var z0: float = float(z * step_voxels) * VOXEL_SIZE
+        var z1: float = float(mini((z + run) * step_voxels, cells_z * step_voxels)) * VOXEL_SIZE
+        var low_m: float = float(other_h) * VOXEL_SIZE
+        var high_m: float = float(h) * VOXEL_SIZE
+        if right_side:
+            _add_segmented_side_face(
+                Vector3(x_pos, low_m, z0), Vector3(x_pos, low_m, z0),
+                Vector3(x_pos, high_m, z1), Vector3(x_pos, low_m, z1),
+                Vector3.RIGHT, other_h, h, material, true, 1.0, weight_sum / float(run)
+            )
         else:
-            row3 = interpolated_row
-        h_min = minf(h_min, minf(minf(p0, p1), minf(p2, p3)))
-        h_max = maxf(h_max, maxf(maxf(p0, p1), maxf(p2, p3)))
-    var height: float = _cubic_interpolate(row0, row1, row2, row3, tz)
-    return maxi(1, roundi(clampf(height, h_min, h_max)))
+            _add_segmented_side_face(
+                Vector3(x_pos, low_m, z1), Vector3(x_pos, high_m, z1),
+                Vector3(x_pos, high_m, z0), Vector3(x_pos, low_m, z0),
+                Vector3.LEFT, other_h, h, material, true, 1.0, weight_sum / float(run)
+            )
+        z += run
 
-func _cubic_interpolate(p0: float, p1: float, p2: float, p3: float, t: float) -> float:
-    return p1 + 0.5 * t * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + t * (3.0 * (p1 - p2) + p3 - p0)))
+
+func _emit_side_runs_z(
+    heights: PackedInt32Array, surface_types: PackedByteArray, surface_rock_weights: PackedFloat32Array,
+    grid_width: int, halo: int, cells_x: int, cells_z: int, step_voxels: int,
+    z: int, south_side: bool
+) -> void:
+    var z_voxels: int = (z + (1 if south_side else 0)) * step_voxels
+    var z_pos: float = float(z_voxels) * VOXEL_SIZE
+    var neighbour_z: int = z + (1 if south_side else -1)
+    var x: int = 0
+    while x < cells_x:
+        var h: int = heights[_grid_index(x, z, grid_width, halo)]
+        var other_h: int = heights[_grid_index(x, neighbour_z, grid_width, halo)]
+        if h <= other_h:
+            x += 1
+            continue
+        var cell_index: int = z * cells_x + x
+        var material: int = int(surface_types[cell_index])
+        var base_weight: float = _surface_rock_weight(surface_rock_weights, cells_x, x, z)
+        var weight_sum: float = base_weight
+        var run: int = 1
+        while x + run < cells_x:
+            var next_h: int = heights[_grid_index(x + run, z, grid_width, halo)]
+            var next_other_h: int = heights[_grid_index(x + run, neighbour_z, grid_width, halo)]
+            var next_material: int = int(surface_types[z * cells_x + x + run])
+            var next_weight: float = _surface_rock_weight(surface_rock_weights, cells_x, x + run, z)
+            if next_h != h or next_other_h != other_h or next_material != material or absf(next_weight - base_weight) > 0.10:
+                break
+            weight_sum += next_weight
+            run += 1
+        var x0: float = float(x * step_voxels) * VOXEL_SIZE
+        var x1: float = float(mini((x + run) * step_voxels, cells_x * step_voxels)) * VOXEL_SIZE
+        var low_m: float = float(other_h) * VOXEL_SIZE
+        var high_m: float = float(h) * VOXEL_SIZE
+        if south_side:
+            _add_segmented_side_face(
+                Vector3(x0, low_m, z_pos), Vector3(x1, low_m, z_pos),
+                Vector3(x1, high_m, z_pos), Vector3(x0, high_m, z_pos),
+                Vector3(0.0, 0.0, 1.0), other_h, h, material, false, 1.0, weight_sum / float(run)
+            )
+        else:
+            _add_segmented_side_face(
+                Vector3(x1, low_m, z_pos), Vector3(x0, low_m, z_pos),
+                Vector3(x0, high_m, z_pos), Vector3(x1, high_m, z_pos),
+                Vector3(0.0, 0.0, -1.0), other_h, h, material, false, 1.0, weight_sum / float(run)
+            )
+        x += run
+
 
 func _build_lod_skirts(heights: PackedInt32Array, surface_types: PackedByteArray, grid_width: int, halo: int, cells_x: int, cells_z: int, step_voxels: int, neighbor_lods: Dictionary) -> void:
     # Skirts are baked on all internal borders. Runtime masks also keep them visible while a
