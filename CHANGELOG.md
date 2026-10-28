@@ -25,4 +25,4 @@
 - Added smooth terrain-shadow proxies that preserve broad landform silhouettes while scaling shadow sampling with distance.
 - Reduced directional shadow attenuation on visible terrain to 20%/15%/10%/5% for LOD0–LOD3 and disabled shadow reception on LOD4–LOD7. Visible voxel meshes never cast block shadows; smooth heightfield proxies are lowered beneath voxel tops to preserve broad landform shadows without darkening the surface they represent.
 - Added a Windows native-extension descriptor and SCons build configuration, with compiler intermediates placed in a dedicated native build directory.
-- Added smoke tests for deterministic terrain sampling, world-size scaling, hierarchical coverage, resolution-dependent LOD boundaries, voxel-face geometry at distant tiers, mesh-array integrity and native collision-height-map output.
+- Added smoke tests for deterministic terrain sampling, world-size scaling, hierarchical coverage, resolution-dependent LOD boundaries, voxel-face geometry at distant tiers, mesh-array integrity, native collision-height-map output and the fixed per-LOD shadow profile.
