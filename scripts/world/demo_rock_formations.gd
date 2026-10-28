@@ -292,7 +292,6 @@ func _build_crystal_group(generation_token: int, group_name: String, group_cente
         for layer in range(layers):
             var progress: float = (float(layer) + 0.5) / float(maxi(layers, 1))
             var layer_radius: float = maxf(step * 0.75, radius * (1.0 - 0.70 * progress))
-            var center_y: float = origin_y + (float(base_index + layer) + 0.5) * step
             for iz in range(z_start, z_end):
                 var world_z: float = origin_z + (float(iz) + 0.5) * step
                 for ix in range(x_start, x_end):
