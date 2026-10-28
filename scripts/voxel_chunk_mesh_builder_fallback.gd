@@ -634,20 +634,28 @@ func _add_segmented_side_face(
     if edge_alpha >= 0.95:
         # The upper exposed voxel carries the same blend as its top face.
         var top_start: int = maxi(low_height_voxels, high_height_voxels - _active_step_voxels)
-        if top_material == VoxelTerrainGenerator.ROCK:
+        var encoded_alpha: float = -1.0
+        if surface_rock_weight >= 0.0:
+            # Stable 8-bit codes 240..245 keep grassy sides outside the skirt discard range.
+            encoded_alpha = float(240 + roundi(clampf(surface_rock_weight, 0.0, 1.0) * 5.0)) / 255.0
+        if lod >= 3:
+            # Distant layer detail is sub-pixel; keep a voxel riser with only one lower band.
+            var lower_material: int = VoxelTerrainGenerator.ROCK if top_material == VoxelTerrainGenerator.ROCK else VoxelTerrainGenerator.SOIL
+            _emit_side_segment(point_a, point_b, normal, low_height_voxels, top_start, lower_material, vertical_first, edge_alpha)
+        elif top_material == VoxelTerrainGenerator.ROCK:
             _emit_side_segment(point_a, point_b, normal, low_height_voxels, top_start, VoxelTerrainGenerator.ROCK, vertical_first, edge_alpha)
         else:
             var soil_start: int = maxi(low_height_voxels, high_height_voxels - _active_step_voxels * 5)
             _emit_side_segment(point_a, point_b, normal, low_height_voxels, soil_start, VoxelTerrainGenerator.ROCK, vertical_first, edge_alpha)
             _emit_side_segment(point_a, point_b, normal, soil_start, top_start, VoxelTerrainGenerator.SOIL, vertical_first, edge_alpha)
-        var encoded_alpha: float = -1.0
-        if surface_rock_weight >= 0.0:
-            # Stable 8-bit codes 240..245 keep grassy sides outside the skirt discard range.
-            encoded_alpha = float(240 + roundi(clampf(surface_rock_weight, 0.0, 1.0) * 5.0)) / 255.0
         _emit_side_segment(point_a, point_b, normal, top_start, high_height_voxels, top_material, vertical_first, edge_alpha, encoded_alpha)
         return
 
-    # Stitching skirts retain their own layer colours and edge-mask alpha values.
+    # Stitching skirts are geometric seams; distant LODs only need one continuous band.
+    if lod >= 3:
+        var lower_material: int = VoxelTerrainGenerator.ROCK if top_material == VoxelTerrainGenerator.ROCK else VoxelTerrainGenerator.SOIL
+        _emit_side_segment(point_a, point_b, normal, low_height_voxels, high_height_voxels, lower_material, vertical_first, edge_alpha)
+        return
     if top_material == VoxelTerrainGenerator.ROCK:
         _emit_side_segment(point_a, point_b, normal, low_height_voxels, high_height_voxels, VoxelTerrainGenerator.ROCK, vertical_first, edge_alpha)
         return
