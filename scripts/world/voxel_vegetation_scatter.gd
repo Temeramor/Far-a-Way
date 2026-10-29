@@ -28,9 +28,9 @@ func scatter_flowers(
         width_m: float, depth_m: float, voxel_lod: int) -> void:
     var meadow := host._make_noise(host._mix(tile_seed, 37, 0), 0.035)
     var meadow_pick: float = meadow.get_noise_2d(origin_x + width_m * 0.5, origin_z + depth_m * 0.5) * 0.5 + 0.5
-    var patch_count: int = rng.randi_range(3, 6)
+    var patch_count: int = rng.randi_range(3, 6) if voxel_lod == 0 else rng.randi_range(1, 2)
     if meadow_pick > 0.55:
-        patch_count += 2
+        patch_count += 2 if voxel_lod == 0 else 1
     var flower_set: Array = palette_data["flower_set"]
     var flower_index: int = 0
 
@@ -39,7 +39,7 @@ func scatter_flowers(
         var center_z: float = rng.randf_range(3.0, maxf(3.1, depth_m - 3.0))
         var flower_a: Dictionary = flower_set[rng.randi_range(0, flower_set.size() - 1)]
         var flower_b: Dictionary = flower_set[rng.randi_range(0, flower_set.size() - 1)]
-        var count: int = rng.randi_range(8, 24)
+        var count: int = rng.randi_range(8, 24) if voxel_lod == 0 else rng.randi_range(3, 7)
         var sigma: float = rng.randf_range(1.3, 2.8)
         for j in range(count):
             var local_x: float = center_x + rng.randfn(0.0, sigma)
@@ -49,7 +49,7 @@ func scatter_flowers(
                 origin_x, origin_z, width_m, depth_m, flower_index, voxel_lod)
             flower_index += 1
 
-    for single_index in range(10):
+    for single_index in range(10 if voxel_lod == 0 else 2):
         var local_x: float = rng.randf_range(1.0, maxf(1.1, width_m - 1.0))
         var local_z: float = rng.randf_range(1.0, maxf(1.1, depth_m - 1.0))
         var flower: Dictionary = flower_set[rng.randi_range(0, flower_set.size() - 1)]
@@ -93,7 +93,8 @@ func scatter_grass(
     var meadow := host._make_noise(host._mix(tile_seed, 37, 0), 0.035)
     var ramps: Array = palette_data["grass_ramps"]
     var counts: Array = palette_data["grass_counts"]
-    for clump_index in range(GRASS_BLADE_COUNT):
+    var target_clumps: int = GRASS_BLADE_COUNT if voxel_lod == 0 else 30
+    for clump_index in range(target_clumps):
         var local_x: float = rng.randf_range(0.8, maxf(0.9, width_m - 0.8))
         var local_z: float = rng.randf_range(0.8, maxf(0.9, depth_m - 0.8))
         var world_x: float = origin_x + local_x
