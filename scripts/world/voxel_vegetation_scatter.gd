@@ -26,7 +26,7 @@ func scatter_flowers(
         host, output, reservations: Array[Dictionary], palette_data: Dictionary,
         rng: RandomNumberGenerator, tile_seed: int, origin_x: float, origin_z: float,
         width_m: float, depth_m: float, voxel_lod: int) -> void:
-    var meadow := host._make_noise(host._mix(tile_seed, 37, 0), 0.035)
+    var meadow: FastNoiseLite = host._make_noise(host._mix(tile_seed, 37, 0), 0.035)
     var meadow_pick: float = meadow.get_noise_2d(origin_x + width_m * 0.5, origin_z + depth_m * 0.5) * 0.5 + 0.5
     var patch_count: int = rng.randi_range(3, 6) if voxel_lod == 0 else rng.randi_range(1, 2)
     if meadow_pick > 0.55:
@@ -90,7 +90,7 @@ func scatter_grass(
         host, output, reservations: Array[Dictionary], palette_data: Dictionary,
         rng: RandomNumberGenerator, tile_seed: int, origin_x: float, origin_z: float,
         width_m: float, depth_m: float, voxel_lod: int) -> void:
-    var meadow := host._make_noise(host._mix(tile_seed, 37, 0), 0.035)
+    var meadow: FastNoiseLite = host._make_noise(host._mix(tile_seed, 37, 0), 0.035)
     var ramps: Array = palette_data["grass_ramps"]
     var counts: Array = palette_data["grass_counts"]
     var target_clumps: int = GRASS_BLADE_COUNT if voxel_lod == 0 else 30
