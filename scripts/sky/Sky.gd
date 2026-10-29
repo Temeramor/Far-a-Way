@@ -161,8 +161,8 @@ var game_time: String = "" :
 		return tod.minutes_per_day if tod else minutes_per_day
 
 
-## Frequency of sky updates, per second. The smaller the number, the more frequent the updates and
-## the smoother the animation. Set to [param 0.016] for 60fps, for example.[br][br]
+## Interval between sky/time-of-day updates. 0.25 s is sufficient for the slow day/night cycle
+## and avoids recalculating lighting and shader parameters on every frame.[br][br]
 ## [b]Note:[/b] Setting this value too small may cause unwanted behavior. See [member Timer.wait_time].
 ## Alias for [member TimeOfDay.update_interval].
 @export_range(0.05, 10.0) var update_interval: float = 0.25 :
