@@ -35,7 +35,7 @@ func build_tile(
     if rib_roll >= rib_probability:
         return
 
-    var probes: int = 1
+    var probes: int = 3 if terrain_lod == 0 and tile_distance_m <= 240.0 else 2
     for _probe in range(probes):
         var local_x: float = rng.randf_range(2.5, maxf(2.6, width_m - 2.5))
         var local_z: float = rng.randf_range(2.5, maxf(2.6, depth_m - 2.5))
