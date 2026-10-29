@@ -71,7 +71,7 @@ func set_weather_mode(mode: int) -> void:
         return
     # Weather changes sway amplitude and the strength of gusts, not a frantic oscillation rate.
     var strengths: Array[float] = [0.014, 0.036, 0.068]
-    var speeds: Array[float] = [1.0, 1.35, 1.7]
+    var speeds: Array[float] = [1.25, 1.25, 1.25]
     var gusts: Array[float] = [0.08, 0.16, 0.28]
     _plant_material.set_shader_parameter("wind_strength", strengths[_weather_mode])
     _plant_material.set_shader_parameter("wind_speed", speeds[_weather_mode])
