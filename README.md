@@ -1,4 +1,4 @@
-# Far a Way 0.1.0.6
+# Far a Way 0.1.0.7
 
 Far a Way is a first-person exploration prototype focused on a large procedural voxel landscape. The project uses **Godot 4.7.2**, the **Forward+ renderer**, and a native C++ GDExtension for the CPU-intensive terrain chunk builder.
 
@@ -10,11 +10,11 @@ Far a Way is a first-person exploration prototype focused on a large procedural 
 - **Base terrain resolution:** 20 cm voxel cells on X, Y and Z.
 - **Default terrain view distance:** 4,096 m.
 - **Coarsest voxel cell:** 25.6 m at the farthest LOD.
-- **Version:** `0.1.0.6`.
+- **Version:** `0.1.0.7`.
 
 The terrain is generated as height columns: each horizontal position has one generated surface height. Meshes and collisions are streamed around the player instead of creating a node for each voxel.
 
-Surface decoration is streamed separately from terrain. Grass and flowers use two prop detail tiers: full 10 cm source voxels nearby, downsampled 20 cm voxels in the next tier, and no plants in prop LOD2 or farther. The plant mesh uses a wind shader whose sway and gusts follow Clear, Cloudy and Overcast weather; roots stay anchored while upper vertices move. Plants and stones cast shadows. Ground stones and boulders retain 10 cm voxels at every prop tier; farther tiers reduce stone density, size range and surface noise through LOD3 instead of enlarging each voxel. Mountain ribs are built as axis-aligned voxel cells whose size matches the active terrain LOD; they follow a downhill-to-crest trace and are embedded into the slope. Stone, rib and vegetation placement use a shared exclusion map. The terrain still comes from the original seeded height algorithm; no imported object meshes are used.
+Surface decoration streams separately from terrain and now calculates its CPU-side geometry in `WorkerThreadPool` jobs. Nearby plants retain 10 cm source voxels; the next tier uses 20 cm cells, and vegetation fades out by 320 m. Plant meshes no longer cast shadows. The wind shader combines two slow waves with a travelling gust field, keeps roots anchored, and converts foliage vertex colours from sRGB before lighting. Ground stones retain 10 cm voxels across prop LODs, with fewer placements and reduced detail farther away. Steep slopes can spawn separate, contour-aligned cliff meshes with layered vertical faces; their bases are embedded into the hillside. Decoration meshes are combined per terrain tile to keep draw calls down, while nearby collision hulls are created on the main thread. Stone, cliff and vegetation placement use a shared exclusion map.
 
 ## Main menu and controls
 
@@ -87,7 +87,7 @@ The Windows extension registers `VoxEnNativeBuilder` and is the production path 
 - collision height-map data;
 - bulk vertex, normal, colour and index-array preparation for Godot.
 
-Chunk build jobs are dispatched through Godot's `WorkerThreadPool`. GDScript manages world lifecycle, LOD coverage/visibility, job scheduling and priorities, attachment/retirement of render and physics nodes, player controls, menus, weather and time-of-day UI. A similarly structured GDScript mesh builder remains as a fallback for a project run without the native DLL; it is slower and should not be used to assess normal terrain-generation performance.
+Terrain chunk jobs and decoration mesh-data jobs are dispatched through Godot's `WorkerThreadPool`. The native C++ GDExtension remains responsible for the CPU-intensive terrain mesh path; decoration workers use isolated terrain samplers and return arrays, while `ArrayMesh`, scene nodes and collision resources are created on the main thread. Only one completed decoration result is applied per frame, and the streaming manager uses a 0.10 s refresh interval with an 8 m movement threshold to reduce redundant topology work. A GDScript terrain mesh builder remains as a fallback when the native DLL is absent; it is slower and should not be used to assess normal terrain-generation performance.
 
 Compiled native binaries are not included in the repository. Build the extension for Windows after cloning and whenever its C++ sources change.
 
@@ -113,7 +113,7 @@ The extension descriptor is `bin/voxen_native.gdextension`; output DLLs belong u
 ## Project layout
 
 - `scripts/menu/`: main menu, seed input and persistent flight settings.
-- `scripts/world/`: world lifecycle, startup loading, weather/time controls, world HUD, plus separate streamed rock, mountain-rib and vegetation generators.
+- `scripts/world/`: world lifecycle, startup loading, weather/time controls, world HUD, streamed rock/cliff/vegetation generators, and the decoration worker job.
 - `scripts/vegetation/`: voxel grid, colour palette and mesh accumulator used by rocks, grass and flowers.
 - `scripts/voxel_world.gd`: streamed chunk coverage, hierarchical LOD, job scheduling and diagnostics.
 - `scripts/voxel_chunk.gd`: render/collision resource application and retirement for each chunk.
@@ -127,7 +127,7 @@ The extension descriptor is `bin/voxen_native.gdextension`; output DLLs belong u
 
 ## Current limits and verification
 
-The 2 × 2 km terrain is a height-column model rather than a full 3D voxel volume. It does not currently support arbitrary voxel editing, persistent terrain modification, enclosed caves or overhangs. Chunk collision uses height-map data consistent with this terrain model. The native C++ builder already handles the main terrain mesh, collision-height data and smooth shadow proxy. Decoration placement and voxel generation remain in GDScript and are scheduled one tile at a time. Distant boulders use fewer placements and less surface noise, but retain the required 10 cm voxel size. The remaining candidates to measure on the Windows build are near-field rock-grid filling, mountain-rib cell/face generation and plant placement. Port only the parts that profiling identifies as bottlenecks; native code must be built and compared on the target machine before it can replace the existing GDScript fallback.
+The 2 × 2 km terrain is a height-column model rather than a full 3D voxel volume; it does not support arbitrary voxel editing, persistent terrain modification, enclosed caves or overhangs. Terrain mesh and collision-height data are built by the native C++ extension. Decoration placement and mesh-data generation remain in GDScript but run in worker tasks; scene objects, mesh uploads and nearby convex collision shapes are applied on the main thread. This change addresses CPU spikes from synchronous tile construction, but the Windows build still needs profiling to quantify FPS gains and confirm that collision behaviour, cliff placement and vegetation transitions look correct. Further native porting should be gated on measured bottlenecks rather than assuming every GDScript operation is expensive.
 
 With Godot 4.7.2 installed, check resource import and script parsing:
 
