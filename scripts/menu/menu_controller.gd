@@ -86,7 +86,7 @@ func _adapt_to_viewport() -> void:
     if view_size.x >= 900.0 and view_size.y >= 500.0:
         corner_badge.visible = true
         var badge_width: float = minf(260.0, view_size.x * 0.30)
-        var badge_height: float = 54.0
+        var badge_height: float = 64.0
         var badge_margin_x: float = maxf(22.0, view_size.x * 0.03)
         var badge_margin_y: float = maxf(18.0, view_size.y * 0.035)
         corner_badge.position = Vector2(view_size.x - badge_width - badge_margin_x, view_size.y - badge_height - badge_margin_y)
@@ -210,13 +210,24 @@ func _apply_visual_theme() -> void:
     var divider := $Center/Panel/Margin/Stack/Divider as TextureRect
     divider.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
-    var badge_text := $CornerBadge/Margin/BadgeText as Label
+    var badge_stack := $CornerBadge/Margin/Stack as VBoxContainer
+    badge_stack.add_theme_constant_override("separation", 0)
+    var badge_text := $CornerBadge/Margin/Stack/BadgeText as Label
     badge_text.add_theme_font_size_override("font_size", 16)
     badge_text.add_theme_color_override("font_color", COLOR_PARCHMENT)
     badge_text.add_theme_color_override("font_outline_color", Color("#182120"))
     badge_text.add_theme_constant_override("outline_size", 1)
     badge_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     badge_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+
+    var version_text := $CornerBadge/Margin/Stack/VersionText as Label
+    version_text.text = "v%s" % str(ProjectSettings.get_setting("application/config/version", "0.0.0"))
+    version_text.add_theme_font_size_override("font_size", 12)
+    version_text.add_theme_color_override("font_color", COLOR_GOLD)
+    version_text.add_theme_color_override("font_outline_color", Color("#182120"))
+    version_text.add_theme_constant_override("outline_size", 1)
+    version_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    version_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 
     for label_path in [
         "Center/Panel/Margin/Stack/NewGameView/SeedCaption",
