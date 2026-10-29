@@ -53,7 +53,7 @@ func scatter_flowers(
         var local_z: float = rng.randf_range(1.0, maxf(1.1, depth_m - 1.0))
         var flower: Dictionary = flower_set[rng.randi_range(0, flower_set.size() - 1)]
         _try_add_flower(host, output, reservations, palette_data, rng, flower, local_x, local_z,
-            origin_x, origin_z, width_m, depth_m, flower_index)
+            origin_x, origin_z, width_m, depth_m, flower_index, voxel_lod)
         flower_index += 1
 
 func _try_add_flower(
@@ -76,7 +76,7 @@ func _try_add_flower(
         int(palette_data["stem_start"]), int(palette_data["stem_count"])
     )
     var piece = MeshDataScript.new()
-    var flower_seed: int = _mix(index + int(origin_x * 10.0), int(local_x * 100.0), int(local_z * 100.0))
+    var flower_seed: int = host._mix(index + int(origin_x * 10.0), int(local_x * 100.0), int(local_z * 100.0))
     var mesh_grid = _coarsen_grid(grid, voxel_lod)
     mesh_grid.emit(piece, Vector3.ZERO, PROP_VOXEL_SIZE * float(1 << voxel_lod), flower_seed)
     host._append_transformed_mesh(
@@ -97,7 +97,7 @@ func scatter_grass(
         var local_z: float = rng.randf_range(0.8, maxf(0.9, depth_m - 0.8))
         var world_x: float = origin_x + local_x
         var world_z: float = origin_z + local_z
-        var surface: Dictionary = _surface_info(world_x, world_z)
+        var surface: Dictionary = host._surface_info(world_x, world_z)
         if float(surface["rock_weight"]) > 0.24 or float(surface["slope"]) > 0.94:
             continue
         var meadow_detail: float = meadow.get_noise_2d(world_x, world_z)
@@ -105,7 +105,7 @@ func scatter_grass(
             continue
 
         var exclusion_radius: float = 0.42
-        if not _can_reserve(local_x, local_z, exclusion_radius, width_m, depth_m, reservations):
+        if not host._can_reserve(local_x, local_z, exclusion_radius, width_m, depth_m, reservations):
             continue
 
         var selection: float = rng.randf()
@@ -116,7 +116,7 @@ func scatter_grass(
             ramp_index = 1
         var ramp_start: int = int(ramps[ramp_index])
         var ramp_count: int = int(counts[ramp_index])
-        var grid = _make_object_grid(18, 12, 18, palette_data)
+        var grid = host._make_object_grid(18, 12, 18, palette_data)
         var blades: int = rng.randi_range(3, 9)
         var height_max: int = rng.randi_range(3, 7)
         for blade_index in range(blades):
@@ -126,7 +126,7 @@ func scatter_grass(
             _add_blade(grid, rng, blade_x, blade_z, blade_height, ramp_start, ramp_count)
 
         var piece = MeshDataScript.new()
-        var grass_seed: int = _mix(clump_index + int(origin_x * 10.0), int(local_x * 100.0), int(local_z * 100.0))
+        var grass_seed: int = host._mix(clump_index + int(origin_x * 10.0), int(local_x * 100.0), int(local_z * 100.0))
         var mesh_grid = _coarsen_grid(grid, voxel_lod)
         mesh_grid.emit(piece, Vector3.ZERO, PROP_VOXEL_SIZE * float(1 << voxel_lod), grass_seed)
         host._append_transformed_mesh(
