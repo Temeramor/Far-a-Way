@@ -3,6 +3,7 @@ class_name VoxelVegetationScatter
 
 ## Voxel flowers and grass. Source grids are downsampled before meshing for coarse prop LODs.
 const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
+const PaletteScript = preload("res://scripts/vegetation/voxel_palette.gd")
 const PROP_VOXEL_SIZE: float = 0.1
 const GRASS_BLADE_COUNT: int = 120
 
