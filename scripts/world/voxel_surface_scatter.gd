@@ -19,7 +19,7 @@ const PLANT_FULL_DISTANCE_M: float = 92.0
 const PLANT_REMOVE_HYSTERESIS_M: float = 12.0
 const PLANT_RENDER_DISTANCE_M: float = 320.0
 const ROCK_SHADOW_DISTANCE_M: float = 80.0
-const MAX_CONCURRENT_DECOR_JOBS: int = 2
+const MAX_CONCURRENT_DECOR_JOBS: int = 1
 const MIN_STONE_EDGE_MARGIN_M: float = 0.25
 const ROCK_MOSS_COLOR := Color("5e7b3a")
 const STONE_COLOR_A := Color("8b8984")
@@ -461,6 +461,7 @@ func _schedule_plant_tile(coord: Vector2i, voxel_lod: int, build_token: int) -> 
     }
 
 func _poll_decor_tasks() -> void:
+    var applied_count: int = 0
     for task_key in _running_decor_tasks.keys():
         var task_id: int = int(task_key)
         if not WorkerThreadPool.is_task_completed(task_id):
@@ -560,6 +561,10 @@ func _poll_decor_tasks() -> void:
                 plant_reservations.append(occupied.duplicate(true))
             entry["reservations"] = plant_reservations
             _entries[coord] = entry
+
+        applied_count += 1
+        if applied_count >= 1:
+            break
 
 
 func _create_decor_collision_shapes(root_node: Node3D, collision_data: Array) -> void:
