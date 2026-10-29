@@ -4,7 +4,7 @@ class_name VoxelMountainRibScatter
 ## Builds long mountain ribs from world-axis-aligned voxel cells, following the sampled slope.
 ## Cell size matches the active terrain LOD. The lower rows are embedded into the hillside.
 const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
-const MAX_SIDE_LENGTH_M: float = 42.0
+const MAX_SIDE_LENGTH_M: float = 64.0
 const TRACE_STEP_M: float = 0.75
 const DIRS: Array[Vector3i] = [
     Vector3i(1, 0, 0), Vector3i(-1, 0, 0),
@@ -28,7 +28,14 @@ func build_tile(
         reservations: Array[Dictionary], palette_data: Dictionary, rng: RandomNumberGenerator,
         tile_seed: int, origin_x: float, origin_z: float, width_m: float, depth_m: float,
         terrain_lod: int, tile_distance_m: float) -> void:
-    var probes: int = 3 if terrain_lod == 0 and tile_distance_m <= 240.0 else 2
+    # These ribs can span several tiles along a whole slope, so only a controlled
+    # subset of eligible tiles may start one. The tile hash keeps placement deterministic.
+    var rib_probability: float = 0.24 if terrain_lod == 0 and tile_distance_m <= 240.0 else 0.10
+    var rib_roll: float = float(host._mix(tile_seed, 811, 271) % 1000) / 1000.0
+    if rib_roll >= rib_probability:
+        return
+
+    var probes: int = 1
     for _probe in range(probes):
         var local_x: float = rng.randf_range(2.5, maxf(2.6, width_m - 2.5))
         var local_z: float = rng.randf_range(2.5, maxf(2.6, depth_m - 2.5))
@@ -36,8 +43,6 @@ func build_tile(
         var world_z: float = origin_z + local_z
         var surface: Dictionary = host._surface_info(world_x, world_z)
         if float(surface["rock_weight"]) < 0.58 or float(surface["slope"]) < 0.66:
-            continue
-        if rng.randf() > (0.42 if terrain_lod > 0 or tile_distance_m > 240.0 else 0.68):
             continue
         var blocked: bool = false
         for occupied in reservations:
