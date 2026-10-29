@@ -87,15 +87,17 @@ func _run() -> void:
         Vector3i(0, 1, 0): 1,
         Vector3i(1, 1, 0): 1
     }
-    var rib_mesh_data = rib_scatter.build_aligned_rib_mesh(
-        aligned_cells, palette["grid"].palette, 0.2, 0.0, 0.0
-    )
-    if rib_mesh_data.verts.is_empty() or rib_mesh_data.indices.is_empty():
-        errors.append("The aligned mountain-rib mesher must emit visible mesh geometry.")
-    else:
+    var rib_palette: PackedColorArray = palette["grid"].palette
+    for cell_size in [0.2, 0.4, 0.8, 1.6]:
+        var rib_mesh_data = rib_scatter.build_aligned_rib_mesh(
+            aligned_cells, rib_palette, cell_size, 0.0, 0.0
+        )
+        if rib_mesh_data.verts.is_empty() or rib_mesh_data.indices.is_empty():
+            errors.append("The aligned mountain-rib mesher must emit visible mesh geometry.")
+            break
         for vertex in rib_mesh_data.verts:
-            if absf(vertex.x / 0.2 - roundf(vertex.x / 0.2)) > 0.001 or absf(vertex.y / 0.2 - roundf(vertex.y / 0.2)) > 0.001 or absf(vertex.z / 0.2 - roundf(vertex.z / 0.2)) > 0.001:
-                errors.append("Mountain-rib vertices must remain aligned to the terrain voxel axes.")
+            if absf(vertex.x / cell_size - roundf(vertex.x / cell_size)) > 0.001 or absf(vertex.y / cell_size - roundf(vertex.y / cell_size)) > 0.001 or absf(vertex.z / cell_size - roundf(vertex.z / cell_size)) > 0.001:
+                errors.append("Mountain-rib vertices must match the active terrain voxel grid.")
                 break
 
     var flower_grid = scatter._make_object_grid(22, 20, 22, palette)
