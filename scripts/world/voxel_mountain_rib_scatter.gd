@@ -5,7 +5,6 @@ class_name VoxelMountainRibScatter
 ## These are short, layered rock walls embedded into the downhill face, not slope-following ribs.
 const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
 const MAX_TRACE_SIDE_M: float = 12.0
-const TRACE_STEP_M: float = 0.9
 const MIN_WALL_POINTS: int = 8
 
 
