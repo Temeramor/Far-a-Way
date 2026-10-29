@@ -60,7 +60,7 @@ func build_tile(
 
 func _try_add_cliff(
         host, output, collision_body: StaticBody3D, collision_output: Array,
-        reservations: Array[Dictionary], palette_data: Dictionary, rng: RandomNumberGenerator,
+        reservations: Array[Dictionary], palette_data: Dictionary, _rng: RandomNumberGenerator,
         tile_seed: int, world_x: float, world_z: float, origin_x: float, origin_z: float,
         width_m: float, depth_m: float, terrain_lod: int, gradient: Vector2,
         build_collisions: bool) -> bool:
@@ -90,7 +90,7 @@ func _try_add_cliff(
     var rock_ramps: PackedInt32Array = palette_data["rock_ramps"]
     var palette: PackedColorArray = palette_data["grid"].palette
     var wall_data: MeshData = _build_cliff_mesh(
-        host, path, shape_noise, palette, rock_ramps, origin_x, origin_z, terrain_lod
+        path, shape_noise, palette, rock_ramps, origin_x, origin_z
     )
     if wall_data.verts.is_empty():
         return false
@@ -161,9 +161,8 @@ func _trace_contour(
 
 
 func _build_cliff_mesh(
-        host, path: Array[Vector2], noise: FastNoiseLite, palette: PackedColorArray,
-        rock_ramps: PackedInt32Array, origin_x: float, origin_z: float,
-        terrain_lod: int) -> MeshData:
+        path: Array[Vector2], noise: FastNoiseLite, palette: PackedColorArray,
+        rock_ramps: PackedInt32Array, origin_x: float, origin_z: float) -> MeshData:
     var data: MeshData = MeshDataScript.new()
     if path.size() < 2:
         return data
@@ -177,10 +176,6 @@ func _build_cliff_mesh(
 
     var layer_fractions: Array[float] = [0.0, 0.38, 0.74, 1.0]
     var upslope_vectors: Array[Vector2] = []
-    var layer_colors: Array[Color] = []
-    var heights: Array[float] = []
-    var base_heights: Array[float] = []
-    var thicknesses: Array[float] = []
 
     for i in range(station_count):
         var prev: Vector2 = path[maxi(0, i - 1)]
@@ -198,9 +193,6 @@ func _build_cliff_mesh(
         var edge_noise: float = noise.get_noise_2d(path[i].x * 0.83 + 37.0, path[i].y * 0.83 - 19.0)
         var wall_height: float = clampf(8.2 + height_noise * 3.6 + edge_noise * 1.8, 4.0, 14.0)
         var thickness: float = clampf(1.3 + noise.get_noise_2d(path[i].x * 0.54 - 12.0, path[i].y * 0.54 + 8.0) * 0.65, 0.65, 2.0)
-        base_heights.append(base_y)
-        heights.append(wall_height)
-        thicknesses.append(thickness)
 
         for layer in range(4):
             var fraction: float = layer_fractions[layer]
@@ -216,13 +208,10 @@ func _build_cliff_mesh(
             front_levels[layer].append(front_vertex)
             back_levels[layer].append(back_vertex)
 
-    var downhill_normal := Vector3.ZERO
     for i in range(station_count):
-        var tangent: Vector2 = (path[mini(station_count - 1, i + 1)] - path[maxi(0, i - 1)]).normalized()
         var up: Vector2 = upslope_vectors[i]
         var outward := Vector2(-up.x, -up.y)
         var front_normal := Vector3(outward.x, 0.0, outward.y).normalized()
-        var back_normal := -front_normal
 
         if i < station_count - 1:
             var next_tangent: Vector2 = (path[i + 1] - path[i]).normalized()
@@ -264,7 +253,7 @@ func _build_cliff_mesh(
             end_normal = (Vector3(path[1].y - path[0].y, 0.0, path[0].x - path[1].x)).normalized()
         else:
             end_normal = (Vector3(path[station_count - 1].y - path[station_count - 2].y, 0.0, path[station_count - 2].x - path[station_count - 1].x)).normalized()
-        var end_color: Color = palette[int(rock_ramps[0]) + int(rock_ramps[1]) / 2] * Color(0.70, 0.74, 0.78, 1.0)
+        var end_color: Color = palette[int(rock_ramps[0]) + floori(float(int(rock_ramps[1])) * 0.5)] * Color(0.70, 0.74, 0.78, 1.0)
         data.quad(base_front, base_back, top_back, top_front, end_normal, end_color)
 
     return data
