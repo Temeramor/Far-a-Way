@@ -28,6 +28,22 @@ func _run() -> void:
     if mixed_a != mixed_b:
         errors.append("The per-tile seed mixer must be deterministic.")
 
+    if scatter._desired_plant_lod(60.0) != 0 or scatter._desired_plant_lod(130.0) != 1:
+        errors.append("Plants should use detailed LOD0 nearby and coarsened LOD1 farther away.")
+    if not scatter._plant_is_requested(0, 150.0) or scatter._plant_is_requested(2, 60.0):
+        errors.append("Plants must stop before terrain LOD2.")
+    if scatter._prop_lod_for_distance(60.0) != 0 or scatter._prop_lod_for_distance(300.0) != 2 or scatter._prop_lod_for_distance(900.0) != 3:
+        errors.append("Stone props must progress through LOD0..LOD3.")
+
+    scatter.set_weather_mode(0)
+    var clear_wind: float = float(scatter._plant_material.get_shader_parameter("wind_strength"))
+    scatter.set_weather_mode(1)
+    var cloudy_wind: float = float(scatter._plant_material.get_shader_parameter("wind_strength"))
+    scatter.set_weather_mode(2)
+    var overcast_wind: float = float(scatter._plant_material.get_shader_parameter("wind_strength"))
+    if not (clear_wind < cloudy_wind and cloudy_wind < overcast_wind):
+        errors.append("Vegetation wind strength must increase from clear to overcast weather.")
+
     var occupied: Array[Dictionary] = []
     if not scatter._can_reserve(16.0, 16.0, 1.0, 32.0, 32.0, occupied):
         errors.append("The first prop position should be available.")
