@@ -13,7 +13,7 @@ func build_tile(
     var count: int = rng.randi_range(3, 6) if distance_m <= 240.0 else rng.randi_range(1, 2)
     if prop_lod >= 2:
         count = rng.randi_range(1, 2)
-    var stone_noise := host._make_noise(host._mix(tile_seed, 19, 53), 0.022)
+    var stone_noise: FastNoiseLite = host._make_noise(host._mix(tile_seed, 19, 53), 0.022)
     var noise_pick: float = stone_noise.get_noise_2d(
         origin_x + width_m * 0.5, origin_z + depth_m * 0.5
     ) * 0.5 + 0.5
@@ -87,7 +87,7 @@ func _fill_rock(
         quality_lod: int) -> void:
     var rng := RandomNumberGenerator.new()
     rng.seed = seed_value
-    var noise := host._make_noise(seed_value, 0.2)
+    var noise: FastNoiseLite = host._make_noise(seed_value, 0.2)
     var quality: int = clampi(quality_lod, 0, 3)
     var detail_scale: float = [1.0, 0.82, 0.62, 0.45][quality]
     var noise_amplitude: float = [0.28, 0.21, 0.14, 0.08][quality]
