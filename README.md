@@ -113,7 +113,8 @@ The extension descriptor is `bin/voxen_native.gdextension`; output DLLs belong u
 ## Project layout
 
 - `scripts/menu/`: main menu, seed input and persistent flight settings.
-- `scripts/world/`: world lifecycle, startup loading, weather/time controls and world HUD.
+- `scripts/world/`: world lifecycle, startup loading, weather/time controls, world HUD and streamed voxel surface scatter.
+- `scripts/vegetation/`: voxel grid, colour palette and mesh accumulator used by rocks, grass and flowers.
 - `scripts/voxel_world.gd`: streamed chunk coverage, hierarchical LOD, job scheduling and diagnostics.
 - `scripts/voxel_chunk.gd`: render/collision resource application and retirement for each chunk.
 - `scripts/voxel_generator.gd`: deterministic terrain profile and surface-height queries.
@@ -134,6 +135,7 @@ godot --headless --editor --path . --quit
 godot --headless --path . --script res://tests/terrain_smoke_test.gd
 godot --headless --path . --script res://tests/lod_hierarchy_smoke_test.gd
 godot --headless --path . --script res://tests/shadow_lod_smoke_test.gd
+godot --headless --path . --script res://tests/voxel_surface_scatter_smoke_test.gd
 ```
 
 After building the Windows DLL, also run the native smoke test:
