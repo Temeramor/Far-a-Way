@@ -245,13 +245,13 @@ func _build_plant_tile(coord: Vector2i, build_token: int) -> void:
 
     var plant_mesh_data = MeshDataScript.new()
     _scatter_flowers(
-        plant_mesh_data, reservations, palette_data, rng,
+        plant_mesh_data, reservations, palette_data, rng, tile_seed,
         origin_x, origin_z, width_m, depth_m
     )
     if build_token != _generation_epoch or not _entries.has(coord):
         return
     _scatter_grass(
-        plant_mesh_data, reservations, palette_data, rng,
+        plant_mesh_data, reservations, palette_data, rng, tile_seed,
         origin_x, origin_z, width_m, depth_m
     )
     if build_token != _generation_epoch or not _entries.has(coord):
@@ -470,9 +470,9 @@ func _add_boulder_collision(
 
 func _scatter_flowers(
         output, reservations: Array[Dictionary], palette_data: Dictionary,
-        rng: RandomNumberGenerator, origin_x: float, origin_z: float,
+        rng: RandomNumberGenerator, tile_seed: int, origin_x: float, origin_z: float,
         width_m: float, depth_m: float) -> void:
-    var meadow := _make_noise(_mix(int(palette_data["grid"].palette.size()), int(origin_x * 10.0), int(origin_z * 10.0)), 0.035)
+    var meadow := _make_noise(_mix(tile_seed, 37, 0), 0.035)
     var meadow_pick: float = meadow.get_noise_2d(origin_x + width_m * 0.5, origin_z + depth_m * 0.5) * 0.5 + 0.5
     var patch_count: int = rng.randi_range(3, 6)
     if meadow_pick > 0.55:
@@ -535,9 +535,9 @@ func _try_add_flower(
 
 func _scatter_grass(
         output, reservations: Array[Dictionary], palette_data: Dictionary,
-        rng: RandomNumberGenerator, origin_x: float, origin_z: float,
+        rng: RandomNumberGenerator, tile_seed: int, origin_x: float, origin_z: float,
         width_m: float, depth_m: float) -> void:
-    var meadow := _make_noise(_mix(int(origin_x * 10.0), int(origin_z * 10.0), 37), 0.035)
+    var meadow := _make_noise(_mix(tile_seed, 37, 0), 0.035)
     var ramps: Array = palette_data["grass_ramps"]
     var counts: Array = palette_data["grass_counts"]
     for clump_index in range(GRASS_BLADE_COUNT):
