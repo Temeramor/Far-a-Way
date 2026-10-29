@@ -8,7 +8,7 @@
 - Explicitly enabled shadow casting for vegetation and stone meshes.
 - Rebuilt mountain ribs as unrotated world-axis-aligned cells. Their voxel size matches the active terrain LOD and the rib trace attempts to span the rocky slope from the lower grass boundary toward the crest, embedding the lowest rows into the hillside.
 - Extended ridge traces to follow longer slopes while making rib starts deterministic and sparse per tile, reducing overlapping long formations in neighboring chunks.
-- Added progressive stone prop LODs: 10 cm, 20 cm, 40 cm and 80 cm cells through LOD3, with fewer and larger boulders at distance. Boulders are generated directly at their target cell size instead of being built at full 10 cm resolution before downsampling, avoiding up to 512× unnecessary cell visits at LOD3.
+- Added progressive stone prop LODs while retaining 10 cm voxels at every tier. Distant placements become sparser and use a smaller size range with reduced surface-noise and colour variation through LOD3; ground boulders do not inherit the terrain voxel size.
 - Extended smoke-test coverage for separated object generators, wind vertex data and axis-aligned rib geometry.
 - Reviewed native-boundary placement: terrain chunk meshing remains the existing C++ GDExtension hot path; object placement and cell filling stay budgeted in GDScript for now, with native porting gated on profiling and a tested Windows build.
 
