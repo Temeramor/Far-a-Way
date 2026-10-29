@@ -576,28 +576,44 @@ func _create_decor_collision_shapes(root_node: Node3D, collision_data: Array) ->
     body.collision_layer = 1
     body.collision_mask = 1
     for item in collision_data:
-        var points: PackedVector3Array = item.get("points", PackedVector3Array())
-        if points.size() < 4:
-            continue
-        # Bound convex-hull work on large cliff meshes while preserving the silhouette.
-        var stride: int = maxi(1, ceili(float(points.size()) / 192.0))
-        var hull_points := PackedVector3Array()
-        for i in range(0, points.size(), stride):
-            hull_points.append(points[i])
-        if hull_points.size() < 4:
-            continue
-        var convex := ConvexPolygonShape3D.new()
-        convex.set_points(hull_points)
-        convex.margin = 0.03
+        var kind: String = str(item.get("kind", "cliff"))
         var collision := CollisionShape3D.new()
-        collision.name = "DecorConvexCollision"
-        collision.shape = convex
-        collision.position = item.get("position", Vector3.ZERO)
+        collision.name = "DecorCollision"
+
+        if kind == "boulder":
+            # A cheap box is enough for rounded boulders and avoids per-rock convex hull cooking.
+            var radius_m: float = float(item.get("radius_m", 0.5))
+            var box := BoxShape3D.new()
+            var height: float = maxf(0.35, radius_m * 1.20)
+            box.size = Vector3(radius_m * 2.5, height, radius_m * 2.5)
+            collision.shape = box
+            var base_position: Vector3 = item.get("position", Vector3.ZERO)
+            collision.position = base_position + Vector3(0.0, height * 0.5, 0.0)
+        else:
+            var points: PackedVector3Array = item.get("points", PackedVector3Array())
+            if points.size() < 4:
+                collision.free()
+                continue
+            # Bound convex-hull cooking cost on large cliff meshes while retaining their silhouette.
+            var stride: int = maxi(1, ceili(float(points.size()) / 192.0))
+            var hull_points := PackedVector3Array()
+            for i in range(0, points.size(), stride):
+                hull_points.append(points[i])
+            if hull_points.size() < 4:
+                collision.free()
+                continue
+            var convex := ConvexPolygonShape3D.new()
+            convex.set_points(hull_points)
+            convex.margin = 0.03
+            collision.shape = convex
+            collision.position = item.get("position", Vector3.ZERO)
+
         body.add_child(collision)
     if body.get_child_count() > 0:
         root_node.add_child(body)
     else:
         body.free()
+
 func _make_palette(rng: RandomNumberGenerator) -> Dictionary:
     var palette_grid = GridScript.new(1, 1, 1)
 
