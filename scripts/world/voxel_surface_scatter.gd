@@ -189,11 +189,16 @@ func _build_rock_tile(coord: Vector2i, request: Dictionary, build_token: int) ->
     add_child(root_node)
 
     var reservations: Array[Dictionary] = []
+    var collision_body := StaticBody3D.new()
+    collision_body.name = "StoneCollisions"
+    root_node.add_child(collision_body)
     var combined_mesh_data = MeshDataScript.new()
     _scatter_stones(
-        combined_mesh_data, reservations, palette_data, rng, tile_seed,
+        combined_mesh_data, collision_body, reservations, palette_data, rng, tile_seed,
         origin_x, origin_z, width_m, depth_m
     )
+    if collision_body.get_child_count() == 0:
+        collision_body.queue_free()
     if build_token != _generation_epoch:
         root_node.queue_free()
         return
@@ -339,7 +344,7 @@ func _make_object_grid(width: int, height: int, depth: int, palette_data: Dictio
 
 
 func _scatter_stones(
-        output, reservations: Array[Dictionary], palette_data: Dictionary,
+        output, collision_body: StaticBody3D, reservations: Array[Dictionary], palette_data: Dictionary,
         rng: RandomNumberGenerator, tile_seed: int,
         origin_x: float, origin_z: float, width_m: float, depth_m: float) -> void:
     var stone_noise := _make_noise(_mix(tile_seed, 19, 53), 0.022)
@@ -364,7 +369,7 @@ func _scatter_stones(
 
         if rock_weight >= 0.58 and slope >= 0.70 and rng.randf() < 0.62:
             _try_add_outcrop(
-                output, reservations, palette_data, rng, world_x, world_z,
+                output, collision_body, reservations, palette_data, rng, world_x, world_z,
                 local_x, local_z, float(surface["height"]), Vector2(surface["gradient_x"], surface["gradient_z"]),
                 width_m, depth_m
             )
@@ -385,6 +390,8 @@ func _scatter_stones(
             output, rock_piece, Basis.IDENTITY,
             Vector3(local_x, surface_y - 0.06, local_z)
         )
+        if radius_units >= 5.0:
+            _add_boulder_collision(collision_body, local_x, local_z, surface_y, radius_m)
         reservations.append({"p": Vector2(local_x, local_z), "r": exclusion_radius})
 
     # A second set of samples finds long rock ribs specifically on bare mountain faces.
@@ -399,14 +406,14 @@ func _scatter_stones(
         if rng.randf() > 0.72:
             continue
         _try_add_outcrop(
-            output, reservations, palette_data, rng, world_x, world_z,
+            output, collision_body, reservations, palette_data, rng, world_x, world_z,
             local_x, local_z, float(surface["height"]), Vector2(surface["gradient_x"], surface["gradient_z"]),
             width_m, depth_m
         )
 
 
 func _try_add_outcrop(
-        output, reservations: Array[Dictionary], palette_data: Dictionary,
+        output, collision_body: StaticBody3D, reservations: Array[Dictionary], palette_data: Dictionary,
         rng: RandomNumberGenerator, world_x: float, world_z: float,
         local_x: float, local_z: float, surface_y: float, gradient: Vector2,
         width_m: float, depth_m: float) -> void:
@@ -436,11 +443,29 @@ func _try_add_outcrop(
     var z_axis: Vector3 = x_axis.cross(axis).normalized()
     var basis := Basis(x_axis, axis, z_axis)
     basis = basis * Basis(Vector3.UP, rng.randf_range(-0.24, 0.24))
-    _append_transformed_mesh(
-        output, rock_piece, basis,
-        Vector3(local_x, surface_y - 0.22, local_z)
-    )
+    var anchor := Vector3(local_x, surface_y - 0.22, local_z)
+    _append_transformed_mesh(output, rock_piece, basis, anchor)
+    var collision_height: float = maxf(1.8, radius_m * stretch_y * 1.35)
+    var collision_shape := BoxShape3D.new()
+    collision_shape.size = Vector3(radius_m * 2.5, collision_height, radius_m * 2.5)
+    var collision := CollisionShape3D.new()
+    collision.name = "MountainRibCollision"
+    collision.shape = collision_shape
+    collision.transform = Transform3D(basis, anchor + basis * Vector3(0.0, collision_height * 0.5, 0.0))
+    collision_body.add_child(collision)
     reservations.append({"p": Vector2(local_x, local_z), "r": exclusion_radius})
+
+
+func _add_boulder_collision(
+        collision_body: StaticBody3D, local_x: float, local_z: float, surface_y: float, radius_m: float) -> void:
+    var collision_shape := BoxShape3D.new()
+    var height: float = maxf(0.35, radius_m * 1.20)
+    collision_shape.size = Vector3(radius_m * 2.5, height, radius_m * 2.5)
+    var collision := CollisionShape3D.new()
+    collision.name = "BoulderCollision"
+    collision.shape = collision_shape
+    collision.position = Vector3(local_x, surface_y - 0.06 + height * 0.5, local_z)
+    collision_body.add_child(collision)
 
 
 func _scatter_flowers(
