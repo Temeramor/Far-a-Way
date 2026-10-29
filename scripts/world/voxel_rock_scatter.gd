@@ -9,7 +9,7 @@ func build_tile(
         host, output, collision_body: StaticBody3D,
         reservations: Array[Dictionary], palette_data: Dictionary, rng: RandomNumberGenerator,
         tile_seed: int, origin_x: float, origin_z: float, width_m: float, depth_m: float,
-        prop_lod: int, distance_m: float) -> void:
+        prop_lod: int, distance_m: float, collision_output: Array, build_collisions: bool) -> void:
     var count: int = rng.randi_range(3, 6) if distance_m <= 240.0 else rng.randi_range(1, 2)
     if prop_lod >= 2:
         count = rng.randi_range(1, 2)
@@ -59,8 +59,15 @@ func build_tile(
             output, rock_piece, Basis.IDENTITY,
             Vector3(local_x, float(surface["height"]) - 0.06, local_z)
         )
-        if collision_body != null and radius_m >= 0.5:
-            _add_boulder_collision(collision_body, local_x, local_z, float(surface["height"]), radius_m)
+        if radius_m >= 0.5:
+            if collision_body != null:
+                _add_boulder_collision(collision_body, local_x, local_z, float(surface["height"]), radius_m)
+            elif build_collisions:
+                collision_output.append({
+                    "kind": "boulder",
+                    "position": Vector3(local_x, float(surface["height"]) - 0.06, local_z),
+                    "points": rock_piece.verts
+                })
         reservations.append({"p": Vector2(local_x, local_z), "r": exclusion_radius})
 
 func _add_boulder_collision(
