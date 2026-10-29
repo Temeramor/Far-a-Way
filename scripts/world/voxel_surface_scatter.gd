@@ -584,7 +584,8 @@ func _scatter_grass(
 
 
 func _make_rock_grid(radius: float, stretch_y: float, voxel_size: float, palette_data: Dictionary, rock_seed: int):
-    var width: int = ceili(radius * 2.8) + 6
+    # The original rock field reaches up to 1.69 radii horizontally after its shape warp.
+    var width: int = ceili(radius * 3.6) + 6
     var height: int = ceili(radius * 1.75 * stretch_y) + 6
     var grid = _make_object_grid(width, height, width, palette_data)
     _fill_rock(grid, rock_seed, radius, stretch_y, palette_data["rock_ramps"])
