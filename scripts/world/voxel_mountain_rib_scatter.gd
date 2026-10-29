@@ -71,11 +71,13 @@ func _try_add_cliff(
     # read as a cross-section of a real escarpment instead of a strip crawling uphill.
     var tangent := Vector2(-gradient.y, gradient.x).normalized()
     var centre := Vector2(world_x, world_z)
+    var trace_steps: Array[float] = [0.75, 1.05, 1.5, 2.1]
+    var trace_step: float = trace_steps[clampi(terrain_lod, 0, trace_steps.size() - 1)]
     var negative_path := _trace_contour(
-        host, centre, tangent, -1.0, origin_x, origin_z, width_m, depth_m
+        host, centre, tangent, -1.0, origin_x, origin_z, width_m, depth_m, trace_step
     )
     var positive_path := _trace_contour(
-        host, centre, tangent, 1.0, origin_x, origin_z, width_m, depth_m
+        host, centre, tangent, 1.0, origin_x, origin_z, width_m, depth_m, trace_step
     )
     negative_path.reverse()
     var path: Array[Vector2] = negative_path
@@ -128,14 +130,15 @@ func _try_add_cliff(
 
 func _trace_contour(
         host, start: Vector2, initial_tangent: Vector2, sign_value: float,
-        origin_x: float, origin_z: float, width_m: float, depth_m: float) -> Array[Vector2]:
+        origin_x: float, origin_z: float, width_m: float, depth_m: float,
+        trace_step: float) -> Array[Vector2]:
     var result: Array[Vector2] = [start]
     var current: Vector2 = start
     var direction: Vector2 = initial_tangent * sign_value
     var travelled: float = 0.0
 
     while travelled < MAX_TRACE_SIDE_M:
-        var next_point: Vector2 = current + direction * TRACE_STEP_M
+        var next_point: Vector2 = current + direction * trace_step
         # Keep each object inside its owning tile to avoid duplicated cliff strips at seams.
         if next_point.x < origin_x + 1.2 or next_point.x > origin_x + width_m - 1.2:
             break
@@ -156,7 +159,7 @@ func _trace_contour(
         direction = (direction * 0.42 + target_tangent * 0.58).normalized()
         current = next_point
         result.append(current)
-        travelled += TRACE_STEP_M
+        travelled += trace_step
     return result
 
 
