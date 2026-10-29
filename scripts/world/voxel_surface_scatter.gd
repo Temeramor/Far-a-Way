@@ -103,7 +103,7 @@ func _reconcile_entries() -> void:
     for coord_value in _world._wanted.keys():
         var coord: Vector2i = coord_value
         var request: Dictionary = _world._wanted[coord]
-        var terrain_lod: int = int(request.get("lod", _world._decode_lod_key(coord)["lod"]))
+        var terrain_lod: int = int(request.get("lod", 0))
         if terrain_lod > 3 or bool(request.get("fallback", false)):
             continue
 
