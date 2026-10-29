@@ -39,13 +39,13 @@ func build_rock_data(job_data: Dictionary) -> void:
         var rng := RandomNumberGenerator.new()
         rng.seed = _mix(tile_seed, 101, 307)
         _mountain_rib_scatter.build_tile(
-            self, mesh_data, null, reservations, palette_data, rng, tile_seed,
+            self, mesh_data, reservations, palette_data, rng, tile_seed,
             float(job_data["origin_x"]), float(job_data["origin_z"]),
             float(job_data["width_m"]), float(job_data["depth_m"]),
             int(job_data["terrain_lod"]), distance_m, collision_data, build_collisions
         )
         _rock_scatter.build_tile(
-            self, mesh_data, null, reservations, palette_data, rng, tile_seed,
+            self, mesh_data, reservations, palette_data, rng, tile_seed,
             float(job_data["origin_x"]), float(job_data["origin_z"]),
             float(job_data["width_m"]), float(job_data["depth_m"]),
             int(job_data["prop_lod"]), distance_m, collision_data, build_collisions
