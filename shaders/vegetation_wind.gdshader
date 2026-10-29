@@ -16,10 +16,9 @@ void vertex() {
     vec2 p = world_position.xz;
     vec2 direction = normalize(wind_direction);
 
-    // A stable phase per small world cell prevents a whole tile from swaying in lockstep.
-    vec2 plant_cell = floor(p * 1.35);
-    float phase_hash = fract(sin(dot(plant_cell, vec2(127.1, 311.7))) * 43758.5453);
-    float phase_offset = phase_hash * 6.2831853;
+    // Use a smooth low-frequency phase field: a single wide clump stays coherent,
+    // while neighbouring clumps still drift slightly out of phase.
+    float phase_offset = sin(dot(p, vec2(0.013, 0.009))) * 0.65;
 
     float along_wind = dot(p, direction);
     float wave_a = sin(TIME * wind_speed + along_wind * 0.045 + phase_offset);
