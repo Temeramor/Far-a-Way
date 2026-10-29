@@ -6,7 +6,7 @@ const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
 const PROP_VOXEL_SIZE: float = 0.1
 
 func build_tile(
-        host: Node, output, collision_body: StaticBody3D,
+        host, output, collision_body: StaticBody3D,
         reservations: Array[Dictionary], palette_data: Dictionary, rng: RandomNumberGenerator,
         tile_seed: int, origin_x: float, origin_z: float, width_m: float, depth_m: float,
         prop_lod: int, distance_m: float) -> void:
@@ -76,14 +76,14 @@ func _add_boulder_collision(
     collision.position = Vector3(local_x, surface_y - 0.06 + height * 0.5, local_z)
     collision_body.add_child(collision)
 
-func make_rock_grid(host: Node, radius: float, palette_data: Dictionary, rock_seed: int):
+func make_rock_grid(host, radius: float, palette_data: Dictionary, rock_seed: int):
     var width: int = ceili(radius * 3.6) + 6
     var height: int = ceili(radius * 1.75) + 6
     var grid = host._make_object_grid(width, height, width, palette_data)
     _fill_rock(host, grid, rock_seed, radius, palette_data["rock_ramps"])
     return grid
 
-func _fill_rock(host: Node, grid, seed_value: int, radius: float, rock_ramps: PackedInt32Array) -> void:
+func _fill_rock(host, grid, seed_value: int, radius: float, rock_ramps: PackedInt32Array) -> void:
     var rng := RandomNumberGenerator.new()
     rng.seed = seed_value
     var noise := host._make_noise(seed_value, 0.2)
