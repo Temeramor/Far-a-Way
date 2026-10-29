@@ -14,7 +14,6 @@ const GridScript = preload("res://scripts/vegetation/vox_grid.gd")
 var result: Dictionary = {}
 var world_size_m: float = 2000.0
 var _generator: VoxelTerrainGenerator
-var _world: Object
 var _rock_scatter = RockScatterScript.new()
 var _mountain_rib_scatter = MountainRibScatterScript.new()
 var _vegetation_scatter = VegetationScatterScript.new()
@@ -23,9 +22,7 @@ var _vegetation_scatter = VegetationScatterScript.new()
 func configure(seed_value: int, size_m: float) -> void:
     world_size_m = size_m
     _generator = GeneratorScript.new(seed_value, size_m)
-    # The rib builder uses host._world for terrain queries. Here the worker is its own
-    # isolated terrain facade; no shared VoxelWorld/SceneTree object is touched.
-    _world = self
+    # This task owns its terrain sampler and cache; it does not read mutable VoxelWorld state.
 
 
 func build_rock_data(job_data: Dictionary) -> void:
@@ -83,12 +80,6 @@ func build_plant_data(job_data: Dictionary) -> void:
         "mesh_data": mesh_data,
         "reservations": reservations
     }
-
-
-func get_surface_height(world_x: float, world_z: float) -> float:
-    if _generator == null:
-        return 25.0
-    return _generator.get_surface_height(world_x, world_z)
 
 
 func _surface_info(world_x: float, world_z: float) -> Dictionary:
