@@ -28,9 +28,9 @@ func _run() -> void:
     if mixed_a != mixed_b:
         errors.append("The per-tile seed mixer must be deterministic.")
 
-    if scatter._desired_plant_lod(60.0) != 0 or scatter._desired_plant_lod(130.0) != 1:
+    if scatter._desired_plant_lod(60.0) != 0 or scatter._desired_plant_lod(130.0) != 1 or scatter._desired_plant_lod(300.0, 1) != 1:
         errors.append("Plants should use detailed LOD0 nearby and coarsened LOD1 farther away.")
-    if not scatter._plant_is_requested(0, 150.0) or scatter._plant_is_requested(2, 60.0):
+    if not scatter._plant_is_requested(0, 150.0) or not scatter._plant_is_requested(1, 400.0) or scatter._plant_is_requested(2, 60.0):
         errors.append("Plants must stop before terrain LOD2.")
     if scatter._prop_lod_for_distance(60.0) != 0 or scatter._prop_lod_for_distance(300.0) != 2 or scatter._prop_lod_for_distance(900.0) != 3:
         errors.append("Stone props must progress through LOD0..LOD3.")
@@ -81,9 +81,11 @@ func _run() -> void:
     stone_grid.emit(stone_mesh_data, Vector3.ZERO, 0.1, 12345)
     if stone_mesh_data.verts.is_empty() or stone_mesh_data.indices.is_empty():
         errors.append("The voxel rock generator must emit visible mesh geometry.")
-    var coarse_stone_grid = rock_scatter.make_rock_grid(scatter, 1.0, palette, 12346)
-    if coarse_stone_grid.w >= stone_grid.w:
-        errors.append("Coarse boulder grids should be generated smaller before meshing, not downsampled from the full grid.")
+    var coarse_stone_grid = rock_scatter.make_rock_grid(scatter, 8.0, palette, 12346, 3)
+    var coarse_stone_mesh_data = MeshDataScript.new()
+    coarse_stone_grid.emit(coarse_stone_mesh_data, Vector3.ZERO, 0.1, 12346)
+    if coarse_stone_mesh_data.verts.is_empty() or coarse_stone_mesh_data.indices.is_empty():
+        errors.append("The simplified distant rock tier must retain visible geometry at 10 cm voxel size.")
 
     var aligned_cells: Dictionary = {
         Vector3i(0, 0, 0): 1,
