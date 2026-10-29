@@ -9,10 +9,9 @@ const MIN_WALL_POINTS: int = 8
 
 
 func build_tile(
-        host, output, collision_body: StaticBody3D,
-        reservations: Array[Dictionary], palette_data: Dictionary, rng: RandomNumberGenerator,
-        tile_seed: int, origin_x: float, origin_z: float, width_m: float, depth_m: float,
-        terrain_lod: int, tile_distance_m: float,
+        host, output, reservations: Array[Dictionary], palette_data: Dictionary,
+        rng: RandomNumberGenerator, tile_seed: int, origin_x: float, origin_z: float,
+        width_m: float, depth_m: float, terrain_lod: int, tile_distance_m: float,
         collision_output: Array, build_collisions: bool) -> void:
     if terrain_lod > 3:
         return
@@ -49,7 +48,7 @@ func build_tile(
             continue
 
         if _try_add_cliff(
-                host, output, collision_body, collision_output, reservations, palette_data,
+                host, output, collision_output, reservations, palette_data,
                 rng, tile_seed, world_x, world_z, origin_x, origin_z, width_m, depth_m,
                 terrain_lod, Vector2(float(surface["gradient_x"]), float(surface["gradient_z"])),
                 build_collisions
@@ -58,8 +57,8 @@ func build_tile(
 
 
 func _try_add_cliff(
-        host, output, collision_body: StaticBody3D, collision_output: Array,
-        reservations: Array[Dictionary], palette_data: Dictionary, _rng: RandomNumberGenerator,
+        host, output, collision_output: Array, reservations: Array[Dictionary],
+        palette_data: Dictionary, _rng: RandomNumberGenerator,
         tile_seed: int, world_x: float, world_z: float, origin_x: float, origin_z: float,
         width_m: float, depth_m: float, terrain_lod: int, gradient: Vector2,
         build_collisions: bool) -> bool:
@@ -112,18 +111,6 @@ func _try_add_cliff(
             "position": Vector3.ZERO,
             "points": wall_data.verts
         })
-    elif collision_body != null:
-        # Compatibility path for any caller that still builds the object synchronously.
-        var faces := PackedVector3Array()
-        for index_value in wall_data.indices:
-            faces.append(wall_data.verts[int(index_value)])
-        if not faces.is_empty():
-            var concave := ConcavePolygonShape3D.new()
-            concave.set_faces(faces)
-            var collision := CollisionShape3D.new()
-            collision.name = "CliffCollision"
-            collision.shape = concave
-            collision_body.add_child(collision)
     return true
 
 
