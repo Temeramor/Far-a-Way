@@ -1,4 +1,4 @@
-# Far a Way 0.1.0.5
+# Far a Way 0.1.0.6
 
 Far a Way is a first-person exploration prototype focused on a large procedural voxel landscape. The project uses **Godot 4.7.2**, the **Forward+ renderer**, and a native C++ GDExtension for the CPU-intensive terrain chunk builder.
 
@@ -10,11 +10,11 @@ Far a Way is a first-person exploration prototype focused on a large procedural 
 - **Base terrain resolution:** 20 cm voxel cells on X, Y and Z.
 - **Default terrain view distance:** 4,096 m.
 - **Coarsest voxel cell:** 25.6 m at the farthest LOD.
-- **Version:** `0.1.0.5`.
+- **Version:** `0.1.0.6`.
 
 The terrain is generated as height columns: each horizontal position has one generated surface height. Meshes and collisions are streamed around the player instead of creating a node for each voxel.
 
-Near the player, the game streams voxel boulders, natural grass tufts and wildflowers. Stone placement is weighted toward rocky terrain; on steep gray mountain slopes, larger elongated voxel ribs follow the local slope and sink partly into the terrain. Grass and flowers are restricted to grassy, gentler surfaces, and all decorations use a shared per-tile exclusion map so they do not overlap. The original terrain remains generated from the existing seeded height algorithm; no heightmap or imported object meshes are used.
+Surface decoration is streamed separately from terrain. Grass and flowers use two prop detail tiers: full 10 cm source voxels nearby, downsampled 20 cm voxels in the next tier, and no plants in prop LOD2 or farther. The plant mesh uses a wind shader whose sway and gusts follow Clear, Cloudy and Overcast weather; roots stay anchored while upper vertices move. Plants and stones cast shadows. Small stones are limited to the two nearest prop tiers, while large boulders simplify through prop LOD3. Mountain ribs are built as axis-aligned voxel cells whose size matches the active terrain LOD; they follow a downhill-to-crest trace and are embedded into the slope. Stone, rib and vegetation placement use a shared exclusion map. The terrain still comes from the original seeded height algorithm; no imported object meshes are used.
 
 ## Main menu and controls
 
@@ -113,7 +113,7 @@ The extension descriptor is `bin/voxen_native.gdextension`; output DLLs belong u
 ## Project layout
 
 - `scripts/menu/`: main menu, seed input and persistent flight settings.
-- `scripts/world/`: world lifecycle, startup loading, weather/time controls, world HUD and streamed voxel surface scatter.
+- `scripts/world/`: world lifecycle, startup loading, weather/time controls, world HUD, plus separate streamed rock, mountain-rib and vegetation generators.
 - `scripts/vegetation/`: voxel grid, colour palette and mesh accumulator used by rocks, grass and flowers.
 - `scripts/voxel_world.gd`: streamed chunk coverage, hierarchical LOD, job scheduling and diagnostics.
 - `scripts/voxel_chunk.gd`: render/collision resource application and retirement for each chunk.
@@ -123,10 +123,11 @@ The extension descriptor is `bin/voxen_native.gdextension`; output DLLs belong u
 - `scripts/sky/` and `shaders/sky/`: sky, clock, cloud and atmospheric-fog systems.
 - `scripts/player/` and `scripts/ui/`: player control, loading screen and pause menu.
 - `shaders/voxel_surface.gdshader`: procedural terrain material.
+- `shaders/vegetation_wind.gdshader`: weather-responsive plant motion.
 
 ## Current limits and verification
 
-The 2 × 2 km terrain is a height-column model rather than a full 3D voxel volume. It does not currently support arbitrary voxel editing, persistent terrain modification, enclosed caves or overhangs. Chunk collision uses height-map data consistent with this terrain model.
+The 2 × 2 km terrain is a height-column model rather than a full 3D voxel volume. It does not currently support arbitrary voxel editing, persistent terrain modification, enclosed caves or overhangs. Chunk collision uses height-map data consistent with this terrain model. The native C++ builder already handles the main terrain mesh, collision-height data and smooth shadow proxy. Decoration placement and object-grid filling remain bounded GDScript tasks (one tile build per frame); their face-emission loops are the next candidate for native profiling if the in-game profiler identifies them as a significant cost. A C++ port should be guided by measured CPU time rather than duplicating the new mesh path without a working Windows build and runtime comparison.
 
 With Godot 4.7.2 installed, check resource import and script parsing:
 
