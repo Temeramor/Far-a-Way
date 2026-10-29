@@ -30,8 +30,8 @@ func _run() -> void:
 
     if scatter._desired_plant_lod(60.0) != 0 or scatter._desired_plant_lod(130.0) != 1 or scatter._desired_plant_lod(300.0, 1) != 1:
         errors.append("Plants should use detailed LOD0 nearby and coarsened LOD1 farther away.")
-    if not scatter._plant_is_requested(0, 150.0) or not scatter._plant_is_requested(1, 400.0) or scatter._plant_is_requested(2, 60.0):
-        errors.append("Plants must stop before terrain LOD2.")
+    if not scatter._plant_is_requested(0, 150.0) or not scatter._plant_is_requested(1, 300.0) or scatter._plant_is_requested(1, 400.0) or scatter._plant_is_requested(2, 60.0):
+        errors.append("Plants should fade out at 320 m and stop before terrain LOD2.")
     if scatter._prop_lod_for_distance(60.0) != 0 or scatter._prop_lod_for_distance(300.0) != 2 or scatter._prop_lod_for_distance(900.0) != 3:
         errors.append("Stone props must progress through LOD0..LOD3.")
 
@@ -87,23 +87,32 @@ func _run() -> void:
     if coarse_stone_mesh_data.verts.is_empty() or coarse_stone_mesh_data.indices.is_empty():
         errors.append("The simplified distant rock tier must retain visible geometry at 10 cm voxel size.")
 
-    var aligned_cells: Dictionary = {
-        Vector3i(0, 0, 0): 1,
-        Vector3i(0, 1, 0): 1,
-        Vector3i(1, 1, 0): 1
-    }
     var rib_palette: PackedColorArray = palette["grid"].palette
-    for cell_size in [0.2, 0.4, 0.8, 1.6]:
-        var rib_mesh_data = rib_scatter.build_aligned_rib_mesh(
-            aligned_cells, rib_palette, cell_size, 0.0, 0.0
-        )
-        if rib_mesh_data.verts.is_empty() or rib_mesh_data.indices.is_empty():
-            errors.append("The aligned mountain-rib mesher must emit visible mesh geometry.")
-            break
-        for vertex in rib_mesh_data.verts:
-            if absf(vertex.x / cell_size - roundf(vertex.x / cell_size)) > 0.001 or absf(vertex.y / cell_size - roundf(vertex.y / cell_size)) > 0.001 or absf(vertex.z / cell_size - roundf(vertex.z / cell_size)) > 0.001:
-                errors.append("Mountain-rib vertices must match the active terrain voxel grid.")
+    var cliff_noise: FastNoiseLite = scatter._make_noise(9876, 0.075)
+    var contour_path: Array[Vector2] = [
+        Vector2(50.0, 60.0), Vector2(51.0, 60.2),
+        Vector2(52.0, 60.1), Vector2(53.0, 60.3), Vector2(54.0, 60.2)
+    ]
+    var cliff_mesh_data: MeshData = rib_scatter._build_cliff_mesh(
+        scatter, contour_path, cliff_noise, rib_palette, rock_ramps, 50.0, 60.0
+    )
+    if cliff_mesh_data.verts.is_empty() or cliff_mesh_data.indices.is_empty():
+        errors.append("The contour-aligned cliff-object mesher must emit visible geometry.")
+    else:
+        var min_wall_y: float = INF
+        var max_wall_y: float = -INF
+        var has_vertical_wall_normal: bool = false
+        for vertex in cliff_mesh_data.verts:
+            min_wall_y = minf(min_wall_y, vertex.y)
+            max_wall_y = maxf(max_wall_y, vertex.y)
+        for normal in cliff_mesh_data.normals:
+            if absf(normal.y) < 0.01:
+                has_vertical_wall_normal = true
                 break
+        if max_wall_y - min_wall_y < 3.5:
+            errors.append("Cliff-object geometry should have meaningful vertical relief.")
+        if not has_vertical_wall_normal:
+            errors.append("Cliff-object front faces should use near-horizontal normals for vertical walls.")
 
     var flower_grid = scatter._make_object_grid(22, 20, 22, palette)
     var flower_rng := RandomNumberGenerator.new()
