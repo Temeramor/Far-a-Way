@@ -5,7 +5,7 @@ class_name VoxelVegetationScatter
 const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
 const PaletteScript = preload("res://scripts/vegetation/voxel_palette.gd")
 const PROP_VOXEL_SIZE: float = 0.1
-const GRASS_BLADE_COUNT: int = 120
+const GRASS_BLADE_COUNT: int = 76
 
 func build_tile(
         host, output, reservations: Array[Dictionary], palette_data: Dictionary,
