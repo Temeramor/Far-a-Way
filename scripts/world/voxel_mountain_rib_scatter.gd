@@ -120,6 +120,26 @@ func _try_add_rib(
 
     if cells.is_empty():
         return false
+    var rib_data = build_aligned_rib_mesh(cells, palette, terrain_voxel, origin_x, origin_z)
+    if rib_data.verts.is_empty():
+        return false
+    host._append_transformed_mesh(output, rib_data, Basis.IDENTITY, Vector3.ZERO)
+    if collision_body != null:
+        var collision_faces := PackedVector3Array()
+        for index_value in rib_data.indices:
+            collision_faces.append(rib_data.verts[int(index_value)])
+        if not collision_faces.is_empty():
+            var concave := ConcavePolygonShape3D.new()
+            concave.set_faces(collision_faces)
+            var collision := CollisionShape3D.new()
+            collision.name = "MountainRibCollision"
+            collision.shape = concave
+            collision_body.add_child(collision)
+    return true
+
+func build_aligned_rib_mesh(
+        cells: Dictionary, palette: PackedColorArray, terrain_voxel: float,
+        origin_x: float, origin_z: float) -> MeshData:
     var rib_data = MeshDataScript.new()
     for cell_value in cells.keys():
         var cell: Vector3i = cell_value
@@ -140,21 +160,7 @@ func _try_add_rib(
                 base + corners[2] * terrain_voxel, base + corners[3] * terrain_voxel,
                 NORMALS[face], palette[color_index]
             )
-    if rib_data.verts.is_empty():
-        return false
-    host._append_transformed_mesh(output, rib_data, Basis.IDENTITY, Vector3.ZERO)
-    if collision_body != null:
-        var collision_faces := PackedVector3Array()
-        for index_value in rib_data.indices:
-            collision_faces.append(rib_data.verts[int(index_value)])
-        if not collision_faces.is_empty():
-            var concave := ConcavePolygonShape3D.new()
-            concave.set_faces(collision_faces)
-            var collision := CollisionShape3D.new()
-            collision.name = "MountainRibCollision"
-            collision.shape = concave
-            collision_body.add_child(collision)
-    return true
+    return rib_data
 
 func _trace_side(host: Node, start: Vector2, initial_direction: Vector2, sign_value: float) -> Array[Vector2]:
     var result: Array[Vector2] = [start]
