@@ -24,7 +24,7 @@ const CORNERS: Array = [
 ]
 
 func build_tile(
-        host: Node, output, collision_body: StaticBody3D,
+        host, output, collision_body: StaticBody3D,
         reservations: Array[Dictionary], palette_data: Dictionary, rng: RandomNumberGenerator,
         tile_seed: int, origin_x: float, origin_z: float, width_m: float, depth_m: float,
         terrain_lod: int, tile_distance_m: float) -> void:
@@ -56,7 +56,7 @@ func build_tile(
             break
 
 func _try_add_rib(
-        host: Node, output, collision_body: StaticBody3D, reservations: Array[Dictionary],
+        host, output, collision_body: StaticBody3D, reservations: Array[Dictionary],
         palette_data: Dictionary, rng: RandomNumberGenerator, tile_seed: int,
         world_x: float, world_z: float, origin_x: float, origin_z: float,
         terrain_lod: int, gradient: Vector2) -> bool:
@@ -162,7 +162,7 @@ func build_aligned_rib_mesh(
             )
     return rib_data
 
-func _trace_side(host: Node, start: Vector2, initial_direction: Vector2, sign_value: float) -> Array[Vector2]:
+func _trace_side(host, start: Vector2, initial_direction: Vector2, sign_value: float) -> Array[Vector2]:
     var result: Array[Vector2] = [start]
     var current: Vector2 = start
     var direction: Vector2 = initial_direction * sign_value
