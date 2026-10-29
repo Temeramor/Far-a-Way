@@ -80,7 +80,7 @@ func _try_add_rib(
     if path.size() < 8:
         return false
 
-    var noise := host._make_noise(host._mix(tile_seed, int(world_x * 10.0), int(world_z * 10.0)), 0.09)
+    var noise: FastNoiseLite = host._make_noise(host._mix(tile_seed, int(world_x * 10.0), int(world_z * 10.0)), 0.09)
     var rock_ramps: PackedInt32Array = palette_data["rock_ramps"]
     var palette: PackedColorArray = palette_data["grid"].palette
     var cells: Dictionary = {}
