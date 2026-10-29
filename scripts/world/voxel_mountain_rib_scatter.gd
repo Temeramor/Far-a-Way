@@ -90,7 +90,7 @@ func _try_add_cliff(
     var rock_ramps: PackedInt32Array = palette_data["rock_ramps"]
     var palette: PackedColorArray = palette_data["grid"].palette
     var wall_data: MeshData = _build_cliff_mesh(
-        path, shape_noise, palette, rock_ramps, origin_x, origin_z
+        host, path, shape_noise, palette, rock_ramps, origin_x, origin_z
     )
     if wall_data.verts.is_empty():
         return false
@@ -161,7 +161,7 @@ func _trace_contour(
 
 
 func _build_cliff_mesh(
-        path: Array[Vector2], noise: FastNoiseLite, palette: PackedColorArray,
+        host, path: Array[Vector2], noise: FastNoiseLite, palette: PackedColorArray,
         rock_ramps: PackedInt32Array, origin_x: float, origin_z: float) -> MeshData:
     var data: MeshData = MeshDataScript.new()
     if path.size() < 2:
