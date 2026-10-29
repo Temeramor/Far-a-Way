@@ -165,7 +165,7 @@ var game_time: String = "" :
 ## the smoother the animation. Set to [param 0.016] for 60fps, for example.[br][br]
 ## [b]Note:[/b] Setting this value too small may cause unwanted behavior. See [member Timer.wait_time].
 ## Alias for [member TimeOfDay.update_interval].
-@export_range(0.016, 10.0) var update_interval: float = 0.016 :
+@export_range(0.05, 10.0) var update_interval: float = 0.25 :
 	set(value):
 		if tod:
 			tod.update_interval = value
