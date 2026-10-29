@@ -15,7 +15,6 @@ const PROP_VOXEL_SIZE: float = 0.1
 const MAX_DECOR_DISTANCE_M: float = 1900.0
 const DENSE_ROCK_DISTANCE_M: float = 240.0
 const PLANT_FULL_DISTANCE_M: float = 92.0
-const PLANT_COARSE_DISTANCE_M: float = 180.0
 const PLANT_REMOVE_HYSTERESIS_M: float = 12.0
 const MIN_STONE_EDGE_MARGIN_M: float = 0.25
 const ROCK_MOSS_COLOR := Color("5e7b3a")
@@ -155,7 +154,7 @@ func _reconcile_entries() -> void:
             var plant_distance: float = float(request_info["distance"])
             var current_plant_lod: int = int(entry.get("plants_lod", 0))
             var wants_plants: bool = bool(request_info["plants"])
-            var remove_plants: bool = not wants_plants or plant_distance > PLANT_COARSE_DISTANCE_M + PLANT_REMOVE_HYSTERESIS_M
+            var remove_plants: bool = not wants_plants or plant_distance > MAX_DECOR_DISTANCE_M + PLANT_REMOVE_HYSTERESIS_M
             if current_plant_lod == 0 and plant_distance > PLANT_FULL_DISTANCE_M + PLANT_REMOVE_HYSTERESIS_M:
                 remove_plants = true
             elif current_plant_lod == 1 and plant_distance < PLANT_FULL_DISTANCE_M - PLANT_REMOVE_HYSTERESIS_M:
@@ -197,11 +196,11 @@ func _should_generate_rocks(coord: Vector2i, terrain_lod: int, distance: float) 
 
 func _plant_is_requested(terrain_lod: int, distance: float) -> bool:
     # Vegetation only occupies two prop tiers and never appears on terrain LOD2+.
-    return terrain_lod == 0 and distance <= PLANT_COARSE_DISTANCE_M
+    return terrain_lod <= 1 and distance <= MAX_DECOR_DISTANCE_M
 
 
-func _desired_plant_lod(distance: float) -> int:
-    return 0 if distance <= PLANT_FULL_DISTANCE_M else 1
+func _desired_plant_lod(distance: float, terrain_lod: int = 0) -> int:
+    return maxi(terrain_lod, 0 if distance <= PLANT_FULL_DISTANCE_M else 1)
 
 
 func _prop_lod_for_distance(distance_m: float) -> int:
