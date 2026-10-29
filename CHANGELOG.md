@@ -7,6 +7,7 @@
 - Added a vertex wind shader with rooted sway and gust modulation tied to the Clear, Cloudy and Overcast weather presets.
 - Explicitly enabled shadow casting for vegetation and stone meshes.
 - Rebuilt mountain ribs as unrotated world-axis-aligned cells. Their voxel size matches the active terrain LOD and the rib trace attempts to span the rocky slope from the lower grass boundary toward the crest, embedding the lowest rows into the hillside.
+- Extended ridge traces to follow longer slopes while making rib starts deterministic and sparse per tile, reducing overlapping long formations in neighboring chunks.
 - Added progressive stone prop LODs: 10 cm, 20 cm, 40 cm and 80 cm cells through LOD3, with fewer and larger boulders at distance. Boulders are generated directly at their target cell size instead of being built at full 10 cm resolution before downsampling, avoiding up to 512× unnecessary cell visits at LOD3.
 - Extended smoke-test coverage for separated object generators, wind vertex data and axis-aligned rib geometry.
 - Reviewed native-boundary placement: terrain chunk meshing remains the existing C++ GDExtension hot path; object placement and cell filling stay budgeted in GDScript for now, with native porting gated on profiling and a tested Windows build.
