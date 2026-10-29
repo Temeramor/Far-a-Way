@@ -1,7 +1,7 @@
 extends RefCounted
 class_name VoxelRockScatter
 
-## Ground stones and boulders. Source grids are generated directly at prop LOD resolution.
+## Ground stones and boulders. Rock voxel cells remain 10 cm at every prop LOD.
 const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
 const PROP_VOXEL_SIZE: float = 0.1
 
@@ -39,24 +39,22 @@ func build_tile(
             0:
                 radius_units = lerpf(2.5, 14.0, pow(rng.randf(), 2.5))
             1:
-                radius_units = lerpf(5.0, 18.0, pow(rng.randf(), 1.8))
+                radius_units = lerpf(5.0, 16.0, pow(rng.randf(), 1.8))
             2:
-                radius_units = lerpf(12.0, 30.0, pow(rng.randf(), 1.2))
+                radius_units = lerpf(8.0, 20.0, pow(rng.randf(), 1.2))
             _:
-                radius_units = lerpf(20.0, 44.0, pow(rng.randf(), 1.2))
+                radius_units = lerpf(12.0, 22.0, pow(rng.randf(), 1.2))
         var radius_m: float = radius_units * PROP_VOXEL_SIZE
         var exclusion_radius: float = maxf(0.42, radius_m * 1.45)
         if not host._can_reserve(local_x, local_z, exclusion_radius, width_m, depth_m, reservations):
             continue
 
         var rock_seed: int = rng.randi()
-        # Generate directly at the requested prop resolution. Building a 10 cm grid
-        # and downsampling it afterwards would waste up to 512x the cell work at LOD3.
-        var prop_scale: int = 1 << clampi(prop_lod, 0, 3)
-        var radius_at_lod: float = radius_units / float(prop_scale)
-        var grid = make_rock_grid(host, radius_at_lod, palette_data, rock_seed)
+        # Keep 10 cm voxels for rocks at every LOD. Distant tiers use fewer/smaller
+        # shapes and lower surface noise instead of enlarging individual rock voxels.
+        var grid = make_rock_grid(host, radius_units, palette_data, rock_seed, prop_lod)
         var rock_piece = MeshDataScript.new()
-        grid.emit(rock_piece, Vector3.ZERO, PROP_VOXEL_SIZE * float(prop_scale), rock_seed)
+        grid.emit(rock_piece, Vector3.ZERO, PROP_VOXEL_SIZE, rock_seed)
         host._append_transformed_mesh(
             output, rock_piece, Basis.IDENTITY,
             Vector3(local_x, float(surface["height"]) - 0.06, local_z)
@@ -76,21 +74,28 @@ func _add_boulder_collision(
     collision.position = Vector3(local_x, surface_y - 0.06 + height * 0.5, local_z)
     collision_body.add_child(collision)
 
-func make_rock_grid(host, radius: float, palette_data: Dictionary, rock_seed: int):
+func make_rock_grid(
+        host, radius: float, palette_data: Dictionary, rock_seed: int, quality_lod: int = 0):
     var width: int = ceili(radius * 3.6) + 6
     var height: int = ceili(radius * 1.75) + 6
     var grid = host._make_object_grid(width, height, width, palette_data)
-    _fill_rock(host, grid, rock_seed, radius, palette_data["rock_ramps"])
+    _fill_rock(host, grid, rock_seed, radius, palette_data["rock_ramps"], quality_lod)
     return grid
 
-func _fill_rock(host, grid, seed_value: int, radius: float, rock_ramps: PackedInt32Array) -> void:
+func _fill_rock(
+        host, grid, seed_value: int, radius: float, rock_ramps: PackedInt32Array,
+        quality_lod: int) -> void:
     var rng := RandomNumberGenerator.new()
     rng.seed = seed_value
     var noise := host._make_noise(seed_value, 0.2)
+    var quality: int = clampi(quality_lod, 0, 3)
+    var detail_scale: float = [1.0, 0.82, 0.62, 0.45][quality]
+    var noise_amplitude: float = [0.28, 0.21, 0.14, 0.08][quality]
+    var colour_jitter: float = [0.15, 0.10, 0.06, 0.03][quality]
     var palette_pick: bool = rng.randf() < 0.5
     var gray_start: int = int(rock_ramps[0] if palette_pick else rock_ramps[2])
     var gray_count: int = int(rock_ramps[1] if palette_pick else rock_ramps[3])
-    var moss: bool = rng.randf() < 0.45
+    var moss: bool = rng.randf() < [0.45, 0.35, 0.25, 0.16][quality]
     var rx: float = radius * rng.randf_range(0.9, 1.3)
     var ry: float = radius * rng.randf_range(0.5, 0.85)
     var rz: float = radius * rng.randf_range(0.9, 1.3)
@@ -105,11 +110,11 @@ func _fill_rock(host, grid, seed_value: int, radius: float, rock_ramps: PackedIn
                 var shape_value: float = pow(absf(nx), 2.4) + pow(absf(ny), 2.4) + pow(absf(nz), 2.4)
                 if shape_value > 2.2:
                     continue
-                var noise_value: float = noise.get_noise_3d(float(xx), float(y), float(zz))
-                var distance_value: float = pow(shape_value, 1.0 / 2.4) + noise_value * 0.28
+                var noise_value: float = noise.get_noise_3d(float(xx) * detail_scale, float(y) * detail_scale, float(zz) * detail_scale)
+                var distance_value: float = pow(shape_value, 1.0 / 2.4) + noise_value * noise_amplitude
                 if distance_value > 1.0:
                     continue
-                var tone: float = 0.5 + ny * 0.35 + noise_value * 0.35 + rng.randf_range(-0.15, 0.15)
+                var tone: float = 0.5 + ny * 0.35 + noise_value * 0.35 + rng.randf_range(-colour_jitter, colour_jitter)
                 var index: int = gray_start + clampi(int(tone * gray_count), 0, gray_count - 1)
                 if moss and ny > 0.25 and noise_value > -0.05:
                     index = int(rock_ramps[4]) + rng.randi_range(0, int(rock_ramps[5]) - 1)
