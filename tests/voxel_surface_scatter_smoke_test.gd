@@ -81,6 +81,9 @@ func _run() -> void:
     stone_grid.emit(stone_mesh_data, Vector3.ZERO, 0.1, 12345)
     if stone_mesh_data.verts.is_empty() or stone_mesh_data.indices.is_empty():
         errors.append("The voxel rock generator must emit visible mesh geometry.")
+    var coarse_stone_grid = rock_scatter.make_rock_grid(scatter, 1.0, palette, 12346)
+    if coarse_stone_grid.w >= stone_grid.w:
+        errors.append("Coarse boulder grids should be generated smaller before meshing, not downsampled from the full grid.")
 
     var aligned_cells: Dictionary = {
         Vector3i(0, 0, 0): 1,
