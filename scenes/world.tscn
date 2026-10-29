@@ -28,9 +28,6 @@ script = ExtResource("6_sky")
 [node name="Terrain" type="Node3D" parent="."]
 script = ExtResource("2_terrain")
 
-[node name="DemoRockFormations" type="Node3D" parent="."]
-script = ExtResource("8_rock_formations")
-
 [node name="Player" parent="." instance=ExtResource("3_player")]
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
