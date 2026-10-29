@@ -6,13 +6,9 @@ class_name VoxelSurfaceScatter
 const GridScript = preload("res://scripts/vegetation/vox_grid.gd")
 const PaletteScript = preload("res://scripts/vegetation/voxel_palette.gd")
 const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
-const RockScatterScript = preload("res://scripts/world/voxel_rock_scatter.gd")
-const MountainRibScatterScript = preload("res://scripts/world/voxel_mountain_rib_scatter.gd")
-const VegetationScatterScript = preload("res://scripts/world/voxel_vegetation_scatter.gd")
 const WindShader: Shader = preload("res://shaders/vegetation_wind.gdshader")
 const DecorJobScript = preload("res://scripts/world/voxel_surface_decor_job.gd")
 
-const PROP_VOXEL_SIZE: float = 0.1
 const MAX_DECOR_DISTANCE_M: float = 1900.0
 const DENSE_ROCK_DISTANCE_M: float = 240.0
 const PLANT_FULL_DISTANCE_M: float = 92.0
@@ -29,9 +25,6 @@ const STEM_COLOR := Color("4c8a30")
 var _world: VoxelWorld
 var _material: StandardMaterial3D
 var _plant_material: ShaderMaterial
-var _rock_scatter
-var _mountain_rib_scatter
-var _vegetation_scatter
 var _entries: Dictionary = {}
 var _pending_actions: Array[Dictionary] = []
 var _running_decor_tasks: Dictionary = {}
@@ -46,10 +39,6 @@ func _ready() -> void:
         push_warning("VoxelSurfaceScatter: expected to be a child of VoxelWorld.")
         set_process(false)
         return
-
-    _rock_scatter = RockScatterScript.new()
-    _mountain_rib_scatter = MountainRibScatterScript.new()
-    _vegetation_scatter = VegetationScatterScript.new()
 
     _material = StandardMaterial3D.new()
     _material.vertex_color_use_as_albedo = true
@@ -70,7 +59,7 @@ func set_weather_mode(mode: int) -> void:
     if _plant_material == null:
         return
     # Weather changes sway amplitude and the strength of gusts, not a frantic oscillation rate.
-    var strengths: Array[float] = [0.014, 0.036, 0.068]
+    var strengths: Array[float] = [0.018, 0.055, 0.11]
     var speeds: Array[float] = [1.25, 1.25, 1.25]
     var gusts: Array[float] = [0.08, 0.16, 0.28]
     _plant_material.set_shader_parameter("wind_strength", strengths[_weather_mode])
