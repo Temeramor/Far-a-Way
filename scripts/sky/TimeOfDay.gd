@@ -123,9 +123,9 @@ var _sky_dome: SkyDome
 ## Celestial coordinates are updated based upon a timer, which continuously fires based on
 ## this interval: [0.016, 10s]. Set to the lowest, 0.016 (60fps) if your [member minutes_per_day] is short,
 ## such as less than 15 minutes. The Witcher 3 uses a 96 minute day cycle, so 0.1 (10fps) is adequate.
-@export_range(0.016, 10) var update_interval: float = 0.016 :
+@export_range(0.05, 10) var update_interval: float = 0.25 :
 	set(value):
-		update_interval = clamp(value, .016, 10)
+		update_interval = clamp(value, .05, 10)
 		if is_instance_valid(_update_timer):
 			_update_timer.wait_time = update_interval
 		resume()
