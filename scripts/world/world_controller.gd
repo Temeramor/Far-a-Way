@@ -451,6 +451,10 @@ func _apply_weather(mode: int, animate: bool) -> void:
         "wind_speed": wind_speed,
     }
 
+    var surface_scatter := voxel_world.get_node_or_null("VoxelSurfaceScatter") as VoxelSurfaceScatter
+    if surface_scatter != null:
+        surface_scatter.set_weather_mode(mode)
+
     if not animate:
         for property_name in targets:
             sky_dome.set(property_name, targets[property_name])
