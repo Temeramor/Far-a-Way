@@ -134,4 +134,10 @@ func emit(md: MeshData, offset: Vector3, vs: float, seed_val: int) -> void:
                 off = 1
             var col := palette[clampi(v + off, lo, hi)]
             var cs: Array = CORNERS[f]
-            md.quad(base + cs[0] * vs, base + cs[1] * vs, base + cs[2] * vs, base + cs[3] * vs, NORMALS[f], col)
+            var wind_weights := Vector4(
+                clampf((float(y) + cs[0].y) * vs / 0.75, 0.0, 1.0),
+                clampf((float(y) + cs[1].y) * vs / 0.75, 0.0, 1.0),
+                clampf((float(y) + cs[2].y) * vs / 0.75, 0.0, 1.0),
+                clampf((float(y) + cs[3].y) * vs / 0.75, 0.0, 1.0)
+            )
+            md.quad(base + cs[0] * vs, base + cs[1] * vs, base + cs[2] * vs, base + cs[3] * vs, NORMALS[f], col, wind_weights)
