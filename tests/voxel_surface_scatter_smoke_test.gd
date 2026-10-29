@@ -1,6 +1,9 @@
 extends SceneTree
 
 const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
+const RockScatterScript = preload("res://scripts/world/voxel_rock_scatter.gd")
+const MountainRibScatterScript = preload("res://scripts/world/voxel_mountain_rib_scatter.gd")
+const VegetationScatterScript = preload("res://scripts/world/voxel_vegetation_scatter.gd")
 
 
 func _initialize() -> void:
@@ -54,23 +57,36 @@ func _run() -> void:
     elif float(surface["rock_weight"]) < 0.0 or float(surface["rock_weight"]) > 1.0:
         errors.append("Surface rock weight must stay in the 0..1 interval.")
 
-    var stone_grid = scatter._make_rock_grid(8.0, 1.0, 0.1, palette, 12345)
+    var rock_scatter = RockScatterScript.new()
+    var rib_scatter = MountainRibScatterScript.new()
+    var vegetation_scatter = VegetationScatterScript.new()
+    var stone_grid = rock_scatter.make_rock_grid(scatter, 8.0, palette, 12345)
     var stone_mesh_data = MeshDataScript.new()
     stone_grid.emit(stone_mesh_data, Vector3.ZERO, 0.1, 12345)
     if stone_mesh_data.verts.is_empty() or stone_mesh_data.indices.is_empty():
         errors.append("The voxel rock generator must emit visible mesh geometry.")
 
-    var rib_grid = scatter._make_rock_grid(10.0, 4.0, 0.1, palette, 54321)
-    var rib_mesh_data = MeshDataScript.new()
-    rib_grid.emit(rib_mesh_data, Vector3.ZERO, 0.1, 54321)
+    var aligned_cells: Dictionary = {
+        Vector3i(0, 0, 0): 1,
+        Vector3i(0, 1, 0): 1,
+        Vector3i(1, 1, 0): 1
+    }
+    var rib_mesh_data = rib_scatter.build_aligned_rib_mesh(
+        aligned_cells, palette["grid"].palette, 0.2, 0.0, 0.0
+    )
     if rib_mesh_data.verts.is_empty() or rib_mesh_data.indices.is_empty():
-        errors.append("The stretched mountain-rib generator must emit visible mesh geometry.")
+        errors.append("The aligned mountain-rib mesher must emit visible mesh geometry.")
+    else:
+        for vertex in rib_mesh_data.verts:
+            if absf(vertex.x / 0.2 - roundf(vertex.x / 0.2)) > 0.001 or absf(vertex.y / 0.2 - roundf(vertex.y / 0.2)) > 0.001 or absf(vertex.z / 0.2 - roundf(vertex.z / 0.2)) > 0.001:
+                errors.append("Mountain-rib vertices must remain aligned to the terrain voxel axes.")
+                break
 
     var flower_grid = scatter._make_object_grid(22, 20, 22, palette)
     var flower_rng := RandomNumberGenerator.new()
     flower_rng.seed = 67890
     var first_flower: Dictionary = flower_set[2]
-    scatter._add_flower(
+    vegetation_scatter._add_flower(
         flower_grid, flower_rng, first_flower,
         int(palette["stem_start"]), int(palette["stem_count"])
     )
@@ -78,15 +94,19 @@ func _run() -> void:
     flower_grid.emit(flower_mesh_data, Vector3.ZERO, 0.1, 67890)
     if flower_mesh_data.verts.is_empty() or flower_mesh_data.indices.is_empty():
         errors.append("The voxel flower generator must emit visible mesh geometry.")
+    if flower_mesh_data.uv2s.size() != flower_mesh_data.verts.size():
+        errors.append("Plant vertices must carry wind-weight data in UV2.")
 
     var grass_grid = scatter._make_object_grid(18, 12, 18, palette)
     var ramps: Array = grass_ramps
     var counts: Array = grass_counts
-    scatter._add_blade(grass_grid, flower_rng, 0, 0, 6, int(ramps[0]), int(counts[0]))
+    vegetation_scatter._add_blade(grass_grid, flower_rng, 0, 0, 6, int(ramps[0]), int(counts[0]))
     var grass_mesh_data = MeshDataScript.new()
     grass_grid.emit(grass_mesh_data, Vector3.ZERO, 0.1, 77889)
     if grass_mesh_data.verts.is_empty() or grass_mesh_data.indices.is_empty():
         errors.append("The voxel grass generator must emit visible mesh geometry.")
+    if grass_mesh_data.uv2s.size() != grass_mesh_data.verts.size():
+        errors.append("Grass vertices must carry wind-weight data in UV2.")
 
     world.queue_free()
     await process_frame
