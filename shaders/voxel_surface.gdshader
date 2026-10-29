@@ -285,6 +285,15 @@ vec3 voxel_lod_rock_color(vec2 world_xz, float cell_size) {
     return color;
 }
 
+// Avoid evaluating the full multi-noise crack field once fissures are sub-pixel.
+vec3 distance_aware_rock_pixel(
+        vec2 pixel_cell, vec2 pixel_world, float crack_weight, float cell_size) {
+    if (crack_weight <= 0.001) {
+        return voxel_lod_rock_color(pixel_world, cell_size);
+    }
+    return rock_pixel(pixel_cell, pixel_world, crack_weight);
+}
+
 vec3 voxel_lod_soil_color(vec2 world_xz, float cell_size) {
     vec2 cell = floor(world_xz / cell_size);
     vec2 center = (cell + vec2(0.5)) * cell_size;
@@ -393,7 +402,7 @@ void fragment() {
             vec2 pixel_world = (pixel_cell + vec2(0.5)) * lod_voxel_size;
             ALBEDO = mix(
                 grass_pixel(pixel_cell, pixel_world),
-                rock_pixel(pixel_cell, pixel_world, rock_crack_weight),
+                distance_aware_rock_pixel(pixel_cell, pixel_world, rock_crack_weight, lod_voxel_size),
                 top_rock_amount
             );
             ROUGHNESS = mix(0.95, 0.84, top_rock_amount);
@@ -412,7 +421,7 @@ void fragment() {
         } else {
             vec2 pixel_cell = floor(rock_world / lod_voxel_size);
             vec2 pixel_world = (pixel_cell + vec2(0.5)) * lod_voxel_size;
-            ALBEDO = rock_pixel(pixel_cell, pixel_world, rock_crack_weight);
+            ALBEDO = distance_aware_rock_pixel(pixel_cell, pixel_world, rock_crack_weight, lod_voxel_size);
             ROUGHNESS = 0.84;
         }
     }
