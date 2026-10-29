@@ -356,7 +356,7 @@ func _schedule_rock_tile(
     var entry := {
         "root": root_node,
         "rocks_ready": false,
-        "rocks_building": true,
+        "rocks_building": include_rocks,
         "rocks_task_id": -1,
         "prop_lod": prop_lod,
         "plants_ready": false,
@@ -377,7 +377,16 @@ func _schedule_rock_tile(
     }
     _entries[coord] = entry
 
-    var build_collisions: bool = include_rocks and distance_m <= _world.collision_distance_m
+    # If the deterministic rock filter rejects this tile, do not initialize a terrain
+    # sampler or spend a WorkerThreadPool slot on an empty rock result.
+    if not include_rocks:
+        if _plant_is_requested(terrain_lod, distance_m):
+            _schedule_plant_tile(
+                coord, _desired_plant_lod(distance_m, terrain_lod), build_token
+            )
+        return
+
+    var build_collisions: bool = distance_m <= _world.collision_distance_m
     var builder = DecorJobScript.new()
     builder.configure(_world.seed_value, _world.world_size_m)
     var job_data: Dictionary = {
