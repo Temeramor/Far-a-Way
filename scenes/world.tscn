@@ -6,7 +6,7 @@
 [ext_resource type="PackedScene" path="res://scenes/loading_screen.tscn" id="5_loading"]
 [ext_resource type="Script" path="res://scripts/sky/Sky.gd" id="6_sky"]
 [ext_resource type="Script" path="res://scripts/voxel_world.gd" id="7_voxen_world"]
-[ext_resource type="Script" path="res://scripts/world/demo_rock_formations.gd" id="8_rock_formations"]
+[ext_resource type="Script" path="res://scripts/world/voxel_surface_scatter.gd" id="8_rock_scatter"]
 
 [node name="World" type="Node3D"]
 script = ExtResource("1_world")
@@ -18,6 +18,9 @@ chunk_size_m = 32.0
 seed_value = 1337
 render_distance_m = 4096.0
 auto_start_on_ready = false
+
+[node name="VoxelSurfaceScatter" type="Node3D" parent="VoxelWorld"]
+script = ExtResource("8_rock_scatter")
 
 [node name="Sky" type="WorldEnvironment" parent="."]
 script = ExtResource("6_sky")
