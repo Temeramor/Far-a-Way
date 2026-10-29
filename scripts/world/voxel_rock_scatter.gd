@@ -6,10 +6,10 @@ const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
 const PROP_VOXEL_SIZE: float = 0.1
 
 func build_tile(
-        host, output, collision_body: StaticBody3D,
-        reservations: Array[Dictionary], palette_data: Dictionary, rng: RandomNumberGenerator,
-        tile_seed: int, origin_x: float, origin_z: float, width_m: float, depth_m: float,
-        prop_lod: int, distance_m: float, collision_output: Array, build_collisions: bool) -> void:
+        host, output, reservations: Array[Dictionary], palette_data: Dictionary,
+        rng: RandomNumberGenerator, tile_seed: int, origin_x: float, origin_z: float,
+        width_m: float, depth_m: float, prop_lod: int, distance_m: float,
+        collision_output: Array, build_collisions: bool) -> void:
     var count: int = rng.randi_range(3, 6) if distance_m <= 240.0 else rng.randi_range(1, 2)
     if prop_lod >= 2:
         count = rng.randi_range(1, 2)
@@ -59,27 +59,13 @@ func build_tile(
             output, rock_piece, Basis.IDENTITY,
             Vector3(local_x, float(surface["height"]) - 0.06, local_z)
         )
-        if radius_m >= 0.5:
-            if collision_body != null:
-                _add_boulder_collision(collision_body, local_x, local_z, float(surface["height"]), radius_m)
-            elif build_collisions:
-                collision_output.append({
-                    "kind": "boulder",
-                    "position": Vector3(local_x, float(surface["height"]) - 0.06, local_z),
-                    "points": rock_piece.verts
-                })
+        if radius_m >= 0.5 and build_collisions:
+            collision_output.append({
+                "kind": "boulder",
+                "position": Vector3(local_x, float(surface["height"]) - 0.06, local_z),
+                "points": rock_piece.verts
+            })
         reservations.append({"p": Vector2(local_x, local_z), "r": exclusion_radius})
-
-func _add_boulder_collision(
-        collision_body: StaticBody3D, local_x: float, local_z: float, surface_y: float, radius_m: float) -> void:
-    var collision_shape := BoxShape3D.new()
-    var height: float = maxf(0.35, radius_m * 1.20)
-    collision_shape.size = Vector3(radius_m * 2.5, height, radius_m * 2.5)
-    var collision := CollisionShape3D.new()
-    collision.name = "BoulderCollision"
-    collision.shape = collision_shape
-    collision.position = Vector3(local_x, surface_y - 0.06 + height * 0.5, local_z)
-    collision_body.add_child(collision)
 
 func make_rock_grid(
         host, radius: float, palette_data: Dictionary, rock_seed: int, quality_lod: int = 0):
