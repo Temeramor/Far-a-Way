@@ -212,6 +212,7 @@ func _apply_visual_theme() -> void:
 
     var badge_stack := $CornerBadge/Margin/Stack as VBoxContainer
     badge_stack.add_theme_constant_override("separation", 0)
+    badge_stack.alignment = BoxContainer.ALIGNMENT_CENTER
     var badge_text := $CornerBadge/Margin/Stack/BadgeText as Label
     badge_text.add_theme_font_size_override("font_size", 16)
     badge_text.add_theme_color_override("font_color", COLOR_PARCHMENT)
