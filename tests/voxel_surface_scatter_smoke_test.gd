@@ -37,11 +37,15 @@ func _run() -> void:
     var palette_rng := RandomNumberGenerator.new()
     palette_rng.seed = 43210
     var palette: Dictionary = scatter._make_palette(palette_rng)
-    if (palette["rock_ramps"] as PackedInt32Array).size() != 6:
+    var rock_ramps: PackedInt32Array = palette["rock_ramps"]
+    var flower_set: Array = palette["flower_set"]
+    var grass_ramps: Array = palette["grass_ramps"]
+    var grass_counts: Array = palette["grass_counts"]
+    if rock_ramps.size() != 6:
         errors.append("The stone palette should contain two gray ramps and one moss ramp.")
-    if (palette["flower_set"] as Array).size() != 8:
+    if flower_set.size() != 8:
         errors.append("The flower palette should include all eight flower shapes.")
-    if (palette["grass_ramps"] as Array).size() != 3 or (palette["grass_counts"] as Array).size() != 3:
+    if grass_ramps.size() != 3 or grass_counts.size() != 3:
         errors.append("Grass should have fresh, bright and dry-green ramps.")
 
     var surface: Dictionary = scatter._surface_info(50.0, 60.0)
@@ -65,7 +69,7 @@ func _run() -> void:
     var flower_grid = scatter._make_object_grid(22, 20, 22, palette)
     var flower_rng := RandomNumberGenerator.new()
     flower_rng.seed = 67890
-    var first_flower: Dictionary = palette["flower_set"][2]
+    var first_flower: Dictionary = flower_set[2]
     scatter._add_flower(
         flower_grid, flower_rng, first_flower,
         int(palette["stem_start"]), int(palette["stem_count"])
@@ -76,8 +80,8 @@ func _run() -> void:
         errors.append("The voxel flower generator must emit visible mesh geometry.")
 
     var grass_grid = scatter._make_object_grid(18, 12, 18, palette)
-    var ramps: Array = palette["grass_ramps"]
-    var counts: Array = palette["grass_counts"]
+    var ramps: Array = grass_ramps
+    var counts: Array = grass_counts
     scatter._add_blade(grass_grid, flower_rng, 0, 0, 6, int(ramps[0]), int(counts[0]))
     var grass_mesh_data = MeshDataScript.new()
     grass_grid.emit(grass_mesh_data, Vector3.ZERO, 0.1, 77889)
