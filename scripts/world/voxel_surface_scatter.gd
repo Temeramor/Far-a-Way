@@ -299,9 +299,17 @@ func _build_one_pending_tile() -> void:
 
 
 func _build_rock_tile(
-        coord: Vector2i, request: Dictionary, distance_m: float, prop_lod: int, build_token: int) -> void:
+        coord: Vector2i, request: Dictionary, distance_m: float, prop_lod: int,
+        include_rocks: bool, build_token: int) -> void:
     if build_token != _generation_epoch or _world == null:
         return
+
+    if _entries.has(coord):
+        var old_entry: Dictionary = _entries[coord]
+        var old_root: Node3D = old_entry.get("root") as Node3D
+        if old_root != null:
+            old_root.queue_free()
+        _entries.erase(coord)
 
     var parts: Dictionary = _world._decode_lod_key(coord)
     var terrain_lod: int = int(parts["lod"])
@@ -332,20 +340,21 @@ func _build_rock_tile(
 
     var reservations: Array[Dictionary] = []
     var collision_body: StaticBody3D = null
-    if distance_m <= _world.collision_distance_m:
+    if include_rocks and distance_m <= _world.collision_distance_m:
         collision_body = StaticBody3D.new()
         collision_body.name = "StoneCollisions"
         root_node.add_child(collision_body)
 
     var combined_mesh_data = MeshDataScript.new()
-    _mountain_rib_scatter.build_tile(
-        self, combined_mesh_data, collision_body, reservations, palette_data, rng, tile_seed,
-        origin_x, origin_z, width_m, depth_m, terrain_lod, distance_m
-    )
-    _rock_scatter.build_tile(
-        self, combined_mesh_data, collision_body, reservations, palette_data, rng, tile_seed,
-        origin_x, origin_z, width_m, depth_m, prop_lod, distance_m
-    )
+    if include_rocks:
+        _mountain_rib_scatter.build_tile(
+            self, combined_mesh_data, collision_body, reservations, palette_data, rng, tile_seed,
+            origin_x, origin_z, width_m, depth_m, terrain_lod, distance_m
+        )
+        _rock_scatter.build_tile(
+            self, combined_mesh_data, collision_body, reservations, palette_data, rng, tile_seed,
+            origin_x, origin_z, width_m, depth_m, prop_lod, distance_m
+        )
 
     if collision_body != null and collision_body.get_child_count() == 0:
         collision_body.queue_free()
@@ -367,7 +376,7 @@ func _build_rock_tile(
         rock_reservations.append(occupied.duplicate(true))
     _entries[coord] = {
         "root": root_node,
-        "rocks_ready": true,
+        "rocks_ready": include_rocks,
         "prop_lod": prop_lod,
         "plants_ready": false,
         "plants": null,
