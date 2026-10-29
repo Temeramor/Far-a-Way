@@ -99,8 +99,8 @@ func _try_add_rib(
             var point: Vector2 = a.lerp(b, float(sample_index) / float(sample_count))
             var width_noise: float = noise.get_noise_2d(point.x * 0.45, point.y * 0.45)
             var half_width_cells: int = clampi(2 + int((width_noise + 1.0) * 1.7), 2, 5)
-            if reserve_distance >= 3.0:
-                reservations.append({"p": Vector2(point.x - origin_x, point.y - origin_z), "r": 0.85})
+            if reserve_distance >= 1.5:
+                reservations.append({"p": Vector2(point.x - origin_x, point.y - origin_z), "r": 1.35})
                 reserve_distance = 0.0
             reserve_distance += terrain_voxel
             for across_index in range(-half_width_cells, half_width_cells + 1):
