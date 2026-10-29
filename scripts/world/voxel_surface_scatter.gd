@@ -576,7 +576,7 @@ func _create_decor_collision_shapes(root_node: Node3D, collision_data: Array) ->
         if points.size() < 4:
             continue
         # Bound convex-hull work on large cliff meshes while preserving the silhouette.
-        var stride: int = maxi(1, ceili(float(points.size()) / 384.0))
+        var stride: int = maxi(1, ceili(float(points.size()) / 192.0))
         var hull_points := PackedVector3Array()
         for i in range(0, points.size(), stride):
             hull_points.append(points[i])
