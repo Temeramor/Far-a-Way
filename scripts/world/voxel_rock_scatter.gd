@@ -63,7 +63,7 @@ func build_tile(
             collision_output.append({
                 "kind": "boulder",
                 "position": Vector3(local_x, float(surface["height"]) - 0.06, local_z),
-                "points": rock_piece.verts
+                "radius_m": radius_m
             })
         reservations.append({"p": Vector2(local_x, local_z), "r": exclusion_radius})
 
