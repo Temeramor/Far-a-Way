@@ -116,7 +116,7 @@ var _sky_dome: SkyDome
 ## The total length of time for a complete day and night cycle in real world minutes. Setting this to
 ## [param 15] means a full in-game day takes 15 real-world minutes. [member game_time_enabled] must be
 ## enabled for this to work. Negative values moves time backwards. The Witcher 3 uses a 96 minute cycle. 
-## Adjust [member update_interval] to match. Shorter days needs more updates. Longer days need less.
+## The default 0.25 s update interval is appropriate for the slow day/night cycle; lower it only when smoother sky animation is worth the extra CPU work.
 @export var minutes_per_day: float = 15.0
 
 
