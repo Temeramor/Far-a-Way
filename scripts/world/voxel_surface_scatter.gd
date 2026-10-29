@@ -559,23 +559,17 @@ func _scatter_grass(
 
 
 func _make_rock_grid(radius: float, stretch_y: float, voxel_size: float, palette_data: Dictionary, rock_seed: int):
-    var ry_estimate: float = radius * 0.85 * stretch_y
     var width: int = ceili(radius * 2.8) + 6
     var height: int = ceili(radius * 1.75 * stretch_y) + 6
     var grid = _make_object_grid(width, height, width, palette_data)
-    _fill_rock(grid, rock_seed, radius, stretch_y)
+    _fill_rock(grid, rock_seed, radius, stretch_y, palette_data["rock_ramps"])
     return grid
 
 
-func _fill_rock(grid, seed_value: int, radius: float, stretch_y: float) -> void:
+func _fill_rock(grid, seed_value: int, radius: float, stretch_y: float, rock_ramps: PackedInt32Array) -> void:
     var rng := RandomNumberGenerator.new()
     rng.seed = seed_value
     var noise := _make_noise(seed_value, 0.2)
-    var rock_ramps: PackedInt32Array = grid.get_meta("rock_ramps", PackedInt32Array())
-    if rock_ramps.is_empty():
-        rock_ramps = PackedInt32Array()
-        var shared_palette = _active_palette_data["grid"]
-        rock_ramps = _active_palette_data["rock_ramps"]
 
     var palette_pick: bool = rng.randf() < 0.5
     var gray_start: int = int(rock_ramps[0] if palette_pick else rock_ramps[2])
