@@ -36,7 +36,6 @@ const LOD_TRANSITION_PIXELS: float = 0.5
 var _generator: VoxelTerrainGenerator
 var _mountain_profile_cache: Array[Dictionary] = []
 var _voxel_material: ShaderMaterial
-var _prop_material_cache: Dictionary = {}
 var _player: CharacterBody3D
 var _chunks: Dictionary = {}
 var _queued: Dictionary = {}
@@ -293,26 +292,10 @@ func is_world_coverage_ready() -> bool:
 func _apply_seed_to_material() -> void:
     if _voxel_material == null:
         return
-    _prop_material_cache.clear()
     var safe_seed: int = abs(seed_value % 2147483647)
     _voxel_material.set_shader_parameter("seed_low", float(safe_seed % 65536))
     _voxel_material.set_shader_parameter("seed_high", float(int(floor(float(safe_seed) / 65536.0))))
     _voxel_material.set_shader_parameter("debug_lod_colors", _debug_lod_colors)
-
-
-func get_voxel_prop_material(cell_size_m: float) -> ShaderMaterial:
-    if _voxel_material == null:
-        return null
-    var safe_cell_size: float = maxf(VOXEL_SIZE, cell_size_m)
-    var cache_key: String = str(roundi(safe_cell_size * 1000.0))
-    var cached: ShaderMaterial = _prop_material_cache.get(cache_key) as ShaderMaterial
-    if cached != null:
-        return cached
-    var material := _voxel_material.duplicate() as ShaderMaterial
-    material.set_shader_parameter("lod_cell_size", safe_cell_size)
-    material.set_shader_parameter("lod_index", 0)
-    _prop_material_cache[cache_key] = material
-    return material
 
 
 func get_surface_height(x: float, z: float) -> float:
