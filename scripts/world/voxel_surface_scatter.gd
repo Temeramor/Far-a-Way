@@ -10,12 +10,16 @@ const RockScatterScript = preload("res://scripts/world/voxel_rock_scatter.gd")
 const MountainRibScatterScript = preload("res://scripts/world/voxel_mountain_rib_scatter.gd")
 const VegetationScatterScript = preload("res://scripts/world/voxel_vegetation_scatter.gd")
 const WindShader: Shader = preload("res://shaders/vegetation_wind.gdshader")
+const DecorJobScript = preload("res://scripts/world/voxel_surface_decor_job.gd")
 
 const PROP_VOXEL_SIZE: float = 0.1
 const MAX_DECOR_DISTANCE_M: float = 1900.0
 const DENSE_ROCK_DISTANCE_M: float = 240.0
 const PLANT_FULL_DISTANCE_M: float = 92.0
 const PLANT_REMOVE_HYSTERESIS_M: float = 12.0
+const PLANT_RENDER_DISTANCE_M: float = 320.0
+const ROCK_SHADOW_DISTANCE_M: float = 80.0
+const MAX_CONCURRENT_DECOR_JOBS: int = 2
 const MIN_STONE_EDGE_MARGIN_M: float = 0.25
 const ROCK_MOSS_COLOR := Color("5e7b3a")
 const STONE_COLOR_A := Color("8b8984")
@@ -29,6 +33,8 @@ var _rock_scatter
 var _mountain_rib_scatter
 var _vegetation_scatter
 var _entries: Dictionary = {}
+var _pending_actions: Array[Dictionary] = []
+var _running_decor_tasks: Dictionary = {}
 var _refresh_accumulator: float = 0.0
 var _generation_epoch: int = 0
 var _weather_mode: int = 1
@@ -63,54 +69,54 @@ func set_weather_mode(mode: int) -> void:
     _weather_mode = clampi(mode, 0, 2)
     if _plant_material == null:
         return
-    var strengths: Array[float] = [0.012, 0.055, 0.14]
-    var speeds: Array[float] = [2.0, 5.0, 10.0]
-    var gusts: Array[float] = [0.10, 0.22, 0.38]
+    # Weather changes sway amplitude and the strength of gusts, not a frantic oscillation rate.
+    var strengths: Array[float] = [0.014, 0.036, 0.068]
+    var speeds: Array[float] = [1.0, 1.35, 1.7]
+    var gusts: Array[float] = [0.08, 0.16, 0.28]
     _plant_material.set_shader_parameter("wind_strength", strengths[_weather_mode])
     _plant_material.set_shader_parameter("wind_speed", speeds[_weather_mode])
     _plant_material.set_shader_parameter("gust_strength", gusts[_weather_mode])
+    _plant_material.set_shader_parameter("wind_direction", Vector2(0.82, 0.57).normalized())
 
 
 func _process(delta: float) -> void:
     if _world == null or not _world._world_started:
         return
+    _poll_decor_tasks()
     _refresh_accumulator += delta
     if _refresh_accumulator >= 0.18:
         _refresh_accumulator = 0.0
         _reconcile_entries()
     _build_one_pending_tile()
 
-
 func _on_terrain_seed_changed(_new_seed: int) -> void:
     _generation_epoch += 1
+    _pending_actions.clear()
     for entry in _entries.values():
         var root_node: Node3D = entry.get("root") as Node3D
         if root_node != null:
             root_node.queue_free()
     _entries.clear()
 
-
 func _reconcile_entries() -> void:
     var desired: Dictionary = {}
     for coord_value in _world._wanted.keys():
         var coord: Vector2i = coord_value
-        var parts: Dictionary = _world._decode_lod_key(coord)
-        var terrain_lod: int = int(parts["lod"])
-        if terrain_lod > 3:
+        var request: Dictionary = _world._wanted[coord]
+        var terrain_lod: int = int(request.get("lod", _world._decode_lod_key(coord)["lod"]))
+        if terrain_lod > 3 or bool(request.get("fallback", false)):
             continue
 
-        var request: Dictionary = _world._wanted[coord]
-        if bool(request.get("fallback", false)):
-            continue
         var terrain_chunk: VoxelTerrainChunk = _world._chunks.get(coord) as VoxelTerrainChunk
         if terrain_chunk == null or not terrain_chunk.mesh_ready or not terrain_chunk._render_active:
             continue
-
         var distance: float = float(request.get("nearest_distance", INF))
         if distance > MAX_DECOR_DISTANCE_M:
             continue
 
-        var wants_rocks: bool = _should_generate_rocks(coord, terrain_lod, distance)
+        var tile_x: int = int(request.get("tile_x", 0))
+        var tile_z: int = int(request.get("tile_z", 0))
+        var wants_rocks: bool = _should_generate_rocks(coord, terrain_lod, distance, tile_x, tile_z)
         var wants_plants: bool = _plant_is_requested(terrain_lod, distance)
         if not wants_rocks and not wants_plants:
             continue
@@ -128,6 +134,15 @@ func _reconcile_entries() -> void:
                     old_root.queue_free()
                 _entries.erase(coord)
                 existing = {}
+            else:
+                existing["distance"] = distance
+                existing["terrain_lod"] = terrain_lod
+                var root_node: Node3D = existing.get("root") as Node3D
+                if root_node != null:
+                    var rock_instance: MeshInstance3D = root_node.get_node_or_null("VoxelStonesAndRibs") as MeshInstance3D
+                    if rock_instance != null:
+                        rock_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if distance <= ROCK_SHADOW_DISTANCE_M else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+                _entries[coord] = existing
 
         desired[coord] = {
             "request": request,
@@ -154,7 +169,7 @@ func _reconcile_entries() -> void:
             var plant_distance: float = float(request_info["distance"])
             var current_plant_lod: int = int(entry.get("plants_lod", 0))
             var wants_plants: bool = bool(request_info["plants"])
-            var remove_plants: bool = not wants_plants or plant_distance > MAX_DECOR_DISTANCE_M + PLANT_REMOVE_HYSTERESIS_M
+            var remove_plants: bool = not wants_plants or plant_distance > PLANT_RENDER_DISTANCE_M + PLANT_REMOVE_HYSTERESIS_M
             if current_plant_lod == 0 and plant_distance > PLANT_FULL_DISTANCE_M + PLANT_REMOVE_HYSTERESIS_M:
                 remove_plants = true
             elif current_plant_lod == 1 and plant_distance < PLANT_FULL_DISTANCE_M - PLANT_REMOVE_HYSTERESIS_M:
@@ -173,14 +188,47 @@ func _reconcile_entries() -> void:
                 entry["reservations"] = clean_reservations
                 _entries[coord] = entry
 
+    # Cache a distance-sorted work queue here, not by walking every wanted tile every frame.
+    var next_actions: Array[Dictionary] = []
+    for coord_value in desired.keys():
+        var coord: Vector2i = coord_value
+        var info: Dictionary = desired[coord]
+        var entry: Dictionary = _entries.get(coord, {})
+        var action: String = ""
+        var include_rocks: bool = false
+        if entry.is_empty():
+            action = "rocks"
+            include_rocks = bool(info["rocks"])
+        elif bool(entry.get("rocks_building", false)):
+            continue
+        elif bool(info["rocks"]) and not bool(entry.get("rocks_ready", false)):
+            action = "rocks"
+            include_rocks = true
+        elif bool(info["plants"]) and not bool(entry.get("plants_ready", false)) and not bool(entry.get("plants_building", false)):
+            action = "plants"
+        if action.is_empty():
+            continue
+        next_actions.append({
+            "coord": coord,
+            "action": action,
+            "include_rocks": include_rocks,
+            "distance": float(info["distance"]),
+            "lod": int(info["lod"]),
+            "prop_lod": int(info["prop_lod"])
+        })
+    next_actions.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+        return float(a["distance"]) < float(b["distance"])
+    )
+    _pending_actions = next_actions
 
-func _should_generate_rocks(coord: Vector2i, terrain_lod: int, distance: float) -> bool:
+func _should_generate_rocks(
+        _coord: Vector2i, terrain_lod: int, distance: float,
+        tile_x: int, tile_z: int) -> bool:
     if distance > MAX_DECOR_DISTANCE_M or terrain_lod > 3:
         return false
     if terrain_lod == 0 and distance <= DENSE_ROCK_DISTANCE_M:
         return true
-    var parts: Dictionary = _world._decode_lod_key(coord)
-    var tile_seed: int = _mix(_world.seed_value, int(parts["tile_x"]), int(parts["tile_z"]) + terrain_lod * 104729)
+    var tile_seed: int = _mix(_world.seed_value, tile_x, tile_z + terrain_lod * 104729)
     var roll: float = float(tile_seed % 1000) / 1000.0
     match terrain_lod:
         0:
@@ -193,10 +241,9 @@ func _should_generate_rocks(coord: Vector2i, terrain_lod: int, distance: float) 
             return distance <= MAX_DECOR_DISTANCE_M and roll < 0.50
     return false
 
-
 func _plant_is_requested(terrain_lod: int, distance: float) -> bool:
     # Vegetation only occupies two prop tiers and never appears on terrain LOD2+.
-    return terrain_lod <= 1 and distance <= MAX_DECOR_DISTANCE_M
+    return terrain_lod <= 1 and distance <= PLANT_RENDER_DISTANCE_M
 
 
 func _desired_plant_lod(distance: float, terrain_lod: int = 0) -> int:
@@ -236,69 +283,52 @@ func _prop_lod_for_distance_with_hysteresis(distance_m: float, current_lod: int)
 
 
 func _build_one_pending_tile() -> void:
-    var best_coord := Vector2i(-1, -1)
-    var best_action: String = ""
-    var best_request: Dictionary = {}
-    var best_distance: float = INF
-    var best_prop_lod: int = 0
-    var best_include_rocks: bool = false
+    if _running_decor_tasks.size() >= MAX_CONCURRENT_DECOR_JOBS or _pending_actions.is_empty():
+        return
 
-    for coord_value in _world._wanted.keys():
-        var coord: Vector2i = coord_value
-        var parts: Dictionary = _world._decode_lod_key(coord)
-        var terrain_lod: int = int(parts["lod"])
-        if terrain_lod > 3:
+    while not _pending_actions.is_empty():
+        var action_info: Dictionary = _pending_actions.pop_front()
+        var coord: Vector2i = action_info["coord"]
+        if not _world._wanted.has(coord):
             continue
-
         var request: Dictionary = _world._wanted[coord]
+        var terrain_lod: int = int(request.get("lod", -1))
+        var distance: float = float(request.get("nearest_distance", INF))
+        if terrain_lod < 0 or terrain_lod > 3 or distance > MAX_DECOR_DISTANCE_M:
+            continue
         if bool(request.get("fallback", false)):
             continue
         var terrain_chunk: VoxelTerrainChunk = _world._chunks.get(coord) as VoxelTerrainChunk
         if terrain_chunk == null or not terrain_chunk.mesh_ready or not terrain_chunk._render_active:
             continue
 
-        var distance: float = float(request.get("nearest_distance", INF))
-        if distance > MAX_DECOR_DISTANCE_M:
-            continue
-        var wants_rocks: bool = _should_generate_rocks(coord, terrain_lod, distance)
+        var wants_rocks: bool = _should_generate_rocks(
+            coord, terrain_lod, distance, int(request.get("tile_x", 0)), int(request.get("tile_z", 0))
+        )
         var wants_plants: bool = _plant_is_requested(terrain_lod, distance)
-        if not wants_rocks and not wants_plants:
-            continue
-
         var entry: Dictionary = _entries.get(coord, {})
-        var action: String = ""
-        var include_rocks: bool = false
-        if entry.is_empty():
-            if wants_rocks or wants_plants:
-                action = "rocks"
-                include_rocks = wants_rocks
-        elif wants_rocks and not bool(entry.get("rocks_ready", false)):
-            action = "rocks"
-            include_rocks = true
-        elif wants_plants and not bool(entry.get("plants_ready", false)):
-            action = "plants"
-        if action.is_empty():
-            continue
+        var action: String = str(action_info["action"])
+        if action == "rocks":
+            if entry.is_empty():
+                _schedule_rock_tile(
+                    coord, request, distance, maxi(terrain_lod, _prop_lod_for_distance(distance)),
+                    wants_rocks, _generation_epoch
+                )
+                return
+            if wants_rocks and not bool(entry.get("rocks_ready", false)) and not bool(entry.get("rocks_building", false)):
+                _schedule_rock_tile(
+                    coord, request, distance, maxi(terrain_lod, _prop_lod_for_distance(distance)),
+                    true, _generation_epoch
+                )
+                return
+        elif action == "plants" and not entry.is_empty() and wants_plants:
+            if not bool(entry.get("plants_ready", false)) and not bool(entry.get("plants_building", false)) and not bool(entry.get("rocks_building", false)):
+                _schedule_plant_tile(
+                    coord, _desired_plant_lod(distance, terrain_lod), _generation_epoch
+                )
+                return
 
-        if distance < best_distance:
-            best_distance = distance
-            best_coord = coord
-            best_action = action
-            best_request = request
-            best_prop_lod = maxi(terrain_lod, _prop_lod_for_distance(distance))
-            best_include_rocks = include_rocks
-
-    if best_coord.x < 0:
-        return
-
-    var build_token: int = _generation_epoch
-    if best_action == "rocks":
-        _build_rock_tile(best_coord, best_request, best_distance, best_prop_lod, best_include_rocks, build_token)
-    elif best_action == "plants":
-        _build_plant_tile(best_coord, _desired_plant_lod(best_distance, int(_world._decode_lod_key(best_coord)["lod"])), build_token)
-
-
-func _build_rock_tile(
+func _schedule_rock_tile(
         coord: Vector2i, request: Dictionary, distance_m: float, prop_lod: int,
         include_rocks: bool, build_token: int) -> void:
     if build_token != _generation_epoch or _world == null:
@@ -311,10 +341,9 @@ func _build_rock_tile(
             old_root.queue_free()
         _entries.erase(coord)
 
-    var parts: Dictionary = _world._decode_lod_key(coord)
-    var terrain_lod: int = int(parts["lod"])
-    var tile_x: int = int(parts["tile_x"])
-    var tile_z: int = int(parts["tile_z"])
+    var terrain_lod: int = int(request["lod"])
+    var tile_x: int = int(request["tile_x"])
+    var tile_z: int = int(request["tile_z"])
     var start_x: int = int(request["start_x"])
     var start_z: int = int(request["start_z"])
     var size_x: int = int(request["size_x"])
@@ -330,114 +359,239 @@ func _build_rock_tile(
     var palette_rng := RandomNumberGenerator.new()
     palette_rng.seed = _mix(tile_seed, 31, 47)
     var palette_data: Dictionary = _make_palette(palette_rng)
-    var rng := RandomNumberGenerator.new()
-    rng.seed = _mix(tile_seed, 101, 307)
 
     var root_node := Node3D.new()
     root_node.name = "SurfaceScatter_L%d_%d_%d" % [terrain_lod, tile_x, tile_z]
     root_node.position = Vector3(origin_x, 0.0, origin_z)
     add_child(root_node)
 
-    var reservations: Array[Dictionary] = []
-    var collision_body: StaticBody3D = null
-    if include_rocks and distance_m <= _world.collision_distance_m:
-        collision_body = StaticBody3D.new()
-        collision_body.name = "StoneCollisions"
-        root_node.add_child(collision_body)
-
-    var combined_mesh_data = MeshDataScript.new()
-    if include_rocks:
-        _mountain_rib_scatter.build_tile(
-            self, combined_mesh_data, collision_body, reservations, palette_data, rng, tile_seed,
-            origin_x, origin_z, width_m, depth_m, terrain_lod, distance_m
-        )
-        _rock_scatter.build_tile(
-            self, combined_mesh_data, collision_body, reservations, palette_data, rng, tile_seed,
-            origin_x, origin_z, width_m, depth_m, prop_lod, distance_m
-        )
-
-    if collision_body != null and collision_body.get_child_count() == 0:
-        collision_body.queue_free()
-    if build_token != _generation_epoch:
-        root_node.queue_free()
-        return
-
-    var rock_mesh: ArrayMesh = combined_mesh_data.build()
-    if rock_mesh != null:
-        var rock_instance := MeshInstance3D.new()
-        rock_instance.name = "VoxelStonesAndRibs"
-        rock_instance.mesh = rock_mesh
-        rock_instance.material_override = _material
-        rock_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-        root_node.add_child(rock_instance)
-
-    var rock_reservations: Array[Dictionary] = []
-    for occupied in reservations:
-        rock_reservations.append(occupied.duplicate(true))
-    _entries[coord] = {
+    var entry := {
         "root": root_node,
-        "rocks_ready": include_rocks,
+        "rocks_ready": false,
+        "rocks_building": true,
+        "rocks_task_id": -1,
         "prop_lod": prop_lod,
         "plants_ready": false,
+        "plants_building": false,
+        "plants_task_id": -1,
         "plants": null,
         "plants_lod": -1,
         "palette": palette_data,
-        "rock_reservations": rock_reservations,
-        "reservations": reservations,
+        "rock_reservations": [],
+        "reservations": [],
         "tile_seed": tile_seed,
         "origin_x": origin_x,
         "origin_z": origin_z,
         "width_m": width_m,
         "depth_m": depth_m,
-        "terrain_lod": terrain_lod
+        "terrain_lod": terrain_lod,
+        "distance": distance_m
+    }
+    _entries[coord] = entry
+
+    var build_collisions: bool = include_rocks and distance_m <= _world.collision_distance_m
+    var builder = DecorJobScript.new()
+    builder.configure(_world.seed_value, _world.world_size_m)
+    var job_data: Dictionary = {
+        "palette": palette_data,
+        "tile_seed": tile_seed,
+        "origin_x": origin_x,
+        "origin_z": origin_z,
+        "width_m": width_m,
+        "depth_m": depth_m,
+        "terrain_lod": terrain_lod,
+        "distance_m": distance_m,
+        "prop_lod": prop_lod,
+        "include_rocks": include_rocks,
+        "build_collisions": build_collisions
+    }
+    var task_id: int = WorkerThreadPool.add_task(
+        Callable(builder, "build_rock_data").bind(job_data), false,
+        "Far a Way surface rocks L%d" % terrain_lod
+    )
+    entry["rocks_task_id"] = task_id
+    _entries[coord] = entry
+    _running_decor_tasks[task_id] = {
+        "builder": builder,
+        "kind": "rocks",
+        "coord": coord,
+        "epoch": build_token,
+        "include_rocks": include_rocks,
+        "distance": distance_m,
+        "build_collisions": build_collisions
     }
 
-
-func _build_plant_tile(coord: Vector2i, voxel_lod: int, build_token: int) -> void:
+func _schedule_plant_tile(coord: Vector2i, voxel_lod: int, build_token: int) -> void:
     if build_token != _generation_epoch or not _entries.has(coord) or _world == null:
         return
     var entry: Dictionary = _entries[coord]
-    if bool(entry.get("plants_ready", false)):
+    if bool(entry.get("plants_ready", false)) or bool(entry.get("plants_building", false)):
         return
 
-    var palette_data: Dictionary = entry["palette"]
     var reservations: Array[Dictionary] = []
     for occupied in entry.get("rock_reservations", []):
         reservations.append(occupied.duplicate(true))
 
-    var rng := RandomNumberGenerator.new()
-    rng.seed = _mix(int(entry["tile_seed"]), 503, 709)
-    var plant_mesh_data = MeshDataScript.new()
-    _vegetation_scatter.build_tile(
-        self, plant_mesh_data, reservations, palette_data, rng, int(entry["tile_seed"]),
-        float(entry["origin_x"]), float(entry["origin_z"]),
-        float(entry["width_m"]), float(entry["depth_m"]), voxel_lod
-    )
-    if build_token != _generation_epoch or not _entries.has(coord):
-        return
-
-    var plant_mesh: ArrayMesh = plant_mesh_data.build()
-    var plant_node: Node3D = null
-    if plant_mesh != null:
-        plant_node = Node3D.new()
-        plant_node.name = "VoxelPlants_LOD%d" % voxel_lod
-        var plant_instance := MeshInstance3D.new()
-        plant_instance.name = "Mesh"
-        plant_instance.mesh = plant_mesh
-        plant_instance.material_override = _plant_material
-        plant_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-        plant_node.add_child(plant_instance)
-        var root_node: Node3D = entry.get("root") as Node3D
-        if root_node != null:
-            root_node.add_child(plant_node)
-
-    entry["plants"] = plant_node
-    entry["plants_ready"] = true
-    entry["plants_lod"] = voxel_lod
-    entry["reservations"] = reservations
+    var builder = DecorJobScript.new()
+    builder.configure(_world.seed_value, _world.world_size_m)
+    var job_data: Dictionary = {
+        "palette": entry["palette"],
+        "reservations": reservations,
+        "tile_seed": int(entry["tile_seed"]),
+        "origin_x": float(entry["origin_x"]),
+        "origin_z": float(entry["origin_z"]),
+        "width_m": float(entry["width_m"]),
+        "depth_m": float(entry["depth_m"]),
+        "voxel_lod": voxel_lod
+    }
+    entry["plants_building"] = true
     _entries[coord] = entry
+    var task_id: int = WorkerThreadPool.add_task(
+        Callable(builder, "build_plant_data").bind(job_data), false,
+        "Far a Way vegetation L%d" % voxel_lod
+    )
+    entry["plants_task_id"] = task_id
+    _entries[coord] = entry
+    _running_decor_tasks[task_id] = {
+        "builder": builder,
+        "kind": "plants",
+        "coord": coord,
+        "epoch": build_token,
+        "voxel_lod": voxel_lod
+    }
+
+func _poll_decor_tasks() -> void:
+    for task_key in _running_decor_tasks.keys():
+        var task_id: int = int(task_key)
+        if not WorkerThreadPool.is_task_completed(task_id):
+            continue
+        WorkerThreadPool.wait_for_task_completion(task_id)
+        var record: Dictionary = _running_decor_tasks[task_id]
+        _running_decor_tasks.erase(task_id)
+        var coord: Vector2i = record["coord"]
+        if int(record["epoch"]) != _generation_epoch or not _entries.has(coord):
+            continue
+
+        var entry: Dictionary = _entries[coord]
+        var builder = record["builder"]
+        var data: Dictionary = builder.result
+        var kind: String = str(record["kind"])
+        if kind == "rocks":
+            if int(entry.get("rocks_task_id", -1)) != task_id:
+                continue
+            entry["rocks_building"] = false
+            entry["rocks_task_id"] = -1
+            if data.is_empty():
+                _entries[coord] = entry
+                continue
+
+            var root_node: Node3D = entry.get("root") as Node3D
+            if root_node == null or not is_instance_valid(root_node):
+                _entries.erase(coord)
+                continue
+            var mesh_data = data.get("mesh_data")
+            var rock_mesh: ArrayMesh = mesh_data.build() if mesh_data != null else null
+            if rock_mesh != null:
+                var rock_instance := MeshInstance3D.new()
+                rock_instance.name = "VoxelStonesAndRibs"
+                rock_instance.mesh = rock_mesh
+                rock_instance.material_override = _material
+                rock_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if float(record["distance"]) <= ROCK_SHADOW_DISTANCE_M else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+                root_node.add_child(rock_instance)
+
+            if bool(record.get("build_collisions", false)):
+                _create_decor_collision_shapes(root_node, data.get("collision_data", []))
+
+            var reservations: Array[Dictionary] = []
+            for occupied in data.get("reservations", []):
+                reservations.append(occupied.duplicate(true))
+            var rock_reservations: Array[Dictionary] = []
+            for occupied in reservations:
+                rock_reservations.append(occupied.duplicate(true))
+            entry["palette"] = data["palette"]
+            entry["rocks_ready"] = bool(record["include_rocks"])
+            entry["rock_reservations"] = rock_reservations
+            entry["reservations"] = reservations
+            _entries[coord] = entry
+        elif kind == "plants":
+            if int(entry.get("plants_task_id", -1)) != task_id:
+                continue
+            entry["plants_building"] = false
+            entry["plants_task_id"] = -1
+            if data.is_empty():
+                _entries[coord] = entry
+                continue
+
+            var current_request: Dictionary = _world._wanted.get(coord, {})
+            var current_distance: float = float(current_request.get("nearest_distance", INF))
+            var current_lod: int = int(current_request.get("lod", -1))
+            if current_lod < 0 or not _plant_is_requested(current_lod, current_distance):
+                _entries[coord] = entry
+                continue
+            if _desired_plant_lod(current_distance, current_lod) != int(record["voxel_lod"]):
+                _entries[coord] = entry
+                continue
+
+            var plant_mesh_data = data.get("mesh_data")
+            var plant_mesh: ArrayMesh = plant_mesh_data.build() if plant_mesh_data != null else null
+            var plant_node: Node3D = null
+            if plant_mesh != null:
+                plant_node = Node3D.new()
+                plant_node.name = "VoxelPlants_LOD%d" % int(record["voxel_lod"])
+                var plant_instance := MeshInstance3D.new()
+                plant_instance.name = "Mesh"
+                plant_instance.mesh = plant_mesh
+                plant_instance.material_override = _plant_material
+                # Hundreds of tiny plant shadows are expensive; let the terrain carry the lighting.
+                plant_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+                plant_instance.visibility_range_end = PLANT_RENDER_DISTANCE_M
+                plant_instance.visibility_range_end_margin = 48.0
+                plant_instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+                plant_node.add_child(plant_instance)
+                var root_node: Node3D = entry.get("root") as Node3D
+                if root_node != null:
+                    root_node.add_child(plant_node)
+
+            entry["plants"] = plant_node
+            entry["plants_ready"] = true
+            entry["plants_lod"] = int(record["voxel_lod"])
+            var plant_reservations: Array[Dictionary] = []
+            for occupied in data.get("reservations", []):
+                plant_reservations.append(occupied.duplicate(true))
+            entry["reservations"] = plant_reservations
+            _entries[coord] = entry
 
 
+func _create_decor_collision_shapes(root_node: Node3D, collision_data: Array) -> void:
+    if collision_data.is_empty():
+        return
+    var body := StaticBody3D.new()
+    body.name = "DecorationCollisions"
+    body.collision_layer = 1
+    body.collision_mask = 1
+    for item in collision_data:
+        var points: PackedVector3Array = item.get("points", PackedVector3Array())
+        if points.size() < 4:
+            continue
+        # Bound convex-hull work on large cliff meshes while preserving the silhouette.
+        var stride: int = maxi(1, ceili(float(points.size()) / 384.0))
+        var hull_points := PackedVector3Array()
+        for i in range(0, points.size(), stride):
+            hull_points.append(points[i])
+        if hull_points.size() < 4:
+            continue
+        var convex := ConvexPolygonShape3D.new()
+        convex.set_points(hull_points)
+        convex.margin = 0.03
+        var collision := CollisionShape3D.new()
+        collision.name = "DecorConvexCollision"
+        collision.shape = convex
+        collision.position = item.get("position", Vector3.ZERO)
+        body.add_child(collision)
+    if body.get_child_count() > 0:
+        root_node.add_child(body)
+    else:
+        body.free()
 func _make_palette(rng: RandomNumberGenerator) -> Dictionary:
     var palette_grid = GridScript.new(1, 1, 1)
 
