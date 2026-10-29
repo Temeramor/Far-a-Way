@@ -1,7 +1,7 @@
 extends RefCounted
 class_name VoxelRockScatter
 
-## Ground stones and boulders. Source voxel grids are downsampled for prop LODs 1-3.
+## Ground stones and boulders. Source grids are generated directly at prop LOD resolution.
 const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
 const PROP_VOXEL_SIZE: float = 0.1
 
