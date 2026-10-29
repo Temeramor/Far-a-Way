@@ -15,6 +15,7 @@ const PLANT_FULL_DISTANCE_M: float = 92.0
 const PLANT_REMOVE_HYSTERESIS_M: float = 12.0
 const PLANT_RENDER_DISTANCE_M: float = 320.0
 const ROCK_SHADOW_DISTANCE_M: float = 80.0
+const DECOR_COLLISION_HYSTERESIS_M: float = 12.0
 const MAX_CONCURRENT_DECOR_JOBS: int = 1
 const MIN_STONE_EDGE_MARGIN_M: float = 0.25
 const ROCK_MOSS_COLOR := Color("5e7b3a")
@@ -386,7 +387,7 @@ func _schedule_rock_tile(
             )
         return
 
-    var build_collisions: bool = distance_m <= _world.collision_distance_m
+    var build_collisions: bool = distance_m <= _world.collision_distance_m + DECOR_COLLISION_HYSTERESIS_M
     var builder = DecorJobScript.new()
     builder.configure(_world.seed_value, _world.world_size_m)
     var job_data: Dictionary = {
@@ -497,7 +498,10 @@ func _poll_decor_tasks() -> void:
                 rock_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if float(record["distance"]) <= ROCK_SHADOW_DISTANCE_M else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
                 root_node.add_child(rock_instance)
 
-            if bool(record.get("build_collisions", false)):
+            var current_request: Dictionary = _world._wanted.get(coord, {})
+            var current_distance: float = float(current_request.get("nearest_distance", INF))
+            var collision_is_still_near: bool = current_distance <= _world.collision_distance_m + DECOR_COLLISION_HYSTERESIS_M
+            if bool(record.get("build_collisions", false)) and collision_is_still_near:
                 _create_decor_collision_shapes(root_node, data.get("collision_data", []))
 
             var reservations: Array[Dictionary] = []
