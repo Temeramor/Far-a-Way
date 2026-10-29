@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0.5 — 2026-10-29
+
+- Removed the placeholder tunnel, entrance boulders and coloured crystal groups from the world scene.
+- Ported only the voxel stone, grass and flower algorithms from Plant_Generator, with their voxel-grid, palette and mesh-accumulator helpers; no tree generators or tree assets were imported.
+- Added deterministic streaming placement per visible near-field terrain chunk. Grass and flowers use gentle grassy surfaces, boulders favour rocky terrain, and stretched voxel rock ribs follow steep gray mountain slopes while being embedded slightly into the hillside.
+- Added a shared spacing/reservation check so stones, mountain ribs, grass and flowers do not occupy the same locations. The decorations follow the current world seed and are removed/rebuilt as terrain chunks stream or the seed changes.
+- Corrected the documented LOD ladder to 0.2, 0.4, 0.8, 1.6, 3.2, 6.4, 12.8 and 25.6 m.
+
 ## 0.1.0.4 — 2026-10-29
 
 - Reduced the mesh-step progression to 1, 2, 4, 8 ... 128 base voxels and switched runtime LOD transitions to a half-pixel target. This removes the former 4x jump from LOD0 to LOD1 and keeps distant map edges substantially more detailed without forcing the entire map to LOD0.
