@@ -1,4 +1,4 @@
-# Far a Way 0.1.0.4
+# Far a Way 0.1.0.5
 
 Far a Way is a first-person exploration prototype focused on a large procedural voxel landscape. The project uses **Godot 4.7.2**, the **Forward+ renderer**, and a native C++ GDExtension for the CPU-intensive terrain chunk builder.
 
@@ -10,11 +10,11 @@ Far a Way is a first-person exploration prototype focused on a large procedural 
 - **Base terrain resolution:** 20 cm voxel cells on X, Y and Z.
 - **Default terrain view distance:** 4,096 m.
 - **Coarsest voxel cell:** 25.6 m at the farthest LOD.
-- **Version:** `0.1.0.4`.
+- **Version:** `0.1.0.5`.
 
 The terrain is generated as height columns: each horizontal position has one generated surface height. Meshes and collisions are streamed around the player instead of creating a node for each voxel.
 
-The scene also includes code-generated voxel rock clusters at the two demo tunnel entrances, a hollow rock arch, and blue, purple and red crystal groups. Their X/Z anchors are adapted from `Terrain/demo/Demo.tscn`; each group samples the current procedural surface after a seed change. No Terrain3D heightmap or imported demo mesh is used.
+Near the player, the game streams voxel boulders, natural grass tufts and wildflowers. Stone placement is weighted toward rocky terrain; on steep gray mountain slopes, larger elongated voxel ribs follow the local slope and sink partly into the terrain. Grass and flowers are restricted to grassy, gentler surfaces, and all decorations use a shared per-tile exclusion map so they do not overlap. The original terrain remains generated from the existing seeded height algorithm; no heightmap or imported object meshes are used.
 
 ## Main menu and controls
 
@@ -35,9 +35,9 @@ In the world:
 
 ## Procedural terrain
 
-The 2 × 2 km landscape uses layered seeded noise and two seeded mountain chains (six connected ridge segments). Noise frequencies adapt to map size so macro hills, secondary ridges and small landforms remain visible at this scale. Mountain height, width, lateral irregularity and spawn-area fade scale with the world size; warped ridge flanks and a sharper, multi-crest profile add more natural rocky shoulders. Height samples remain continuous while cached/interpolated; visible geometry quantises height to the active LOD cell step, from 20 cm at LOD0 to 51.2 m at LOD7, so distant cells keep voxel-like proportions.
+The 2 × 2 km landscape uses layered seeded noise and two seeded mountain chains (six connected ridge segments). Noise frequencies adapt to map size so macro hills, secondary ridges and small landforms remain visible at this scale. Mountain height, width, lateral irregularity and spawn-area fade scale with the world size; warped ridge flanks and a sharper, multi-crest profile add more natural rocky shoulders. Height samples remain continuous while cached/interpolated; visible geometry quantises height to the active LOD cell step, from 20 cm at LOD0 to 25.6 m at LOD7, so distant cells keep voxel-like proportions.
 
-The surface material blends grass and rock according to slope. Every LOD keeps a discrete colour sample per current voxel cell, from 20 cm at LOD0 to 51.2 m at LOD7, rather than fading to a uniform colour with screen distance. Rock colour is generated in the shader: stochastic stone hues, warped mineral bedding, broken strata, weathered pits, fine grain and a multi-scale crack network. Coarser LODs keep broad mineral bands and colour roughness while dropping sub-pixel fissures to reduce shimmer. The shader also varies roughness procedurally, with no imported rock-image dependency. The upper voxel's vertical faces use the same grass/rock surface treatment as its top face, and material transitions are smoothed across chunk borders.
+The surface material blends grass and rock according to slope. Every LOD keeps a discrete colour sample per current voxel cell, from 20 cm at LOD0 to 25.6 m at LOD7, rather than fading to a uniform colour with screen distance. Rock colour is generated in the shader: stochastic stone hues, warped mineral bedding, broken strata, weathered pits, fine grain and a multi-scale crack network. Coarser LODs keep broad mineral bands and colour roughness while dropping sub-pixel fissures to reduce shimmer. The shader also varies roughness procedurally, with no imported rock-image dependency. The upper voxel's vertical faces use the same grass/rock surface treatment as its top face, and material transitions are smoothed across chunk borders.
 
 ## Chunk streaming and level of detail
 
@@ -46,17 +46,17 @@ The world is divided into terrain chunks, generated in the background and priori
 | LOD | Horizontal and vertical voxel step |
 |---|---:|
 | LOD0 | 0.2 m |
-| LOD1 | 0.8 m |
-| LOD2 | 1.6 m |
-| LOD3 | 3.2 m |
-| LOD4 | 6.4 m |
-| LOD5 | 12.8 m |
-| LOD6 | 25.6 m |
-| LOD7 | 51.2 m |
+| LOD1 | 0.4 m |
+| LOD2 | 0.8 m |
+| LOD3 | 1.6 m |
+| LOD4 | 3.2 m |
+| LOD5 | 6.4 m |
+| LOD6 | 12.8 m |
+| LOD7 | 25.6 m |
 
 Every visible LOD uses voxel faces. Greedy merging of top faces and matching side runs, plus exposed risers and stitching skirts, preserve the block style; the invisible smooth heightfield is reserved for terrain-shadow proxies. Each LOD quantises both horizontal and vertical detail to its own voxel step, so the farthest levels remain voxel terrain rather than a smooth heightfield.
 
-LOD boundaries are calculated from the active viewport height and an 82° design vertical FOV. The next tier's voxel step reaches one screen pixel at each boundary, and a 5% hysteresis prevents rapid switching around thresholds. The boundaries scale with resolution; at 720p, 900p, 1080p and 1440p they are:
+LOD boundaries are calculated from the active viewport height and an 82° design vertical FOV. The next tier's voxel step reaches half a screen pixel at each boundary, and a 5% hysteresis prevents rapid switching around thresholds. The boundaries scale with resolution; at 720p, 900p, 1080p and 1440p they are:
 
 | Resolution | LOD0→1 | 1→2 | 2→3 | 3→4 | 4→5 | 5→6 | 6→7 |
 |---|---:|---:|---:|---:|---:|---:|---:|
