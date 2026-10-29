@@ -50,11 +50,13 @@ func build_tile(
             continue
 
         var rock_seed: int = rng.randi()
-        var grid = make_rock_grid(host, radius_units, palette_data, rock_seed)
-        for _lod_step in range(clampi(prop_lod, 0, 3)):
-            grid = grid.downsampled()
+        # Generate directly at the requested prop resolution. Building a 10 cm grid
+        # and downsampling it afterwards would waste up to 512x the cell work at LOD3.
+        var prop_scale: int = 1 << clampi(prop_lod, 0, 3)
+        var radius_at_lod: float = radius_units / float(prop_scale)
+        var grid = make_rock_grid(host, radius_at_lod, palette_data, rock_seed)
         var rock_piece = MeshDataScript.new()
-        grid.emit(rock_piece, Vector3.ZERO, PROP_VOXEL_SIZE * float(1 << prop_lod), rock_seed)
+        grid.emit(rock_piece, Vector3.ZERO, PROP_VOXEL_SIZE * float(prop_scale), rock_seed)
         host._append_transformed_mesh(
             output, rock_piece, Basis.IDENTITY,
             Vector3(local_x, float(surface["height"]) - 0.06, local_z)
