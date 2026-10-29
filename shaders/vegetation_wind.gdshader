@@ -4,7 +4,7 @@ render_mode diffuse_burley, specular_schlick_ggx;
 // Wind speed controls how fast the plant sways; weather changes amplitude and gust strength.
 // A shared direction and slow travelling gust field keep adjacent plants moving coherently.
 uniform float wind_strength = 0.036;
-uniform float wind_speed = 1.35;
+uniform float wind_speed = 1.25;
 uniform float gust_strength = 0.16;
 uniform vec2 wind_direction = vec2(0.82, 0.57);
 
