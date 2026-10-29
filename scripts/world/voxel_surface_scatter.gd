@@ -241,6 +241,7 @@ func _build_one_pending_tile() -> void:
     var best_request: Dictionary = {}
     var best_distance: float = INF
     var best_prop_lod: int = 0
+    var best_include_rocks: bool = false
 
     for coord_value in _world._wanted.keys():
         var coord: Vector2i = coord_value
@@ -266,9 +267,14 @@ func _build_one_pending_tile() -> void:
 
         var entry: Dictionary = _entries.get(coord, {})
         var action: String = ""
+        var include_rocks: bool = false
         if entry.is_empty():
-            if wants_rocks:
+            if wants_rocks or wants_plants:
                 action = "rocks"
+                include_rocks = wants_rocks
+        elif wants_rocks and not bool(entry.get("rocks_ready", false)):
+            action = "rocks"
+            include_rocks = true
         elif wants_plants and not bool(entry.get("plants_ready", false)):
             action = "plants"
         if action.is_empty():
@@ -280,15 +286,16 @@ func _build_one_pending_tile() -> void:
             best_action = action
             best_request = request
             best_prop_lod = maxi(terrain_lod, _prop_lod_for_distance(distance))
+            best_include_rocks = include_rocks
 
     if best_coord.x < 0:
         return
 
     var build_token: int = _generation_epoch
     if best_action == "rocks":
-        _build_rock_tile(best_coord, best_request, best_distance, best_prop_lod, build_token)
+        _build_rock_tile(best_coord, best_request, best_distance, best_prop_lod, best_include_rocks, build_token)
     elif best_action == "plants":
-        _build_plant_tile(best_coord, _desired_plant_lod(best_distance), build_token)
+        _build_plant_tile(best_coord, _desired_plant_lod(best_distance, int(_world._decode_lod_key(best_coord)["lod"])), build_token)
 
 
 func _build_rock_tile(
