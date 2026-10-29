@@ -200,18 +200,27 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="CornerBadge" type="PanelContainer" parent="."]
-custom_minimum_size = Vector2(250, 54)
+custom_minimum_size = Vector2(250, 64)
 layout_mode = 1
 offset_left = 992.0
-offset_top = 642.0
+offset_top = 632.0
 offset_right = 1242.0
 offset_bottom = 696.0
 
 [node name="Margin" type="MarginContainer" parent="CornerBadge"]
 layout_mode = 2
 
-[node name="BadgeText" type="Label" parent="CornerBadge/Margin"]
+[node name="Stack" type="VBoxContainer" parent="CornerBadge/Margin"]
+layout_mode = 2
+
+[node name="BadgeText" type="Label" parent="CornerBadge/Margin/Stack"]
 layout_mode = 2
 text = "Made by Rewolf"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="VersionText" type="Label" parent="CornerBadge/Margin/Stack"]
+layout_mode = 2
+text = "v0.1.0.7"
 horizontal_alignment = 1
 vertical_alignment = 1
