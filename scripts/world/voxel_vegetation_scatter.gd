@@ -8,7 +8,7 @@ const PROP_VOXEL_SIZE: float = 0.1
 const GRASS_BLADE_COUNT: int = 120
 
 func build_tile(
-        host: Node, output, reservations: Array[Dictionary], palette_data: Dictionary,
+        host, output, reservations: Array[Dictionary], palette_data: Dictionary,
         rng: RandomNumberGenerator, tile_seed: int, origin_x: float, origin_z: float,
         width_m: float, depth_m: float, voxel_lod: int) -> void:
     scatter_flowers(host, output, reservations, palette_data, rng, tile_seed,
@@ -23,7 +23,7 @@ func _coarsen_grid(source_grid, voxel_lod: int):
     return grid
 
 func scatter_flowers(
-        host: Node, output, reservations: Array[Dictionary], palette_data: Dictionary,
+        host, output, reservations: Array[Dictionary], palette_data: Dictionary,
         rng: RandomNumberGenerator, tile_seed: int, origin_x: float, origin_z: float,
         width_m: float, depth_m: float, voxel_lod: int) -> void:
     var meadow := host._make_noise(host._mix(tile_seed, 37, 0), 0.035)
@@ -58,7 +58,7 @@ func scatter_flowers(
         flower_index += 1
 
 func _try_add_flower(
-        host: Node, output, reservations: Array[Dictionary], palette_data: Dictionary,
+        host, output, reservations: Array[Dictionary], palette_data: Dictionary,
         rng: RandomNumberGenerator, flower: Dictionary,
         local_x: float, local_z: float, origin_x: float, origin_z: float,
         width_m: float, depth_m: float, index: int, voxel_lod: int) -> void:
@@ -87,7 +87,7 @@ func _try_add_flower(
     reservations.append({"p": Vector2(local_x, local_z), "r": exclusion_radius})
 
 func scatter_grass(
-        host: Node, output, reservations: Array[Dictionary], palette_data: Dictionary,
+        host, output, reservations: Array[Dictionary], palette_data: Dictionary,
         rng: RandomNumberGenerator, tile_seed: int, origin_x: float, origin_z: float,
         width_m: float, depth_m: float, voxel_lod: int) -> void:
     var meadow := host._make_noise(host._mix(tile_seed, 37, 0), 0.035)
