@@ -11,6 +11,7 @@
 - Replaced slope-following voxel ribs with layered, contour-aligned vertical cliff meshes. Cliff faces are 4–14 m high, have irregular strata and thickness, embed into steep rocky slopes, and use nearby convex collision hulls instead of per-rib concave collision meshes.
 - Reduced the sky/time-of-day update interval default from 0.016 s to 0.25 s to avoid recalculating environment parameters every frame.
 - Reduced cumulus-cloud raymarching from 10 to 8 samples and adjusted sample spacing to preserve the overall integration span, lowering per-pixel cloud work without simply shortening the cloud layer.
+- In the terrain shader, skip the high-detail multi-noise rock crack path once cracks fall below the pixel footprint; the distant surface uses its coarser rock palette instead of evaluating fine crack noise that cannot be resolved.
 - Updated the README for the new worker responsibilities, vegetation distance/shadow rules and cliff-object approach.
 
 
