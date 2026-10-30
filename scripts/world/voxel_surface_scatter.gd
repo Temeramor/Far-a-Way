@@ -1,8 +1,7 @@
 extends Node3D
 class_name VoxelSurfaceScatter
 
-## Streamed surface decoration. Per-object algorithms are separated into rock, mountain-rib
-## and vegetation scripts; this node owns tile lifetime, LOD selection and shared materials.
+## Streamed ground stones and vegetation. This node owns tile lifetime, LOD selection and shared materials.
 const GridScript = preload("res://scripts/vegetation/vox_grid.gd")
 const PaletteScript = preload("res://scripts/vegetation/voxel_palette.gd")
 const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
@@ -373,7 +372,6 @@ func _schedule_rock_tile(
         "origin_z": origin_z,
         "width_m": width_m,
         "depth_m": depth_m,
-        "terrain_lod": terrain_lod,
         "distance": distance_m
     }
     _entries[coord] = entry
@@ -571,44 +569,25 @@ func _poll_decor_tasks() -> void:
 func _create_decor_collision_shapes(root_node: Node3D, collision_data: Array) -> void:
     if collision_data.is_empty():
         return
+
     var body := StaticBody3D.new()
-    body.name = "DecorationCollisions"
+    body.name = "BoulderCollisions"
     body.collision_layer = 1
     body.collision_mask = 1
+
     for item in collision_data:
-        var kind: String = str(item.get("kind", "cliff"))
+        var radius_m: float = float(item.get("radius_m", 0.5))
+        var height: float = maxf(0.35, radius_m * 1.20)
+        var box := BoxShape3D.new()
+        box.size = Vector3(radius_m * 2.5, height, radius_m * 2.5)
+
         var collision := CollisionShape3D.new()
-        collision.name = "DecorCollision"
-
-        if kind == "boulder":
-            # A cheap box is enough for rounded boulders and avoids per-rock convex hull cooking.
-            var radius_m: float = float(item.get("radius_m", 0.5))
-            var box := BoxShape3D.new()
-            var height: float = maxf(0.35, radius_m * 1.20)
-            box.size = Vector3(radius_m * 2.5, height, radius_m * 2.5)
-            collision.shape = box
-            var base_position: Vector3 = item.get("position", Vector3.ZERO)
-            collision.position = base_position + Vector3(0.0, height * 0.5, 0.0)
-        else:
-            var points: PackedVector3Array = item.get("points", PackedVector3Array())
-            if points.size() < 4:
-                collision.free()
-                continue
-            # Bound convex-hull cooking cost on large cliff meshes while retaining their silhouette.
-            var stride: int = maxi(1, ceili(float(points.size()) / 192.0))
-            var hull_points := PackedVector3Array()
-            for i in range(0, points.size(), stride):
-                hull_points.append(points[i])
-            if hull_points.size() < 4:
-                collision.free()
-                continue
-            var convex := ConvexPolygonShape3D.new()
-            convex.set_points(hull_points)
-            convex.margin = 0.03
-            collision.shape = convex
-            collision.position = item.get("position", Vector3.ZERO)
-
+        collision.name = "BoulderCollision"
+        collision.shape = box
+        var base_position: Vector3 = item.get("position", Vector3.ZERO)
+        collision.position = base_position + Vector3(0.0, height * 0.5, 0.0)
         body.add_child(collision)
+
     if body.get_child_count() > 0:
         root_node.add_child(body)
     else:
