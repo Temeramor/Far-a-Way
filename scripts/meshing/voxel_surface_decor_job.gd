@@ -80,17 +80,14 @@ func build_plant_data(job_data: Dictionary) -> void:
     }
 
 
-func _surface_info(world_x: float, world_z: float) -> Dictionary:
+func _surface_info(world_x: float, world_z: float) -> Vector4:
+    # Packed as (height, gradient_x, gradient_z, rock_weight) to avoid a Dictionary
+    # allocation for every vegetation/rock placement probe.
     var sample: Vector3 = _generator.get_surface_sample(world_x, world_z)
     var gradient := Vector2(sample.y, sample.z)
     var slope: float = gradient.length()
-    return {
-        "height": sample.x,
-        "slope": slope,
-        "gradient_x": gradient.x,
-        "gradient_z": gradient.y,
-        "rock_weight": _generator.get_surface_rock_weight(slope, world_x, world_z)
-    }
+    var rock_weight: float = _generator.get_surface_rock_weight(slope, world_x, world_z)
+    return Vector4(sample.x, gradient.x, gradient.y, rock_weight)
 
 
 func _can_reserve(
