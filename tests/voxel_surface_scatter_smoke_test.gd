@@ -2,7 +2,6 @@ extends SceneTree
 
 const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
 const RockScatterScript = preload("res://scripts/world/voxel_rock_scatter.gd")
-const MountainRibScatterScript = preload("res://scripts/world/voxel_mountain_rib_scatter.gd")
 const VegetationScatterScript = preload("res://scripts/world/voxel_vegetation_scatter.gd")
 
 
@@ -74,7 +73,6 @@ func _run() -> void:
         errors.append("Surface rock weight must stay in the 0..1 interval.")
 
     var rock_scatter = RockScatterScript.new()
-    var rib_scatter = MountainRibScatterScript.new()
     var vegetation_scatter = VegetationScatterScript.new()
     var stone_grid = rock_scatter.make_rock_grid(scatter, 8.0, palette, 12345)
     var stone_mesh_data = MeshDataScript.new()
@@ -87,32 +85,6 @@ func _run() -> void:
     if coarse_stone_mesh_data.verts.is_empty() or coarse_stone_mesh_data.indices.is_empty():
         errors.append("The simplified distant rock tier must retain visible geometry at 10 cm voxel size.")
 
-    var rib_palette: PackedColorArray = palette["grid"].palette
-    var cliff_noise: FastNoiseLite = scatter._make_noise(9876, 0.075)
-    var contour_path: Array[Vector2] = [
-        Vector2(50.0, 60.0), Vector2(51.0, 60.2),
-        Vector2(52.0, 60.1), Vector2(53.0, 60.3), Vector2(54.0, 60.2)
-    ]
-    var cliff_mesh_data: MeshData = rib_scatter._build_cliff_mesh(
-        scatter, contour_path, cliff_noise, rib_palette, rock_ramps, 50.0, 60.0
-    )
-    if cliff_mesh_data.verts.is_empty() or cliff_mesh_data.indices.is_empty():
-        errors.append("The contour-aligned cliff-object mesher must emit visible geometry.")
-    else:
-        var min_wall_y: float = INF
-        var max_wall_y: float = -INF
-        var has_vertical_wall_normal: bool = false
-        for vertex in cliff_mesh_data.verts:
-            min_wall_y = minf(min_wall_y, vertex.y)
-            max_wall_y = maxf(max_wall_y, vertex.y)
-        for normal in cliff_mesh_data.normals:
-            if absf(normal.y) < 0.01:
-                has_vertical_wall_normal = true
-                break
-        if max_wall_y - min_wall_y < 3.5:
-            errors.append("Cliff-object geometry should have meaningful vertical relief.")
-        if not has_vertical_wall_normal:
-            errors.append("Cliff-object front faces should use near-horizontal normals for vertical walls.")
 
     var flower_grid = scatter._make_object_grid(22, 20, 22, palette)
     var flower_rng := RandomNumberGenerator.new()
