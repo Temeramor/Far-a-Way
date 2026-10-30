@@ -9,16 +9,20 @@ const MIN_FLIGHT_FOV: float = 82.0
 const MAX_FLIGHT_FOV: float = 120.0
 const DEFAULT_LOD0_DISTANCE_M: float = 64.0
 const DEFAULT_SHADOW_MODE: int = 1
-const DEFAULT_VIEW_DISTANCE_M: float = 4096.0
+const DEFAULT_VIEW_DISTANCE_M: float = 1536.0
+const MIN_VIEW_DISTANCE_M: float = 512.0
+const MAX_VIEW_DISTANCE_M: float = 2048.0
+const DEFAULT_LOD_TARGET_PIXELS: float = 3.0
 const DEFAULT_WINDOW_WIDTH: int = 1280
 const DEFAULT_WINDOW_HEIGHT: int = 720
 
 var flight_speed_multiplier: float = DEFAULT_FLIGHT_SPEED_MULTIPLIER
 var flight_fov: float = DEFAULT_FLIGHT_FOV
-# Fixed baseline profile for the Forward+ migration; Windows graphics options will be added separately.
+# Runtime graphics controls that are persisted between sessions.
 var lod0_distance_m: float = DEFAULT_LOD0_DISTANCE_M
 var shadow_mode: int = DEFAULT_SHADOW_MODE
 var view_distance_m: float = DEFAULT_VIEW_DISTANCE_M
+var lod_target_pixels: float = DEFAULT_LOD_TARGET_PIXELS
 var window_mode: int = 0 # 0 = windowed, 1 = fullscreen
 var window_width: int = DEFAULT_WINDOW_WIDTH
 var window_height: int = DEFAULT_WINDOW_HEIGHT
@@ -52,14 +56,16 @@ func load_settings() -> void:
         MIN_FLIGHT_FOV, MAX_FLIGHT_FOV
     )
     _set_fixed_graphics_defaults()
+    view_distance_m = snappedf(clampf(float(config.get_value("graphics", "view_distance_m", DEFAULT_VIEW_DISTANCE_M)), MIN_VIEW_DISTANCE_M, MAX_VIEW_DISTANCE_M), 256.0)
+    lod_target_pixels = clampf(float(config.get_value("graphics", "lod_target_pixels", DEFAULT_LOD_TARGET_PIXELS)), 2.0, 4.0)
     window_mode = clampi(int(config.get_value("display", "mode", 0)), 0, 1)
     window_width = int(config.get_value("display", "width", DEFAULT_WINDOW_WIDTH))
     window_height = int(config.get_value("display", "height", DEFAULT_WINDOW_HEIGHT))
     _normalise_resolution()
 
-    # Discard persisted AA, shadow, LOD and distance experiments after upgrading.
+    # Keep the supported render-distance and screen-space LOD settings; discard only legacy LOD keys.
     var changed := false
-    for legacy_section in ["graphics", "lod"]:
+    for legacy_section in ["lod"]:
         if config.has_section(legacy_section):
             config.erase_section(legacy_section)
             changed = true
@@ -82,19 +88,24 @@ func update_shadow_mode(mode: int, _persist: bool = false) -> bool:
 
 
 func update_view_distance_m(distance_m: float, _persist: bool = false) -> bool:
-    view_distance_m = snappedf(clampf(distance_m, 512.0, 8192.0), 256.0)
-    return true
+    view_distance_m = snappedf(clampf(distance_m, MIN_VIEW_DISTANCE_M, MAX_VIEW_DISTANCE_M), 256.0)
+    return _save_all_settings() if _persist else true
+
+
+func update_lod_target_pixels(target_pixels: float, persist: bool = false) -> bool:
+    lod_target_pixels = clampf(target_pixels, 2.0, 4.0)
+    return _save_all_settings() if persist else true
 
 
 func _save_all_settings() -> bool:
     var config := ConfigFile.new()
     config.load(SETTINGS_PATH)
-    if config.has_section("graphics"):
-        config.erase_section("graphics")
     if config.has_section("lod"):
         config.erase_section("lod")
     config.set_value("flight", "speed_multiplier", flight_speed_multiplier)
     config.set_value("flight", "fov", flight_fov)
+    config.set_value("graphics", "view_distance_m", view_distance_m)
+    config.set_value("graphics", "lod_target_pixels", lod_target_pixels)
     config.set_value("display", "mode", window_mode)
     config.set_value("display", "width", window_width)
     config.set_value("display", "height", window_height)
@@ -158,6 +169,7 @@ func _set_fixed_graphics_defaults() -> void:
     lod0_distance_m = DEFAULT_LOD0_DISTANCE_M
     shadow_mode = DEFAULT_SHADOW_MODE
     view_distance_m = DEFAULT_VIEW_DISTANCE_M
+    lod_target_pixels = DEFAULT_LOD_TARGET_PIXELS
     window_mode = 0
     window_width = DEFAULT_WINDOW_WIDTH
     window_height = DEFAULT_WINDOW_HEIGHT

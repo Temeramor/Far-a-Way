@@ -19,6 +19,9 @@ var _settings_panel: PanelContainer
 var _mouse_mode_before_pause: int = Input.MOUSE_MODE_VISIBLE
 var _window_mode_selector: OptionButton
 var _resolution_selector: OptionButton
+var _view_distance_selector: OptionButton
+var _lod_target_selector: OptionButton
+const VIEW_DISTANCES: Array[int] = [512, 768, 1024, 1280, 1536, 1792, 2048]
 const RESOLUTIONS: Array[Vector2i] = [Vector2i(640, 360), Vector2i(800, 450), Vector2i(1024, 576), Vector2i(1280, 720), Vector2i(1366, 768), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440)]
 
 
@@ -151,6 +154,28 @@ func _build_ui() -> void:
     settings_stack.add_child(display_hint)
     settings_stack.add_child(_make_divider())
 
+    settings_stack.add_child(_make_label("ДАЛЬНОСТЬ ПРОРИСОВКИ", true))
+    _view_distance_selector = OptionButton.new()
+    for distance_m in VIEW_DISTANCES:
+        _view_distance_selector.add_item("%d м" % distance_m, distance_m)
+    _view_distance_selector.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    _view_distance_selector.item_selected.connect(_on_view_distance_selected)
+    settings_stack.add_child(_view_distance_selector)
+
+    settings_stack.add_child(_make_label("АГРЕССИВНОСТЬ LOD", true))
+    _lod_target_selector = OptionButton.new()
+    _lod_target_selector.add_item("Качество — 2 px", 2)
+    _lod_target_selector.add_item("Баланс — 3 px", 3)
+    _lod_target_selector.add_item("Производительность — 4 px", 4)
+    _lod_target_selector.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    _lod_target_selector.item_selected.connect(_on_lod_target_selected)
+    settings_stack.add_child(_lod_target_selector)
+
+    var lod_hint := _make_label("LOD выбирается по размеру ячейки на экране: примерно от 1 до 4 пикселей. Значение обновляется при изменении разрешения.", false)
+    lod_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    settings_stack.add_child(lod_hint)
+    settings_stack.add_child(_make_divider())
+
     var settings_buttons := HBoxContainer.new()
     settings_buttons.add_theme_constant_override("separation", 8)
     settings_stack.add_child(settings_buttons)
@@ -166,6 +191,7 @@ func _build_ui() -> void:
     settings_buttons.add_child(done_button)
 
     _sync_display_controls()
+    _sync_performance_controls()
     _show_main_page()
 
 
@@ -180,6 +206,43 @@ func _on_resolution_selected(index: int) -> void:
     var selected_size: Vector2i = RESOLUTIONS[index]
     GameSettings.set_display_settings(_window_mode_selector.get_item_id(_window_mode_selector.selected), selected_size.x, selected_size.y)
     _sync_display_controls()
+
+
+func _on_view_distance_selected(index: int) -> void:
+    var distance_m: float = float(_view_distance_selector.get_item_id(index))
+    var current_scene: Node = get_tree().current_scene
+    if current_scene != null and current_scene.has_method("set_view_distance_m"):
+        current_scene.call("set_view_distance_m", distance_m)
+    else:
+        GameSettings.update_view_distance_m(distance_m, true)
+    _sync_performance_controls()
+
+
+func _on_lod_target_selected(index: int) -> void:
+    var target_pixels: float = float(_lod_target_selector.get_item_id(index))
+    var current_scene: Node = get_tree().current_scene
+    if current_scene != null and current_scene.has_method("set_lod_target_pixels"):
+        current_scene.call("set_lod_target_pixels", target_pixels)
+    else:
+        GameSettings.update_lod_target_pixels(target_pixels, true)
+    _sync_performance_controls()
+
+
+func _sync_performance_controls() -> void:
+    if _view_distance_selector == null or _lod_target_selector == null:
+        return
+    var distance_index: int = 0
+    for i in range(_view_distance_selector.item_count):
+        if int(_view_distance_selector.get_item_id(i)) == int(GameSettings.view_distance_m):
+            distance_index = i
+            break
+    _view_distance_selector.select(distance_index)
+    var lod_index: int = 1
+    for i in range(_lod_target_selector.item_count):
+        if int(_lod_target_selector.get_item_id(i)) == roundi(GameSettings.lod_target_pixels):
+            lod_index = i
+            break
+    _lod_target_selector.select(lod_index)
 
 
 func _sync_display_controls() -> void:

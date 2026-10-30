@@ -12,7 +12,7 @@ const SKIRT_ALPHA_LEFT: float = 0.80
 const SKIRT_ALPHA_RIGHT: float = 0.84
 const SKIRT_ALPHA_NORTH: float = 0.88
 const SKIRT_ALPHA_SOUTH: float = 0.92
-const GeneratorScript = preload("res://scripts/voxel_generator.gd")
+const GeneratorScript = preload("res://scripts/world/voxel_generator.gd")
 
 var coord: Vector2i = Vector2i.ZERO
 var lod: int = -1
@@ -150,7 +150,7 @@ func build_mesh_data(job_data: Dictionary) -> Dictionary:
         "normals": PackedVector3Array(),
         "indices": PackedInt32Array()
     }
-    if float(request.get("distance", 0.0)) <= 1200.0:
+    if bool(request.get("shadow_proxy", float(request.get("distance", 0.0)) <= 640.0)):
         smooth_shadow_data = _build_smooth_shadow_surface(
             generator, p_lod, world_min_x, world_min_z,
             start_voxel_x, start_voxel_z, size_voxels_x, size_voxels_z,

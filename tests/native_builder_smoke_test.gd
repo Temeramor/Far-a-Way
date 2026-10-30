@@ -10,7 +10,7 @@ func _run_native_builder_test() -> void:
         quit()
         return
 
-    var generator_script = load("res://scripts/voxel_generator.gd")
+    var generator_script = load("res://scripts/world/voxel_generator.gd")
     var generator = generator_script.new(123456, 2000.0)
     var builder: Object = ClassDB.instantiate("VoxEnNativeBuilder")
     if builder == null:

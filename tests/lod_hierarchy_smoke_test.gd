@@ -34,6 +34,28 @@ func _run() -> void:
                     screen_height, lod_index, expected_boundary, boundary
                 ])
 
+    # The default screen-space target keeps adjacent visible LOD tiers around 1.5-3 pixels.
+    if absf(world.lod_target_pixels - 3.0) > 0.001:
+        errors.append("Default LOD target should be 3 screen pixels.")
+    for i in range(screen_heights.size()):
+        var three_pixel_boundary: float = world.get_lod_boundary_m_for_height(
+            0, float(screen_heights[i]), 3.0
+        )
+        if absf(three_pixel_boundary - expected_first_boundary[i] / 3.0) > 0.2:
+            errors.append("3 px LOD target should transition at one third of the 1 px distance.")
+
+    # The bounded mesh cache stores worker arrays without creating RenderingServer resources.
+    var cache_payload := {
+        "vertices": PackedVector3Array([Vector3.ZERO]),
+        "normals": PackedVector3Array([Vector3.UP]),
+        "colors": PackedColorArray([Color.WHITE]),
+        "indices": PackedInt32Array([0, 0, 0])
+    }
+    world._store_cached_mesh("screen-space-smoke", cache_payload)
+    var recovered_payload: Dictionary = world._get_cached_mesh("screen-space-smoke")
+    if recovered_payload.is_empty() or world._mesh_cache_bytes <= 0:
+        errors.append("The LRU mesh cache should preserve and return packed mesh arrays.")
+
     # The active viewport's boundaries must map each side of every threshold to adjacent LODs.
     for lod_index in range(7):
         var boundary: float = world.get_lod_boundary_m(lod_index)
@@ -103,7 +125,7 @@ func _run() -> void:
 
     # LOD7 remains voxel geometry: quad-expanded face vertices, not a shared smooth heightfield.
     var far_generator := VoxelTerrainGenerator.new(1337, 2000.0)
-    var fallback_builder_script = load("res://scripts/voxel_chunk_mesh_builder_fallback.gd")
+    var fallback_builder_script = load("res://scripts/meshing/voxel_chunk_mesh_builder_fallback.gd")
     var far_builder = fallback_builder_script.new()
     var far_data: Dictionary = far_builder.build_mesh_data({
         "coord": Vector2i.ZERO,

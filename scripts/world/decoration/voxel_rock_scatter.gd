@@ -1,7 +1,7 @@
 extends RefCounted
 class_name VoxelRockScatter
 
-## Ground stones and boulders. Rock voxel cells remain 10 cm at every prop LOD.
+## Ground stones and boulders. Distant props use coarser voxel grids and fewer surface details.
 const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
 const PROP_VOXEL_SIZE: float = 0.1
 
@@ -53,15 +53,36 @@ func build_tile(
         # Keep 10 cm voxels for rocks at every LOD. Distant tiers use fewer/smaller
         # shapes and lower surface noise instead of enlarging individual rock voxels.
         var grid = make_rock_grid(host, radius_units, palette_data, rock_seed, prop_lod)
+        var mesh_grid = grid
+        var safe_prop_lod: int = clampi(prop_lod, 0, 3)
+        for _lod_step in range(safe_prop_lod):
+            mesh_grid = mesh_grid.downsampled()
         var rock_piece = MeshDataScript.new()
-        grid.emit(rock_piece, Vector3.ZERO, PROP_VOXEL_SIZE, rock_seed)
-        host._append_transformed_mesh(
-            output, rock_piece, Basis.IDENTITY,
-            Vector3(local_x, float(surface["height"]) - 0.06, local_z)
-        )
+        var rock_voxel_size: float = PROP_VOXEL_SIZE * float(1 << safe_prop_lod)
+        mesh_grid.emit(rock_piece, Vector3.ZERO, rock_voxel_size, rock_seed)
+
+        # Orient the base plane to the terrain normal so the rock rests on the slope
+        # instead of intersecting it with a world-axis-aligned side.
+        var surface_normal := Vector3(
+            -float(surface["gradient_x"]), 1.0, -float(surface["gradient_z"])
+        ).normalized()
+        var yaw: float = rng.randf_range(0.0, TAU)
+        var local_x_axis := Vector3(cos(yaw), 0.0, sin(yaw))
+        local_x_axis = (local_x_axis - surface_normal * local_x_axis.dot(surface_normal)).normalized()
+        if local_x_axis.length_squared() < 0.001:
+            var fallback_axis: Vector3 = Vector3.RIGHT
+            if absf(surface_normal.dot(fallback_axis)) > 0.95:
+                fallback_axis = Vector3.FORWARD
+            local_x_axis = (fallback_axis - surface_normal * fallback_axis.dot(surface_normal)).normalized()
+        var local_z_axis: Vector3 = local_x_axis.cross(surface_normal).normalized()
+        var rock_basis := Basis(local_x_axis, surface_normal, local_z_axis)
+        var base_position := Vector3(local_x, float(surface["height"]) - 0.06, local_z)
+        host._append_transformed_mesh(output, rock_piece, rock_basis, base_position)
+
         if radius_m >= 0.5 and build_collisions:
             collision_output.append({
-                "position": Vector3(local_x, float(surface["height"]) - 0.06, local_z),
+                "position": base_position,
+                "basis": rock_basis,
                 "radius_m": radius_m
             })
         reservations.append({"p": Vector2(local_x, local_z), "r": exclusion_radius})

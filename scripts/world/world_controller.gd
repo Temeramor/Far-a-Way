@@ -69,14 +69,19 @@ func _ready() -> void:
 
 
 func set_view_distance_m(distance_m: float, persist: bool = true) -> void:
-    var safe_distance: float = snappedf(clampf(distance_m, 512.0, 8192.0), 256.0)
+    var safe_distance: float = snappedf(clampf(distance_m, GameSettings.MIN_VIEW_DISTANCE_M, GameSettings.MAX_VIEW_DISTANCE_M), 256.0)
     GameSettings.update_view_distance_m(safe_distance, persist)
     voxel_world.set_render_distance_m(GameSettings.view_distance_m)
     _apply_view_distance_environment(GameSettings.view_distance_m)
 
 
+func set_lod_target_pixels(target_pixels: float, persist: bool = true) -> void:
+    GameSettings.update_lod_target_pixels(target_pixels, persist)
+    voxel_world.set_lod_target_pixels(GameSettings.lod_target_pixels)
+
+
 func _apply_view_distance_environment(distance_m: float) -> void:
-    var safe_distance: float = clampf(distance_m, 512.0, 8192.0)
+    var safe_distance: float = clampf(distance_m, GameSettings.MIN_VIEW_DISTANCE_M, GameSettings.MAX_VIEW_DISTANCE_M)
     var gameplay_camera: Camera3D = $Player/CameraPivot/Camera3D
     gameplay_camera.far = safe_distance * 1.06
     var environment: Environment = sky_system.environment
@@ -91,14 +96,18 @@ func _apply_view_distance_environment(distance_m: float) -> void:
         environment.fog_sun_scatter = 0.0
         environment.fog_aerial_perspective = 0.0
         environment.fog_sky_affect = 0.0
-    for light_name in ["SunLight", "MoonLight"]:
-        var directional_light := sky_system.get_node_or_null(light_name) as DirectionalLight3D
-        if directional_light != null:
-            directional_light.shadow_enabled = true
-            directional_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-            directional_light.directional_shadow_blend_splits = true
-            directional_light.directional_shadow_max_distance = minf(safe_distance, 1024.0)
-            directional_light.directional_shadow_fade_start = 0.92
+    var sun_light := sky_system.get_node_or_null("SunLight") as DirectionalLight3D
+    if sun_light != null:
+        sun_light.shadow_enabled = true
+        sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+        sun_light.directional_shadow_blend_splits = true
+        sun_light.directional_shadow_max_distance = minf(safe_distance, 640.0)
+        sun_light.directional_shadow_fade_start = 0.90
+
+    # Moon shadows duplicate a second directional shadow map and add little during night scenes.
+    var moon_light := sky_system.get_node_or_null("MoonLight") as DirectionalLight3D
+    if moon_light != null:
+        moon_light.shadow_enabled = false
 
 
 func _configure_sky_system() -> void:
@@ -216,6 +225,8 @@ func _build_flight_status() -> void:
 
 
 func _on_flight_mode_changed(enabled: bool) -> void:
+    if voxel_world != null:
+        voxel_world.refresh_lod_boundaries()
     if flight_status_label == null:
         return
     flight_status_label.text = "РЕЖИМ ПОЛЁТА — скорость ×%.0f" % player.flight_speed_multiplier

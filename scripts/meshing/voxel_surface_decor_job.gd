@@ -4,10 +4,10 @@ class_name VoxelSurfaceDecorJob
 ## CPU-only decoration worker. It owns a private terrain sampler/cache and returns mesh data;
 ## SceneTree, ArrayMesh, and physics resources are created by VoxelSurfaceScatter on the main thread.
 
-const GeneratorScript = preload("res://scripts/voxel_generator.gd")
+const GeneratorScript = preload("res://scripts/world/voxel_generator.gd")
 const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
-const RockScatterScript = preload("res://scripts/world/voxel_rock_scatter.gd")
-const VegetationScatterScript = preload("res://scripts/world/voxel_vegetation_scatter.gd")
+const RockScatterScript = preload("res://scripts/world/decoration/voxel_rock_scatter.gd")
+const VegetationScatterScript = preload("res://scripts/world/decoration/voxel_vegetation_scatter.gd")
 const GridScript = preload("res://scripts/vegetation/vox_grid.gd")
 
 var result: Dictionary = {}

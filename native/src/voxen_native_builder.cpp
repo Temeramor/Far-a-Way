@@ -912,7 +912,7 @@ struct MeshBuild {
 
         // Terrain-shadow proxies are useful near the camera, but expensive and invisible
         // outside the shadow range. Avoid their CPU noise sampling and GPU upload at distance.
-        if (static_cast<double>(request.get("distance", 0.0)) <= 1200.0) {
+        if (static_cast<bool>(request.get("shadow_proxy", static_cast<double>(request.get("distance", 0.0)) <= 640.0))) {
             build_smooth_shadow_surface();
         }
 

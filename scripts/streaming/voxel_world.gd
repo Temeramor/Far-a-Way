@@ -9,9 +9,13 @@ const VOXEL_SIZE: float = 0.2
 const LOD_KEY_STRIDE: int = 100000
 const BASE_MESH_STEP_VOXELS: int = 1
 const DESIGN_FOV_DEGREES: float = 82.0
-const GeneratorScript = preload("res://scripts/voxel_generator.gd")
-const ChunkScript = preload("res://scripts/voxel_chunk.gd")
-const FallbackBuilderScript = preload("res://scripts/voxel_chunk_mesh_builder_fallback.gd")
+const TERRAIN_SHADOW_DISTANCE_M: float = 640.0
+const MAX_MESH_CACHE_BYTES: int = 48 * 1024 * 1024
+const MAX_MESH_CACHE_ENTRIES: int = 32
+const MAX_POOLED_CHUNK_NODES: int = 32
+const GeneratorScript = preload("res://scripts/world/voxel_generator.gd")
+const ChunkScript = preload("res://scripts/streaming/voxel_chunk.gd")
+const FallbackBuilderScript = preload("res://scripts/meshing/voxel_chunk_mesh_builder_fallback.gd")
 
 @export_category("Voxel world")
 @export_range(256.0, 20000.0, 1.0) var world_size_m: float = 2000.0
@@ -20,12 +24,12 @@ const FallbackBuilderScript = preload("res://scripts/voxel_chunk_mesh_builder_fa
 @export var auto_start_on_ready: bool = true
 
 @export_category("Streaming and LOD")
-@export_range(512.0, 8192.0, 256.0) var render_distance_m: float = 4096.0
-const LOD_TRANSITION_PIXELS: float = 0.5
+@export_range(512.0, 2048.0, 256.0) var render_distance_m: float = 1536.0
+const LOD_TRANSITION_PIXELS: float = 3.0
 @export_range(0.02, 0.10, 0.01) var lod_hysteresis_ratio: float = 0.05
 @export_range(1, 8, 1) var max_concurrent_mesh_jobs: int = 2
-@export_range(1, 4, 1) var max_mesh_applies_per_frame: int = 2
-@export_range(1.0, 8.0, 0.5) var max_mesh_apply_time_ms: float = 2.0
+@export_range(1, 2, 1) var max_mesh_applies_per_frame: int = 1
+@export_range(0.5, 3.0, 0.25) var max_mesh_apply_time_ms: float = 1.5
 @export_range(0.05, 0.2, 0.01) var streaming_refresh_interval_s: float = 0.10
 @export_range(2.0, 16.0, 2.0) var streaming_refresh_distance_m: float = 8.0
 @export_range(0.5, 2.5, 0.1) var streaming_prediction_seconds: float = 1.4
@@ -43,6 +47,13 @@ var _wanted: Dictionary = {}
 var _running_tasks: Dictionary = {}
 var _running_by_coord: Dictionary = {}
 var _completed_jobs: Dictionary = {}
+var lod_target_pixels: float = 3.0
+var _mesh_cache: Dictionary = {}
+var _mesh_cache_order: Array[String] = []
+var _mesh_cache_bytes: int = 0
+var _chunk_pool: Array[VoxelTerrainChunk] = []
+var _retirement_queue: Array[VoxelTerrainChunk] = []
+var _retirement_lookup: Dictionary = {}
 var _refresh_timer: float = 0.0
 var _debug_lod_colors: bool = false
 var _last_player_position := Vector2(INF, INF)
@@ -79,7 +90,8 @@ func _ready() -> void:
     _world_min_x = -world_size_m * 0.5
     _world_min_z = -world_size_m * 0.5
     _chunks_per_axis = int(ceil(float(_world_size_voxels) / float(_chunk_size_voxels)))
-    render_distance_m = clampf(GameSettings.view_distance_m, 512.0, 8192.0)
+    render_distance_m = clampf(GameSettings.view_distance_m, 512.0, 2048.0)
+    lod_target_pixels = clampf(GameSettings.lod_target_pixels, 2.0, 4.0)
     _last_viewport_size = _current_viewport_pixel_size()
     _refresh_lod_boundaries()
     _generator = GeneratorScript.new(seed_value, world_size_m)
@@ -178,6 +190,9 @@ func regenerate_with_seed(new_seed: int) -> void:
     _queued.clear()
     _wanted.clear()
     _completed_jobs.clear()
+    _mesh_cache.clear()
+    _mesh_cache_order.clear()
+    _mesh_cache_bytes = 0
 
     # Hide the old world immediately; release mesh buffers gradually over later frames.
     # In-flight tasks finish, but their old epoch will reject their results.
@@ -213,15 +228,24 @@ func _prepare_world_for_epoch(epoch: int) -> void:
     _refresh_streaming()
 
 func set_lod_settings(_legacy_lod0_distance: float) -> void:
-    # Compatibility with older scene controllers. Detail now follows viewport pixels,
-    # not the former fixed metre threshold.
+    # Compatibility hook; LOD boundaries are screen-space based rather than fixed in metres.
+    refresh_lod_boundaries()
+
+
+func set_lod_target_pixels(target_pixels: float) -> void:
+    lod_target_pixels = clampf(target_pixels, 2.0, 4.0)
+    refresh_lod_boundaries()
+
+
+func refresh_lod_boundaries() -> void:
     _refresh_lod_boundaries()
     if _world_started:
+        _last_player_position = Vector2(INF, INF)
         _refresh_streaming()
 
 
 func set_render_distance_m(distance_m: float) -> void:
-    var safe_distance: float = snappedf(clampf(distance_m, 512.0, 8192.0), 256.0)
+    var safe_distance: float = snappedf(clampf(distance_m, 512.0, 2048.0), 256.0)
     if is_equal_approx(render_distance_m, safe_distance):
         return
     render_distance_m = safe_distance
@@ -247,17 +271,22 @@ func get_lod_boundary_m(lod_index: int) -> float:
 func _refresh_lod_boundaries() -> void:
     var screen_height: float = float(maxi(1, _current_viewport_pixel_size().y))
     for i in range(_lod_boundaries_m.size()):
-        _lod_boundaries_m[i] = get_lod_boundary_m_for_height(i, screen_height, LOD_TRANSITION_PIXELS)
+        _lod_boundaries_m[i] = get_lod_boundary_m_for_height(i, screen_height, lod_target_pixels)
 
 
 func get_lod_boundary_m_for_height(lod_index: int, screen_height: float, target_pixels: float = -1.0) -> float:
-    # Switch using the next voxel footprint. The runtime half-pixel target keeps the
-    # outer map ring from jumping to multi-metre cells at normal viewing resolutions.
+    # Switch when the next coarser cell reaches the selected screen-space pixel target.
+    # This keeps the visible cell footprint near the chosen 2-4 px quality/performance band.
     if lod_index < 0 or lod_index > 6:
         return INF
     var safe_height: float = maxf(screen_height, 1.0)
-    var pixel_target: float = LOD_TRANSITION_PIXELS if target_pixels <= 0.0 else clampf(target_pixels, 0.5, 1.0)
-    var projection_scale: float = safe_height / (2.0 * tan(deg_to_rad(DESIGN_FOV_DEGREES) * 0.5))
+    var pixel_target: float = lod_target_pixels if target_pixels <= 0.0 else clampf(target_pixels, 1.0, 4.0)
+    var fov_degrees: float = DESIGN_FOV_DEGREES
+    if _player != null:
+        var player_camera := _player.get_node_or_null("CameraPivot/Camera3D") as Camera3D
+        if player_camera != null:
+            fov_degrees = player_camera.fov
+    var projection_scale: float = safe_height / (2.0 * tan(deg_to_rad(clampf(fov_degrees, 30.0, 120.0)) * 0.5))
     var next_cell_size_m: float = float(get_mesh_step_voxels(lod_index + 1)) * VOXEL_SIZE
     return next_cell_size_m * projection_scale / pixel_target
 
@@ -344,7 +373,7 @@ func get_debug_text() -> String:
     var prediction_seconds: float = _effective_prediction_seconds()
     var estimated_work_seconds: float = _estimated_lod_pipeline_usec(0) / 1000000.0
     var lead_margin_m: float = planar_speed * (prediction_seconds - estimated_work_seconds)
-    var builder_mode: String = "NATIVE C++" if ClassDB.class_exists("VoxEnNativeBuilder") else "GDSCRIPT FALLBACK (SLOW)"
+    var builder_mode: String = "NATIVE C++" if ClassDB.class_exists("VoxEnNativeBuilder") else "GDSCRIPT FALLBACK (SLOW — BUILD DLL)"
     var fps: int = Engine.get_frames_per_second()
     var frame_ms: float = 1000.0 / maxf(float(fps), 1.0)
     var video_memory_mb: float = float(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED)) / 1048576.0
@@ -355,6 +384,7 @@ func get_debug_text() -> String:
         seed_value, _chunks.size(), lod_counts[0], lod_counts[1], lod_counts[2], lod_counts[3], lod_counts[4], lod_counts[5], lod_counts[6], lod_counts[7],
         render_vertices, render_indices, mesh_memory_mb, video_memory_mb, primitives, shadow_vertices,
         collider_count, _running_tasks.size(), _queued.size(), near_pending, _stale_result_count,
+        _mesh_cache.size(), float(_mesh_cache_bytes) / 1048576.0, _chunk_pool.size(),
         _avg_ms(l0), _build_p95_cached_usec[0] / 1000.0, _avg_ms(l1), _build_p95_cached_usec[1] / 1000.0,
         _refresh_p95_cached_usec / 1000.0, _queue_wait_p95_cached_usec / 1000.0,
         float(_max_queue_wait_usec) / 1000.0, _apply_wait_p95_cached_usec / 1000.0,
@@ -483,6 +513,7 @@ func _refresh_streaming() -> void:
             _update_neighbor_chunk_skirts(existing_coord)
             if old_chunk.mesh_ready:
                 old_chunk._retire_current_generation()
+            _queue_chunk_retirement(old_chunk)
             continue
         var tile_size_m: float = chunk_size_m * float(1 << existing_lod)
         var inner_boundary: float = get_lod_boundary_m(existing_lod - 1) if existing_lod > 0 else 0.0
@@ -513,10 +544,14 @@ func _refresh_streaming() -> void:
         # The parent LOD remains visible until this tile can produce an acceptable mesh.
         var needs_build: bool = not rejected_same_mesh_request and not fallback_children_ready and (chunk == null or not chunk.mesh_ready)
         if chunk != null and not fallback_children_ready and not rejected_same_mesh_request:
+            var has_shadow_proxy: bool = chunk.shadow_vertex_count > 0
+            var wants_shadow_proxy: bool = bool(request.get("shadow_proxy", false))
+            var shadow_proxy_mismatch: bool = has_shadow_proxy != wants_shadow_proxy
             needs_build = needs_build or (
                 chunk.lod != int(request["lod"])
                 or chunk.mesh_step_voxels != int(request["step_voxels"])
                 or (bool(request["collision"]) and not chunk.collision_enabled)
+                or shadow_proxy_mismatch
             )
         # Do not retire a fallback parent just because its children are ready. Keep the
         # mesh cached while hidden so the parent can be restored immediately when LOD topology changes.
@@ -647,6 +682,19 @@ func _process_chunk_jobs() -> void:
             "terrain_world_size_m": world_size_m, "mountain_profile": _mountain_profile_cache,
             "build_collision": bool(request["collision"]) and not _chunk_has_collision_resource(coord)
         }
+        var build_collision: bool = bool(request["collision"]) and not _chunk_has_collision_resource(coord)
+        var cache_key: String = _make_mesh_cache_key(coord, request, neighbors, build_collision)
+        var cached_data: Dictionary = _get_cached_mesh(cache_key)
+        if not cached_data.is_empty():
+            _completed_jobs[coord] = {
+                "coord": coord, "request": request.duplicate(), "neighbors": neighbors.duplicate(),
+                "builder": null, "epoch": _generation_epoch, "seed": seed_value,
+                "queued_usec": int(request["queued_usec"]), "cache_key": cache_key,
+                "data": cached_data, "completed_usec": Time.get_ticks_usec()
+            }
+            started_jobs += 1
+            continue
+
         var builder: Object = _create_mesh_builder()
         var task_id: int = WorkerThreadPool.add_task(
             Callable(builder, "build_mesh_data").bind(job_data), false,
@@ -655,11 +703,71 @@ func _process_chunk_jobs() -> void:
         var task_record := {
             "coord": coord, "request": request.duplicate(), "neighbors": neighbors.duplicate(),
             "builder": builder, "epoch": _generation_epoch,
-            "seed": seed_value, "queued_usec": int(request["queued_usec"])
+            "seed": seed_value, "queued_usec": int(request["queued_usec"]),
+            "cache_key": cache_key
         }
         _running_tasks[task_id] = task_record
         _running_by_coord[coord] = task_id
         started_jobs += 1
+
+func _make_mesh_cache_key(coord: Vector2i, request: Dictionary, neighbors: Dictionary, build_collision: bool) -> String:
+    return "%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d" % [
+        seed_value, coord.x, coord.y, int(request["lod"]),
+        int(request.get("step_voxels", 1)), int(bool(request["collision"])),
+        int(build_collision), int(bool(request.get("shadow_proxy", false))),
+        int(neighbors.get("left", -1)), int(neighbors.get("right", -1)),
+        int(neighbors.get("north", -1)), int(neighbors.get("south", -1))
+    ]
+
+
+func _estimate_mesh_data_bytes(data: Dictionary) -> int:
+    var bytes: int = 0
+    var vertices: PackedVector3Array = data.get("vertices", PackedVector3Array())
+    var normals: PackedVector3Array = data.get("normals", PackedVector3Array())
+    var colors: PackedColorArray = data.get("colors", PackedColorArray())
+    var indices: PackedInt32Array = data.get("indices", PackedInt32Array())
+    var shadow_vertices: PackedVector3Array = data.get("smooth_shadow_vertices", PackedVector3Array())
+    var shadow_normals: PackedVector3Array = data.get("smooth_shadow_normals", PackedVector3Array())
+    var shadow_indices: PackedInt32Array = data.get("smooth_shadow_indices", PackedInt32Array())
+    bytes += vertices.size() * 12 + normals.size() * 12 + colors.size() * 16 + indices.size() * 4
+    bytes += shadow_vertices.size() * 12 + shadow_normals.size() * 12 + shadow_indices.size() * 4
+    var collision_data: Dictionary = data.get("collision_height_map", {})
+    var collision_heights: PackedFloat32Array = collision_data.get("heights", PackedFloat32Array())
+    bytes += collision_heights.size() * 4
+    return bytes
+
+
+func _get_cached_mesh(cache_key: String) -> Dictionary:
+    if cache_key.is_empty() or not _mesh_cache.has(cache_key):
+        return {}
+    var record: Dictionary = _mesh_cache[cache_key]
+    _mesh_cache_order.erase(cache_key)
+    _mesh_cache_order.append(cache_key)
+    return record.get("data", {})
+
+
+func _store_cached_mesh(cache_key: String, data: Dictionary) -> void:
+    if cache_key.is_empty() or data.is_empty():
+        return
+    var bytes: int = _estimate_mesh_data_bytes(data)
+    if bytes <= 0 or bytes > MAX_MESH_CACHE_BYTES:
+        return
+    if _mesh_cache.has(cache_key):
+        var old_record: Dictionary = _mesh_cache[cache_key]
+        _mesh_cache_bytes -= int(old_record.get("bytes", 0))
+        _mesh_cache_order.erase(cache_key)
+    _mesh_cache[cache_key] = {"data": data, "bytes": bytes}
+    _mesh_cache_order.append(cache_key)
+    _mesh_cache_bytes += bytes
+    while _mesh_cache_bytes > MAX_MESH_CACHE_BYTES or _mesh_cache.size() > MAX_MESH_CACHE_ENTRIES:
+        if _mesh_cache_order.is_empty():
+            break
+        var oldest_key: String = _mesh_cache_order.pop_front()
+        var oldest_record: Dictionary = _mesh_cache.get(oldest_key, {})
+        _mesh_cache_bytes -= int(oldest_record.get("bytes", 0))
+        _mesh_cache.erase(oldest_key)
+    _mesh_cache_bytes = maxi(0, _mesh_cache_bytes)
+
 
 func _create_mesh_builder() -> Object:
     # The native C++ builder is the production path; the GDScript version is a fallback.
@@ -704,6 +812,7 @@ func _poll_worker_tasks() -> void:
             record["data"] = data
             record["completed_usec"] = Time.get_ticks_usec()
             _completed_jobs[coord] = record
+            _store_cached_mesh(str(record.get("cache_key", "")), data)
         else:
             _stale_result_count += 1
             if _wanted.has(coord) and not _running_by_coord.has(coord) and not _fallback_children_ready(coord):
@@ -753,7 +862,11 @@ func _apply_completed_jobs() -> void:
         _completed_jobs.erase(coord)
         var chunk: VoxelTerrainChunk = _chunks.get(coord) as VoxelTerrainChunk
         if chunk == null:
-            chunk = ChunkScript.new()
+            if not _chunk_pool.is_empty():
+                chunk = _chunk_pool.pop_back()
+                chunk.set_render_active(true)
+            else:
+                chunk = ChunkScript.new()
             chunk.name = "VoxelChunk_%d_%d" % [coord.x, coord.y]
             add_child(chunk)
             _chunks[coord] = chunk
@@ -779,19 +892,19 @@ func _job_record_matches_current(record: Dictionary, coord: Vector2i) -> bool:
         return false
     var current: Dictionary = _wanted[coord]
     var previous: Dictionary = record["request"]
-    return int(current["lod"]) == int(previous["lod"]) and int(current.get("step_voxels", -1)) == int(previous.get("step_voxels", -1)) and bool(current["collision"]) == bool(previous["collision"])
+    return int(current["lod"]) == int(previous["lod"]) and int(current.get("step_voxels", -1)) == int(previous.get("step_voxels", -1)) and bool(current["collision"]) == bool(previous["collision"]) and bool(current.get("shadow_proxy", false)) == bool(previous.get("shadow_proxy", false))
 
 func _running_job_matches(coord: Vector2i, request: Dictionary) -> bool:
     if not _running_by_coord.has(coord):
         return false
     var record: Dictionary = _running_tasks.get(int(_running_by_coord[coord]), {})
-    return not record.is_empty() and int(record["epoch"]) == _generation_epoch and int(record["seed"]) == seed_value and int(record["request"]["lod"]) == int(request["lod"]) and int(record["request"].get("step_voxels", -1)) == int(request.get("step_voxels", -1)) and bool(record["request"]["collision"]) == bool(request["collision"])
+    return not record.is_empty() and int(record["epoch"]) == _generation_epoch and int(record["seed"]) == seed_value and int(record["request"]["lod"]) == int(request["lod"]) and int(record["request"].get("step_voxels", -1)) == int(request.get("step_voxels", -1)) and bool(record["request"]["collision"]) == bool(request["collision"]) and bool(record["request"].get("shadow_proxy", false)) == bool(request.get("shadow_proxy", false))
 
 func _completed_job_matches(coord: Vector2i, request: Dictionary) -> bool:
     if not _completed_jobs.has(coord):
         return false
     var record: Dictionary = _completed_jobs[coord]
-    return int(record["epoch"]) == _generation_epoch and int(record["seed"]) == seed_value and int(record["request"]["lod"]) == int(request["lod"]) and int(record["request"].get("step_voxels", -1)) == int(request.get("step_voxels", -1)) and bool(record["request"]["collision"]) == bool(request["collision"])
+    return int(record["epoch"]) == _generation_epoch and int(record["seed"]) == seed_value and int(record["request"]["lod"]) == int(request["lod"]) and int(record["request"].get("step_voxels", -1)) == int(request.get("step_voxels", -1)) and bool(record["request"]["collision"]) == bool(request["collision"]) and bool(record["request"].get("shadow_proxy", false)) == bool(request.get("shadow_proxy", false))
 
 func _neighbor_lods_for(coord: Vector2i) -> Dictionary:
     return {
@@ -1005,7 +1118,8 @@ func _collect_lod_tiles(lod_index: int, tile_x: int, tile_z: int, player_xz: Vec
         "start_x": start_x, "start_z": start_z,
         "size_x": size_x, "size_z": size_z,
         "tile_x": tile_x, "tile_z": tile_z, "tile_size_m": chunk_size_m * float(1 << lod_index),
-        "step_voxels": get_mesh_step_voxels(lod_index)
+        "step_voxels": get_mesh_step_voxels(lod_index),
+        "shadow_proxy": nearest <= TERRAIN_SHADOW_DISTANCE_M
     }
     wanted[key] = req
     if split:
@@ -1118,16 +1232,43 @@ func _p95_usec(samples: Array) -> float:
     var index: int = clampi(int(ceil(float(ordered.size() - 1) * 0.95)), 0, ordered.size() - 1)
     return float(ordered[index])
 
+func _queue_chunk_retirement(chunk: VoxelTerrainChunk) -> void:
+    if chunk == null or not is_instance_valid(chunk):
+        return
+    var instance_id: int = chunk.get_instance_id()
+    if _retirement_lookup.has(instance_id):
+        return
+    _retirement_lookup[instance_id] = true
+    _retirement_queue.append(chunk)
+
+
+func _recycle_retired_chunk(chunk: VoxelTerrainChunk) -> void:
+    if chunk == null or not is_instance_valid(chunk):
+        return
+    chunk.set_render_active(false)
+    if _chunk_pool.size() < MAX_POOLED_CHUNK_NODES:
+        chunk.name = "PooledVoxelChunk"
+        _chunk_pool.append(chunk)
+    else:
+        chunk.free()
+
+
 func _retire_stale_resources() -> void:
-    # Bound the disposal queue so old GPU buffers cannot accumulate for hundreds of frames.
+    # Visit only chunks that actually have detached resources awaiting disposal.
     var started_usec: int = Time.get_ticks_usec()
     var retired_count: int = 0
-    for chunk_value in _chunks.values():
-        var resident_chunk: VoxelTerrainChunk = chunk_value as VoxelTerrainChunk
+    while not _retirement_queue.is_empty():
+        var resident_chunk: VoxelTerrainChunk = _retirement_queue[0]
         while retired_count < 8 and resident_chunk.retire_one_old_node():
             retired_count += 1
             if retired_count >= 2 and Time.get_ticks_usec() - started_usec >= 2500:
                 return
+        if resident_chunk._retired_nodes.is_empty():
+            _retirement_queue.pop_front()
+            _retirement_lookup.erase(resident_chunk.get_instance_id())
+        if retired_count >= 8 or Time.get_ticks_usec() - started_usec >= 2500:
+            return
+
     for i in range(_retiring_chunks.size() - 1, -1, -1):
         var stale_chunk: VoxelTerrainChunk = _retiring_chunks[i]
         while retired_count < 8 and stale_chunk.retire_one_old_node():
@@ -1136,7 +1277,7 @@ func _retire_stale_resources() -> void:
                 return
         if stale_chunk._retired_nodes.is_empty():
             _retiring_chunks.remove_at(i)
-            stale_chunk.free()
+            _recycle_retired_chunk(stale_chunk)
         if retired_count >= 8 or Time.get_ticks_usec() - started_usec >= 2500:
             return
 
@@ -1151,7 +1292,7 @@ func _place_player_on_surface() -> void:
     _player.set_physics_process(true)
 
 func _exit_tree() -> void:
-    # Detached retired meshes are not children any more; release their references explicitly.
+    # Detached retired meshes and pooled chunk shells are outside the SceneTree; release them explicitly.
     for chunk_value in _chunks.values():
         var chunk: VoxelTerrainChunk = chunk_value as VoxelTerrainChunk
         while chunk.retire_one_old_node():
@@ -1162,6 +1303,15 @@ func _exit_tree() -> void:
         if is_instance_valid(stale_chunk):
             stale_chunk.free()
     _retiring_chunks.clear()
+    for pooled_chunk in _chunk_pool:
+        if is_instance_valid(pooled_chunk):
+            pooled_chunk.free()
+    _chunk_pool.clear()
+    _retirement_queue.clear()
+    _retirement_lookup.clear()
+    _mesh_cache.clear()
+    _mesh_cache_order.clear()
+    _mesh_cache_bytes = 0
 
 func _lod_for_distance(distance: float) -> int:
     for lod_index in range(7):

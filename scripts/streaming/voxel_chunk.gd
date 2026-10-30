@@ -5,7 +5,7 @@ class_name VoxelTerrainChunk
 ## Mesh/physics nodes are attached on the main thread and replaced GPU resources are retired gradually.
 
 const VOXEL_SIZE: float = 0.2
-const FallbackBuilderScript = preload("res://scripts/voxel_chunk_mesh_builder_fallback.gd")
+const FallbackBuilderScript = preload("res://scripts/meshing/voxel_chunk_mesh_builder_fallback.gd")
 
 var coord: Vector2i = Vector2i.ZERO
 var lod: int = -1

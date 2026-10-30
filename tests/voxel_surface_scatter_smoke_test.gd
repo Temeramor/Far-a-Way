@@ -1,8 +1,8 @@
 extends SceneTree
 
 const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
-const RockScatterScript = preload("res://scripts/world/voxel_rock_scatter.gd")
-const VegetationScatterScript = preload("res://scripts/world/voxel_vegetation_scatter.gd")
+const RockScatterScript = preload("res://scripts/world/decoration/voxel_rock_scatter.gd")
+const VegetationScatterScript = preload("res://scripts/world/decoration/voxel_vegetation_scatter.gd")
 
 
 func _initialize() -> void:
@@ -80,10 +80,15 @@ func _run() -> void:
     if stone_mesh_data.verts.is_empty() or stone_mesh_data.indices.is_empty():
         errors.append("The voxel rock generator must emit visible mesh geometry.")
     var coarse_stone_grid = rock_scatter.make_rock_grid(scatter, 8.0, palette, 12346, 3)
+    var downsampled_stone_grid = coarse_stone_grid
+    for _lod_step in range(3):
+        downsampled_stone_grid = downsampled_stone_grid.downsampled()
     var coarse_stone_mesh_data = MeshDataScript.new()
-    coarse_stone_grid.emit(coarse_stone_mesh_data, Vector3.ZERO, 0.1, 12346)
+    downsampled_stone_grid.emit(coarse_stone_mesh_data, Vector3.ZERO, 0.8, 12346)
     if coarse_stone_mesh_data.verts.is_empty() or coarse_stone_mesh_data.indices.is_empty():
-        errors.append("The simplified distant rock tier must retain visible geometry at 10 cm voxel size.")
+        errors.append("The downsampled distant rock tier must retain visible 80 cm voxel geometry.")
+    elif coarse_stone_mesh_data.verts.size() >= stone_mesh_data.verts.size():
+        errors.append("Distant rock downsampling should reduce the number of mesh vertices.")
 
 
     var flower_grid = scatter._make_object_grid(22, 20, 22, palette)

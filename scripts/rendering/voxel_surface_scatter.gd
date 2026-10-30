@@ -6,7 +6,7 @@ const GridScript = preload("res://scripts/vegetation/vox_grid.gd")
 const PaletteScript = preload("res://scripts/vegetation/voxel_palette.gd")
 const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
 const WindShader: Shader = preload("res://shaders/vegetation_wind.gdshader")
-const DecorJobScript = preload("res://scripts/world/voxel_surface_decor_job.gd")
+const DecorJobScript = preload("res://scripts/meshing/voxel_surface_decor_job.gd")
 
 const MAX_DECOR_DISTANCE_M: float = 1900.0
 const DENSE_ROCK_DISTANCE_M: float = 240.0
@@ -585,7 +585,9 @@ func _create_decor_collision_shapes(root_node: Node3D, collision_data: Array) ->
         collision.name = "BoulderCollision"
         collision.shape = box
         var base_position: Vector3 = item.get("position", Vector3.ZERO)
-        collision.position = base_position + Vector3(0.0, height * 0.5, 0.0)
+        var orientation: Basis = item.get("basis", Basis.IDENTITY)
+        collision.basis = orientation
+        collision.position = base_position + orientation.y * (height * 0.5)
         body.add_child(collision)
 
     if body.get_child_count() > 0:
