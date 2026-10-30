@@ -7,7 +7,6 @@ class_name VoxelSurfaceDecorJob
 const GeneratorScript = preload("res://scripts/voxel_generator.gd")
 const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
 const RockScatterScript = preload("res://scripts/world/voxel_rock_scatter.gd")
-const MountainRibScatterScript = preload("res://scripts/world/voxel_mountain_rib_scatter.gd")
 const VegetationScatterScript = preload("res://scripts/world/voxel_vegetation_scatter.gd")
 const GridScript = preload("res://scripts/vegetation/vox_grid.gd")
 
@@ -15,7 +14,6 @@ var result: Dictionary = {}
 var world_size_m: float = 2000.0
 var _generator: VoxelTerrainGenerator
 var _rock_scatter = RockScatterScript.new()
-var _mountain_rib_scatter = MountainRibScatterScript.new()
 var _vegetation_scatter = VegetationScatterScript.new()
 
 
@@ -38,12 +36,6 @@ func build_rock_data(job_data: Dictionary) -> void:
     if include_rocks:
         var rng := RandomNumberGenerator.new()
         rng.seed = _mix(tile_seed, 101, 307)
-        _mountain_rib_scatter.build_tile(
-            self, mesh_data, reservations, palette_data, rng, tile_seed,
-            float(job_data["origin_x"]), float(job_data["origin_z"]),
-            float(job_data["width_m"]), float(job_data["depth_m"]),
-            int(job_data["terrain_lod"]), distance_m, collision_data, build_collisions
-        )
         _rock_scatter.build_tile(
             self, mesh_data, reservations, palette_data, rng, tile_seed,
             float(job_data["origin_x"]), float(job_data["origin_z"]),
