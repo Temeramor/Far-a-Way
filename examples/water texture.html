@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Пиксельная вода</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=Onest:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#e4edec; --panel:#f5faf9; --ink:#15323b; --mute:#587178; --line:#b6cac9; --accent:#1f7a8c;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){--bg:#0f1d22;--panel:#172a31;--ink:#dbeaea;--mute:#8aa6ac;--line:#2b4750;--accent:#58b9c9}
+}
+:root[data-theme="dark"]{--bg:#0f1d22;--panel:#172a31;--ink:#dbeaea;--mute:#8aa6ac;--line:#2b4750;--accent:#58b9c9}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.5 Onest,system-ui,sans-serif}
+main{max-width:920px;margin:0 auto;padding:20px 16px 40px}
+h1{font:700 30px/1.1 "Pixelify Sans",monospace;margin:0 0 6px}
+.sub{color:var(--mute);margin:0 0 16px;max-width:60ch}
+.stage{border:2px solid var(--ink);background:var(--panel);padding:0;line-height:0}
+canvas{display:block;width:100%;image-rendering:pixelated;image-rendering:crisp-edges}
+#scene{aspect-ratio:16/9}
+.info{display:flex;flex-wrap:wrap;gap:4px 18px;margin:10px 0 18px;color:var(--mute);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px 18px;background:var(--panel);border:1px solid var(--line);padding:16px}
+label{display:flex;flex-direction:column;gap:4px;font-weight:500;font-size:14px}
+label span b{font-weight:400;color:var(--mute);float:right}
+input[type=range]{width:100%;accent-color:var(--accent)}
+select,button{font:inherit;padding:8px 10px;border:1px solid var(--ink);background:var(--bg);color:var(--ink);border-radius:0;min-height:40px}
+button{cursor:pointer;font-weight:500}
+button:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.row{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
+.tilebox{margin-top:18px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.tilebox .stage{width:200px;flex:none}
+.tilebox p{margin:0;color:var(--mute);max-width:46ch;font-size:14px}
+details{margin-top:18px;border:1px solid var(--line);background:var(--panel)}
+summary{padding:12px 16px;cursor:pointer;font-weight:500}
+pre{margin:0;padding:12px 16px;overflow-x:auto;max-height:420px;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;border-top:1px solid var(--line);tab-size:2}
+details .row{padding:12px 16px;border-top:1px solid var(--line)}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Пиксельная вода</h1>
+  <p class="sub">Полупрозрачная бесшовная текстура: шум, волны, блики и покачивание. Всё считается кодом, картинок нет.</p>
+
+  <div class="stage"><canvas id="scene" width="192" height="108" aria-label="Анимированная вода"></canvas></div>
+  <div class="info"><span id="i1"></span><span id="i2"></span></div>
+
+  <div class="grid">
+    <label>Размер плитки
+      <select id="size"><option value="32">32 px (3,2 м)</option><option value="64" selected>64 px (6,4 м)</option><option value="128">128 px (12,8 м)</option></select></label>
+    <label>Палитра
+      <select id="pal"><option value="lake">Озеро</option><option value="lagoon">Лагуна</option><option value="swamp">Болото</option><option value="night">Ночное море</option></select></label>
+    <label>Фон под водой
+      <select id="bg"><option value="sand">Песок</option><option value="tiles">Бассейн</option><option value="checker">Шахматка</option><option value="dark">Тёмные камни</option></select></label>
+    <label><span>Скорость <b id="v_speed"></b></span><input id="speed" type="range" min="0" max="3" step="0.1" value="1"></label>
+    <label><span>Волны и покачивание <b id="v_wave"></b></span><input id="wave" type="range" min="0" max="2" step="0.1" value="1"></label>
+    <label><span>Блики <b id="v_glint"></b></span><input id="glint" type="range" min="0" max="3" step="0.1" value="1.5"></label>
+    <label><span>Прозрачность <b id="v_alpha"></b></span><input id="alpha" type="range" min="0.3" max="1" step="0.05" value="0.7"></label>
+    <div class="row"><button id="pause">Пауза</button><button id="seed">Новый узор</button></div>
+  </div>
+
+  <div class="tilebox">
+    <div class="stage"><canvas id="tile"></canvas></div>
+    <p>Плитка 2×2 на шахматке: по краям нет швов, так что текстуру можно мостить по всему уровню.</p>
+  </div>
+
+  <details>
+    <summary>Код генератора</summary>
+    <pre id="code"></pre>
+    <div class="row"><button id="copy">Копировать код</button><span id="copied" style="color:var(--mute)"></span></div>
+  </details>
+</main>
+
+<script>
+/* Генератор бесшовной текстуры воды.
+   createWaterTexture(N, seed) -> { frame(t, p, out) }
+   t   — время в секундах
+   p   — { pal:[4 цвета от глубокого к светлому], hl:[r,g,b], wave, glint, alpha }
+   out — Uint8ClampedArray длиной N*N*4 (RGBA), например ImageData.data
+   1 пиксель = 0,1 м, поэтому плитка N=64 покрывает 6,4 м. */
+function createWaterTexture(N, seed) {
+  var TAU = Math.PI * 2, s = seed >>> 0, grids = {};
+  var BAYER = [0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5];
+  function rnd() { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }
+  function hash(x, y) {
+    var h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(seed, 2246822519)) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+  function grid(G) {
+    if (!grids[G]) { var a = new Float32Array(G * G); for (var i = 0; i < a.length; i++) a[i] = rnd(); grids[G] = a; }
+    return grids[G];
+  }
+  // Периодический value-noise: u, v в долях плитки, период = 1 (поэтому бесшовно)
+  function noise(u, v, G) {
+    var g = grid(G); u *= G; v *= G;
+    var iu = Math.floor(u), iv = Math.floor(v), fu = u - iu, fv = v - iv;
+    fu = fu * fu * (3 - 2 * fu); fv = fv * fv * (3 - 2 * fv);
+    var x0 = ((iu % G) + G) % G, x1 = (x0 + 1) % G, y0 = ((iv % G) + G) % G, y1 = (y0 + 1) % G;
+    var a = g[y0 * G + x0], b = g[y0 * G + x1], c = g[y1 * G + x0], d = g[y1 * G + x1];
+    return a + (b - a) * fu + (c - a) * fv + (a - b - c + d) * fu * fv;
+  }
+  function frame(t, p, out) {
+    var pal = p.pal, hl = p.hl, thr = 1 - 0.045 * p.glint;
+    var bob = Math.sin(t * 1.3) * 0.012 * p.wave;             // общее покачивание
+    for (var y = 0; y < N; y++) {
+      for (var x = 0; x < N; x++) {
+        var u = x / N, v = y / N;
+        // Деформация координат шумом: вода «плывёт»
+        var wx = (noise(u + t * 0.015, v + 0.3, 3) - 0.5) * 0.3 * p.wave;
+        var wy = (noise(u + 0.7, v - t * 0.02, 3) - 0.5) * 0.3 * p.wave;
+        var n1 = noise(u + wx, v + wy + bob, 4);
+        var n2 = noise(u + wx * 2 - t * 0.03, v + wy * 2 + bob, 8);
+        // Волны: целые пространственные частоты -> тоже бесшовные
+        var w1 = Math.sin(TAU * (2 * u + v + wx) + t * 1.6) * 0.5 + 0.5;
+        var w2 = Math.sin(TAU * (-u + 3 * v + wy) - t * 1.1) * 0.5 + 0.5;
+        var h = n1 * 0.55 + n2 * 0.2 + (w1 * 0.6 + w2 * 0.4) * 0.25 * Math.min(p.wave, 1.5);
+        h = (h - 0.5) * 1.7 + 0.5;
+        // Квантование с Bayer-дизерингом -> пиксельные полосы оттенков
+        var L = Math.floor(h * 4 + (BAYER[(y & 3) * 4 + (x & 3)] / 16 - 0.5) * 0.9);
+        L = L < 0 ? 0 : L > 3 ? 3 : L;
+        var c = pal[L], a = p.alpha * (1 - 0.12 * L);
+        var r = c[0], g = c[1], b = c[2];
+        // Блики-«каустика»: тонкие светлые линии на гребнях шума
+        var ridge = 1 - Math.abs(2 * noise(u * 1 + wx * 3 + t * 0.02, v + wy * 3 - t * 0.015, 6) - 1);
+        if (p.glint > 0 && ridge > thr && h > 0.45) { r = hl[0]; g = hl[1]; b = hl[2]; a = Math.min(1, p.alpha + 0.25); }
+        // Искорки: отдельные пиксели, мерцающие со своей фазой
+        else if (p.glint > 0) {
+          var k = hash(x, y);
+          if (k > 1 - 0.012 * p.glint && Math.sin(TAU * (t * 0.45 + hash(y, x))) > 0.75) { r = 255; g = 255; b = 255; a = 1; }
+        }
+        var i = (y * N + x) * 4;
+        out[i] = r; out[i + 1] = g; out[i + 2] = b; out[i + 3] = Math.round(a * 255);
+      }
+    }
+  }
+  return { frame: frame };
+}
+</script>
+
+<script>
+(function () {
+  var PALS = {
+    lake:   { pal: [[22,74,120],[32,102,152],[48,134,180],[84,170,206]],  hl: [214,244,255] },
+    lagoon: { pal: [[0,110,128],[0,150,160],[40,188,182],[120,224,208]],  hl: [235,255,246] },
+    swamp:  { pal: [[40,64,40],[58,88,48],[84,112,60],[120,140,78]],      hl: [200,220,150] },
+    night:  { pal: [[14,22,64],[24,40,100],[40,64,140],[76,104,180]],     hl: [180,200,255] }
+  };
+  var $ = function (id) { return document.getElementById(id); };
+  var W = 192, H = 108;
+  var scene = $('scene'), sctx = scene.getContext('2d');
+  var tileC = $('tile'), tctx = tileC.getContext('2d');
+  var bg = document.createElement('canvas'); bg.width = W; bg.height = H;
+  var tex = document.createElement('canvas'), texCtx = tex.getContext('2d');
+  sctx.imageSmoothingEnabled = false; tctx.imageSmoothingEnabled = false;
+
+  var N = 64, seed = 1234, gen, img, tSim = 0, last = 0;
+  var paused = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  $('pause').textContent = paused ? 'Играть' : 'Пауза';
+
+  function fmt(n) { return String(+n.toFixed(1)).replace('.', ','); }
+
+  function rebuild() {
+    N = +$('size').value;
+    tex.width = N; tex.height = N; tileC.width = N * 2; tileC.height = N * 2;
+    img = texCtx.createImageData(N, N);
+    gen = createWaterTexture(N, seed);
+    $('i1').textContent = 'Плитка ' + N + '×' + N + ' px = ' + fmt(N / 10) + ' × ' + fmt(N / 10) + ' м';
+    $('i2').textContent = 'Сцена ' + W + '×' + H + ' px = ' + fmt(W / 10) + ' × ' + fmt(H / 10) + ' м';
+  }
+
+  function drawBg() {
+    var c = bg.getContext('2d'), k = $('bg').value, s = 77, x, y, i;
+    function r() { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }
+    if (k === 'checker') {
+      for (y = 0; y < H; y += 8) for (x = 0; x < W; x += 8) { c.fillStyle = ((x + y) / 8) % 2 ? '#9aa0a6' : '#c3c8cc'; c.fillRect(x, y, 8, 8); }
+    } else if (k === 'tiles') {
+      c.fillStyle = '#d4e6ea'; c.fillRect(0, 0, W, H);
+      c.fillStyle = '#2b5f8a'; c.fillRect(0, 48, W, 4); c.fillRect(0, 76, W, 4);
+      c.fillStyle = '#9fbcc4';
+      for (x = 0; x < W; x += 12) c.fillRect(x, 0, 1, H);
+      for (y = 0; y < H; y += 12) c.fillRect(0, y, W, 1);
+    } else if (k === 'dark') {
+      c.fillStyle = '#1b1f2a'; c.fillRect(0, 0, W, H);
+      for (i = 0; i < 40; i++) { c.fillStyle = r() > 0.5 ? '#3a4052' : '#2a3040'; c.fillRect(r() * W | 0, r() * H | 0, 4 + r() * 10 | 0, 3 + r() * 7 | 0); }
+      for (i = 0; i < 25; i++) { c.fillStyle = '#3f6b4a'; c.fillRect(r() * W | 0, r() * H | 0, 2, 2); }
+    } else {
+      c.fillStyle = '#dcc48f'; c.fillRect(0, 0, W, H);
+      for (i = 0; i < 500; i++) { c.fillStyle = r() > 0.5 ? '#c4a96f' : '#ecd9a8'; c.fillRect(r() * W | 0, r() * H | 0, 1, 1); }
+      for (i = 0; i < 14; i++) { c.fillStyle = r() > 0.5 ? '#8c8a86' : '#6f6d6a'; c.fillRect(r() * W | 0, r() * H | 0, 4 + r() * 6 | 0, 3 + r() * 4 | 0); }
+    }
+  }
+
+  function params() {
+    var P = PALS[$('pal').value];
+    return { pal: P.pal, hl: P.hl, wave: +$('wave').value, glint: +$('glint').value, alpha: +$('alpha').value };
+  }
+
+  function draw() {
+    gen.frame(tSim, params(), img.data);
+    texCtx.putImageData(img, 0, 0);
+    sctx.clearRect(0, 0, W, H);
+    sctx.drawImage(bg, 0, 0);
+    for (var y = 0; y < H; y += N) for (var x = 0; x < W; x += N) sctx.drawImage(tex, x, y);
+    // плитка 2×2 на шахматке
+    for (var j = 0; j < N * 2; j += 8) for (var i = 0; i < N * 2; i += 8) { tctx.fillStyle = ((i + j) / 8) % 2 ? '#9aa0a6' : '#c3c8cc'; tctx.fillRect(i, j, 8, 8); }
+    for (var b = 0; b < 2; b++) for (var a = 0; a < 2; a++) tctx.drawImage(tex, a * N, b * N);
+  }
+
+  function loop(ms) {
+    requestAnimationFrame(loop);
+    if (ms - last < 50) return;            // 20 кадров/с — «ретро» шаг анимации
+    var dt = (ms - last) / 1000; last = ms;
+    if (dt > 0.2) dt = 0.05;
+    if (!paused) tSim += dt * +$('speed').value;
+    draw();
+  }
+
+  ['speed', 'wave', 'glint', 'alpha'].forEach(function (id) {
+    var el = $(id), out = $('v_' + id);
+    function upd() { out.textContent = fmt(+el.value); if (paused) draw(); }
+    el.addEventListener('input', upd); upd();
+  });
+  $('size').addEventListener('change', function () { rebuild(); draw(); });
+  $('pal').addEventListener('change', draw);
+  $('bg').addEventListener('change', function () { drawBg(); draw(); });
+  $('seed').addEventListener('click', function () { seed = (Math.random() * 1e9) | 0; rebuild(); draw(); });
+  $('pause').addEventListener('click', function () { paused = !paused; this.textContent = paused ? 'Играть' : 'Пауза'; });
+
+  $('code').textContent = createWaterTexture.toString();
+  $('copy').addEventListener('click', function () {
+    var msg = $('copied');
+    try {
+      navigator.clipboard.writeText(createWaterTexture.toString()).then(
+        function () { msg.textContent = 'Скопировано'; },
+        function () { msg.textContent = 'Выделите код выше и скопируйте вручную'; });
+    } catch (e) { msg.textContent = 'Выделите код выше и скопируйте вручную'; }
+  });
+
+  rebuild(); drawBg(); draw();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
