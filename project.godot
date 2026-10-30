@@ -4,8 +4,8 @@ config_version=5
 
 [application]
 config/name="Far a Way"
-config/description="Far a Way 0.1.0.7 — Windows procedural voxel landscape exploration."
-config/version="0.1.0.7"
+config/description="Far a Way 0.1.0.1 — future real-time strategy with survival elements."
+config/version="0.1.0.1"
 config/icon="res://icon.svg"
 run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
