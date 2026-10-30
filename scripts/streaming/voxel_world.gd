@@ -3,7 +3,6 @@ class_name VoxelWorld
 
 signal terrain_seed_changed(new_seed: int)
 
-var _native_fallback_warning_shown: bool = false
 
 const VOXEL_SIZE: float = 0.2
 const LOD_KEY_STRIDE: int = 100000
@@ -15,7 +14,6 @@ const MAX_MESH_CACHE_ENTRIES: int = 32
 const MAX_POOLED_CHUNK_NODES: int = 32
 const GeneratorScript = preload("res://scripts/world/voxel_generator.gd")
 const ChunkScript = preload("res://scripts/streaming/voxel_chunk.gd")
-const FallbackBuilderScript = preload("res://scripts/meshing/voxel_chunk_mesh_builder_fallback.gd")
 
 @export_category("Voxel world")
 @export_range(256.0, 20000.0, 1.0) var world_size_m: float = 2000.0
@@ -85,6 +83,18 @@ var _stale_result_count: int = 0
 var _world_started: bool = false
 
 func _ready() -> void:
+    if not ClassDB.class_exists("VoxEnNativeBuilder"):
+        push_error("VoxEn native extension is required. Build the Windows x86-64 GDExtension before running Far a Way.")
+        set_process(false)
+        set_physics_process(false)
+        return
+    var native_builder_check: Object = ClassDB.instantiate("VoxEnNativeBuilder")
+    if native_builder_check == null:
+        push_error("VoxEnBuilder is registered but could not be instantiated. Check the native library build.")
+        set_process(false)
+        set_physics_process(false)
+        return
+    native_builder_check = null
     _world_size_voxels = int(round(world_size_m / VOXEL_SIZE))
     _chunk_size_voxels = int(round(chunk_size_m / VOXEL_SIZE))
     _world_min_x = -world_size_m * 0.5
@@ -373,7 +383,7 @@ func get_debug_text() -> String:
     var prediction_seconds: float = _effective_prediction_seconds()
     var estimated_work_seconds: float = _estimated_lod_pipeline_usec(0) / 1000000.0
     var lead_margin_m: float = planar_speed * (prediction_seconds - estimated_work_seconds)
-    var builder_mode: String = "NATIVE C++" if ClassDB.class_exists("VoxEnNativeBuilder") else "GDSCRIPT FALLBACK (SLOW — BUILD DLL)"
+    var builder_mode: String = "NATIVE C++" if ClassDB.class_exists("VoxEnNativeBuilder") else "NATIVE C++ MISSING"
     var fps: int = Engine.get_frames_per_second()
     var frame_ms: float = 1000.0 / maxf(float(fps), 1.0)
     var video_memory_mb: float = float(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED)) / 1048576.0
@@ -696,6 +706,8 @@ func _process_chunk_jobs() -> void:
             continue
 
         var builder: Object = _create_mesh_builder()
+        if builder == null:
+            return
         var task_id: int = WorkerThreadPool.add_task(
             Callable(builder, "build_mesh_data").bind(job_data), false,
             "VoxEn chunk %d,%d LOD%d" % [coord.x, coord.y, int(request["lod"])]
@@ -770,16 +782,13 @@ func _store_cached_mesh(cache_key: String, data: Dictionary) -> void:
 
 
 func _create_mesh_builder() -> Object:
-    # The native C++ builder is the production path; the GDScript version is a fallback.
-    if ClassDB.class_exists("VoxEnNativeBuilder"):
-        var native_builder: Object = ClassDB.instantiate("VoxEnNativeBuilder")
-        if native_builder != null:
-            return native_builder
-
-    if not _native_fallback_warning_shown:
-        push_warning("VoxEn native extension is unavailable; using the slower GDScript mesh-builder fallback. Build the Windows x86-64 extension for normal performance.")
-        _native_fallback_warning_shown = true
-    return FallbackBuilderScript.new()
+    if not ClassDB.class_exists("VoxEnNativeBuilder"):
+        push_error("Cannot build a voxel chunk: VoxEnNativeBuilder is unavailable.")
+        return null
+    var native_builder: Object = ClassDB.instantiate("VoxEnNativeBuilder")
+    if native_builder == null:
+        push_error("Cannot instantiate VoxEnNativeBuilder. Check the native library build.")
+    return native_builder
 
 func _poll_worker_tasks() -> void:
     for task_key in _running_tasks.keys():

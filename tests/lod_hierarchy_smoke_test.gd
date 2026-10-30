@@ -125,9 +125,16 @@ func _run() -> void:
 
     # LOD7 remains voxel geometry: quad-expanded face vertices, not a shared smooth heightfield.
     var far_generator := VoxelTerrainGenerator.new(1337, 2000.0)
-    var fallback_builder_script = load("res://scripts/meshing/voxel_chunk_mesh_builder_fallback.gd")
-    var far_builder = fallback_builder_script.new()
-    var far_data: Dictionary = far_builder.build_mesh_data({
+    if not ClassDB.class_exists("VoxEnNativeBuilder"):
+        push_error("VoxEnNativeBuilder is required for LOD mesh smoke tests. Build the native extension first.")
+        quit(1)
+        return
+    var far_builder: Object = ClassDB.instantiate("VoxEnNativeBuilder")
+    if far_builder == null:
+        push_error("Could not instantiate VoxEnNativeBuilder for LOD mesh smoke tests.")
+        quit(1)
+        return
+    var far_data: Dictionary = far_builder.call("build_mesh_data", {
         "coord": Vector2i.ZERO,
         "request": {
             "lod": 7, "start_x": 7000, "start_z": 6000,
@@ -160,7 +167,7 @@ func _run() -> void:
 
     # The final LOD7 root is not a full multiple of the 25.6 m voxel step.
     # Its final partial cells must sample inside the world instead of becoming zero-height columns.
-    var edge_data: Dictionary = far_builder.build_mesh_data({
+    var edge_data: Dictionary = far_builder.call("build_mesh_data", {
         "coord": Vector2i.ZERO,
         "request": {
             "lod": 7, "start_x": 8192, "start_z": 8192,
@@ -184,8 +191,8 @@ func _run() -> void:
     if edge_top_height <= 0.0:
         errors.append("The partial final LOD7 tile should retain terrain height at the world edge")
 
-    # LOD2 also uses voxel faces; a small tile keeps the fallback smoke test quick.
-    var compact_data: Dictionary = far_builder.build_mesh_data({
+    # LOD2 also uses voxel faces; a small tile keeps the native smoke test quick.
+    var compact_data: Dictionary = far_builder.call("build_mesh_data", {
         "coord": Vector2i.ZERO,
         "request": {
             "lod": 2, "start_x": 7000, "start_z": 6000,
