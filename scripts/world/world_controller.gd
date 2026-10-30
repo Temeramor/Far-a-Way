@@ -116,7 +116,7 @@ func _configure_sky_system() -> void:
     sky_system.set("game_time_enabled", true)
     sky_system.set("editor_time_enabled", false)
     sky_system.set("minutes_per_day", 24.0)
-    sky_system.set("update_interval", 0.033)
+    sky_system.set("update_interval", 0.25)
     sky_system.set("current_time", 12.0)
     sky_dome.set("process_method", 1) # Process, cloud movement at render rate.
 
