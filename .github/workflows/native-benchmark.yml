@@ -52,6 +52,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:GODOT_EXE" --headless --path . --script res://tests/native_builder_smoke_test.gd
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:GODOT_EXE" --headless --path . --script res://tests/decoration_spatial_index_test.gd
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run LOD benchmark
         shell: pwsh
