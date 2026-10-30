@@ -661,7 +661,13 @@ func _distance_to_tile_xz(point: Vector2, coord: Vector2i) -> float:
 
 func _process_chunk_jobs() -> void:
     var worker_limit: int = maxi(1, mini(max_concurrent_mesh_jobs, maxi(1, OS.get_processor_count() - 1)))
-    var available_jobs: int = worker_limit - _running_tasks.size()
+    var active_decor_jobs: int = 0
+    for child in get_children():
+        if child is VoxelSurfaceScatter:
+            active_decor_jobs = child._running_decor_tasks.size()
+            break
+    # Terrain owns scheduling priority; decor may use only the remaining shared worker slots.
+    var available_jobs: int = worker_limit - _running_tasks.size() - active_decor_jobs
     if available_jobs <= 0 or _queued.is_empty():
         return
     var started_jobs: int = 0
