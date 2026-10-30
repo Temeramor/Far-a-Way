@@ -61,7 +61,6 @@ func build_tile(
         )
         if radius_m >= 0.5 and build_collisions:
             collision_output.append({
-                "kind": "boulder",
                 "position": Vector3(local_x, float(surface["height"]) - 0.06, local_z),
                 "radius_m": radius_m
             })
