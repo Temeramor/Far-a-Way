@@ -5,7 +5,6 @@ class_name VoxelTerrainChunk
 ## Mesh/physics nodes are attached on the main thread and replaced GPU resources are retired gradually.
 
 const VOXEL_SIZE: float = 0.2
-const FallbackBuilderScript = preload("res://scripts/meshing/voxel_chunk_mesh_builder_fallback.gd")
 
 var coord: Vector2i = Vector2i.ZERO
 var lod: int = -1
@@ -64,12 +63,18 @@ func build(
         "world_min_z": world_min_z,
         "world_size_voxels": world_size_voxels,
     }
-    var builder: Object = null
-    if ClassDB.class_exists("VoxEnNativeBuilder"):
-        builder = ClassDB.instantiate("VoxEnNativeBuilder")
+    if not ClassDB.class_exists("VoxEnNativeBuilder"):
+        push_error("VoxEnNativeBuilder is required to build voxel chunks. Build the native extension first.")
+        return
+    var builder: Object = ClassDB.instantiate("VoxEnNativeBuilder")
     if builder == null:
-        builder = FallbackBuilderScript.new()
-    apply_mesh_data(builder.build_mesh_data(job_data), material)
+        push_error("VoxEnNativeBuilder could not be instantiated.")
+        return
+    job_data["terrain_world_size_m"] = float(world_size_voxels) * VOXEL_SIZE
+    job_data["mountain_profile"] = generator.get_mountain_profile()
+    job_data["build_collision"] = want_collision
+    var mesh_data: Dictionary = builder.call("build_mesh_data", job_data)
+    apply_mesh_data(mesh_data, material)
 
 func apply_mesh_data(data: Dictionary, material: Material) -> void:
     var incoming_lod: int = int(data.get("lod", -1))
