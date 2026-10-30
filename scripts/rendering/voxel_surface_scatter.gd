@@ -273,6 +273,11 @@ func _prop_lod_for_distance_with_hysteresis(distance_m: float, current_lod: int)
 func _build_one_pending_tile() -> void:
     if _running_decor_tasks.size() >= MAX_CONCURRENT_DECOR_JOBS or _pending_actions.is_empty():
         return
+    var shared_worker_limit: int = maxi(
+        1, mini(_world.max_concurrent_mesh_jobs, maxi(1, OS.get_processor_count() - 1))
+    )
+    if _world._running_tasks.size() + _running_decor_tasks.size() >= shared_worker_limit:
+        return
 
     while not _pending_actions.is_empty():
         var action_info: Dictionary = _pending_actions.pop_front()
