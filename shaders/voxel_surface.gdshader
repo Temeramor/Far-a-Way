@@ -322,6 +322,18 @@ vec3 mountain_rock_color(vec2 world_xy, float meters_per_pixel, bool full_relief
     return pow(clamp(color, vec3(0.0), vec3(255.0)) / 255.0, vec3(2.2));
 }
 
+// Hybrid triplanar projection: blend the horizontal XZ plane with a wall plane
+// selected from the dominant horizontal normal. This keeps rock detail stable on steep slopes
+// instead of stretching the entire mountain pattern along world XZ.
+vec2 mountain_rock_projection(vec3 position, vec3 surface_normal) {
+    vec3 n = abs(normalize(surface_normal));
+    float vertical_weight = clamp(n.y, 0.0, 1.0);
+    float use_z_axis = step(n.x, n.z);
+    float wall_u = mix(position.z, position.x, use_z_axis);
+    vec2 wall_projection = vec2(wall_u, -position.y);
+    return mix(wall_projection, position.xz, vertical_weight);
+}
+
 vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world, float crack_weight) {
     return mountain_rock_color(pixel_world, lod_cell_size, lod_index == 0);
 }
@@ -406,18 +418,9 @@ void fragment() {
     } else if (is_surface_side) {
         top_rock_amount = clamp((alpha_code - 240.0) / 5.0, 0.0, 1.0);
     }
-    // Use one world-space XZ projection for upper sides and top faces. This keeps
-    // their procedural palette aligned at the edge instead of changing with face normal.
-    // Top faces use an XZ projection; vertical mountain walls use a wall-aligned
-    // projection with world Y increasing downward, matching the source generator.
-    vec2 rock_world = world_position.xz;
-    if (is_surface_side) {
-        if (abs(normal.x) > abs(normal.z)) {
-            rock_world = vec2(world_position.z, -world_position.y);
-        } else {
-            rock_world = vec2(world_position.x, -world_position.y);
-        }
-    }
+    // Blend XZ and wall-aligned projections according to the actual surface normal.
+    // The wall projection includes world Y, so steep mountain faces retain their texture scale.
+    vec2 rock_world = mountain_rock_projection(world_position, normal);
 
     if (debug_lod_colors) {
         if (lod_index == 0) {
