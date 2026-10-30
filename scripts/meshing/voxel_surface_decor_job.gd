@@ -9,12 +9,15 @@ const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
 const RockScatterScript = preload("res://scripts/world/decoration/voxel_rock_scatter.gd")
 const VegetationScatterScript = preload("res://scripts/world/decoration/voxel_vegetation_scatter.gd")
 const GridScript = preload("res://scripts/vegetation/vox_grid.gd")
+const RESERVATION_CELL_SIZE: float = 2.0
+const MAX_RESERVATION_RADIUS: float = 3.3
 
 var result: Dictionary = {}
 var world_size_m: float = 2000.0
 var _generator: VoxelTerrainGenerator
 var _rock_scatter = RockScatterScript.new()
 var _vegetation_scatter = VegetationScatterScript.new()
+var _reservation_cells: Dictionary = {}
 
 
 func configure(seed_value: int, size_m: float) -> void:
@@ -24,6 +27,7 @@ func configure(seed_value: int, size_m: float) -> void:
 
 
 func build_rock_data(job_data: Dictionary) -> void:
+    _reservation_cells.clear()
     var mesh_data = MeshDataScript.new()
     var reservations: Array[Dictionary] = []
     var collision_data: Array[Dictionary] = []
@@ -53,10 +57,12 @@ func build_rock_data(job_data: Dictionary) -> void:
 
 
 func build_plant_data(job_data: Dictionary) -> void:
+    _reservation_cells.clear()
     var mesh_data = MeshDataScript.new()
     var reservations: Array[Dictionary] = []
     for occupied in job_data.get("reservations", []):
         reservations.append(occupied.duplicate(true))
+    _rebuild_reservation_index(reservations)
 
     var rng := RandomNumberGenerator.new()
     var tile_seed: int = int(job_data["tile_seed"])
@@ -97,12 +103,44 @@ func _can_reserve(
         return false
 
     var candidate := Vector2(local_x, local_z)
-    for occupied in reservations:
-        var existing_position: Vector2 = occupied["p"]
-        var min_distance: float = radius + float(occupied["r"]) + 0.16
-        if candidate.distance_squared_to(existing_position) < min_distance * min_distance:
-            return false
+    var cell_x: int = floori(local_x / RESERVATION_CELL_SIZE)
+    var cell_z: int = floori(local_z / RESERVATION_CELL_SIZE)
+    var search_cells: int = ceili((radius + MAX_RESERVATION_RADIUS + 0.16) / RESERVATION_CELL_SIZE)
+    for dz in range(-search_cells, search_cells + 1):
+        for dx in range(-search_cells, search_cells + 1):
+            var bucket: Array = _reservation_cells.get(Vector2i(cell_x + dx, cell_z + dz), [])
+            for reservation_index in bucket:
+                var occupied: Dictionary = reservations[int(reservation_index)]
+                var existing_position: Vector2 = occupied["p"]
+                var min_distance: float = radius + float(occupied["r"]) + 0.16
+                if candidate.distance_squared_to(existing_position) < min_distance * min_distance:
+                    return false
     return true
+
+
+func _rebuild_reservation_index(reservations: Array[Dictionary]) -> void:
+    for index in range(reservations.size()):
+        var occupied: Dictionary = reservations[index]
+        var position: Vector2 = occupied["p"]
+        var cell := Vector2i(
+            floori(position.x / RESERVATION_CELL_SIZE),
+            floori(position.y / RESERVATION_CELL_SIZE)
+        )
+        var bucket: Array = _reservation_cells.get(cell, [])
+        bucket.append(index)
+        _reservation_cells[cell] = bucket
+
+
+func _reserve(local_x: float, local_z: float, radius: float, reservations: Array[Dictionary]) -> void:
+    var index: int = reservations.size()
+    reservations.append({"p": Vector2(local_x, local_z), "r": radius})
+    var cell := Vector2i(
+        floori(local_x / RESERVATION_CELL_SIZE),
+        floori(local_z / RESERVATION_CELL_SIZE)
+    )
+    var bucket: Array = _reservation_cells.get(cell, [])
+    bucket.append(index)
+    _reservation_cells[cell] = bucket
 
 
 func _make_object_grid(width: int, height: int, depth: int, palette_data: Dictionary):
