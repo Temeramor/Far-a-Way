@@ -52,31 +52,6 @@ float value_noise(vec2 p) {
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
-float voronoi_edge(vec2 p) {
-    vec2 base_cell = floor(p);
-    vec2 local = fract(p);
-    float nearest = 10.0;
-    float second_nearest = 10.0;
-    for (int y = -1; y <= 1; y++) {
-        for (int x = -1; x <= 1; x++) {
-            vec2 offset_cell = vec2(float(x), float(y));
-            vec2 cell = base_cell + offset_cell;
-            vec2 random_point = vec2(
-                hash21(cell + vec2(3.1, 8.7)),
-                hash21(cell + vec2(19.4, 2.6))
-            ) * 0.72 + 0.14;
-            vec2 delta = offset_cell + random_point - local;
-            float distance_squared = dot(delta, delta);
-            if (distance_squared < nearest) {
-                second_nearest = nearest;
-                nearest = distance_squared;
-            } else if (distance_squared < second_nearest) {
-                second_nearest = distance_squared;
-            }
-        }
-    }
-    return sqrt(second_nearest) - sqrt(nearest);
-}
 
 // Continuous palette transitions prevent harsh colour steps
 // from collecting into large, patch-like regions across the visible terrain.
@@ -133,56 +108,7 @@ vec3 soil_palette(float pick) {
     return c4;
 }
 
-vec3 rock_palette(float pick) {
-    // The pixel choice is still stochastic, but each sample maps through smooth gradients
-    // rather than hard palette cutoffs. Macro strata are blended separately below.
-    // Darken only the base stone palette; fixed crack, pit and chip colors are applied later.
-    float p = clamp(pick, 0.0, 1.0);
-    vec3 c0 = palette_color(vec3(0.205, 0.215, 0.220));
-    vec3 c1 = palette_color(vec3(0.315, 0.325, 0.330));
-    vec3 c2 = palette_color(vec3(0.395, 0.400, 0.400));
-    // Keep distinct stone hues, but compress the pale end of the palette into darker mid-grays.
-    vec3 c3 = palette_color(vec3(0.425, 0.430, 0.425));
-    vec3 c4 = palette_color(vec3(0.465, 0.460, 0.445));
-    vec3 c5 = palette_color(vec3(0.510, 0.500, 0.480));
-    vec3 c6 = palette_color(vec3(0.555, 0.545, 0.515));
-    vec3 c7 = palette_color(vec3(0.610, 0.590, 0.550));
-    vec3 color;
-    if (p < 0.16) {
-        color = mix(c0, c1, smoothstep(0.0, 0.16, p));
-    } else if (p < 0.32) {
-        color = mix(c1, c2, smoothstep(0.16, 0.32, p));
-    } else if (p < 0.49) {
-        color = mix(c2, c3, smoothstep(0.32, 0.49, p));
-    } else if (p < 0.66) {
-        color = mix(c3, c4, smoothstep(0.49, 0.66, p));
-    } else if (p < 0.82) {
-        color = mix(c4, c5, smoothstep(0.66, 0.82, p));
-    } else if (p < 0.94) {
-        color = mix(c5, c6, smoothstep(0.82, 0.94, p));
-    } else {
-        color = mix(c6, c7, smoothstep(0.94, 1.0, p));
-    }
-    return color * 0.86;
-}
 
-float rock_bedding(vec2 pixel_world, float frequency) {
-    float angle = 0.28 + fract(seed_low * 0.000017 + seed_high * 0.00011) * 0.48;
-    vec2 axis = vec2(cos(angle), sin(angle));
-    // Scale the domain warp with the band spacing. Coarse LODs then sample broad,
-    // stable strata instead of aliasing high-frequency noise into a checker pattern.
-    float warp_a_frequency = max(frequency * 0.22, 0.0012);
-    float warp_b_frequency = max(frequency * 0.43, 0.0020);
-    float warp_a = value_noise(pixel_world * warp_a_frequency + vec2(13.2, seed_low * 0.00019));
-    float warp_b = value_noise(pixel_world * warp_b_frequency + vec2(seed_high * 0.00023, 29.7));
-    float layer_coordinate = dot(pixel_world, axis) * frequency
-        + (warp_a - 0.5) * 0.72 + (warp_b - 0.5) * 0.24;
-    float phase = fract(layer_coordinate);
-    float edge = min(phase, 1.0 - phase);
-    float brokenness_frequency = max(frequency * 0.90, 0.0040);
-    float brokenness = value_noise(pixel_world * brokenness_frequency + vec2(4.1, seed_low * 0.00031));
-    return (1.0 - smoothstep(0.025, 0.11, edge)) * smoothstep(0.17, 0.58, brokenness);
-}
 
 
 float rock_sm(float t) {
