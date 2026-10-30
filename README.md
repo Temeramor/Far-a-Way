@@ -171,6 +171,8 @@ godot --headless --path . --script res://tests/lod_hierarchy_smoke_test.gd
 godot --headless --path . --script res://tests/native_builder_smoke_test.gd
 godot --headless --path . --script res://tests/shadow_lod_smoke_test.gd
 godot --headless --path . --script res://tests/voxel_surface_scatter_smoke_test.gd
+godot --headless --path . --script res://tests/decoration_spatial_index_test.gd
+godot --headless --path . --script res://tests/native_chunk_benchmark.gd
 ~~~
 
 ## Организация скриптов
