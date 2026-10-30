@@ -54,6 +54,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:GODOT_EXE" --headless --path . --script res://tests/decoration_spatial_index_test.gd
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:GODOT_EXE" --headless --path . --script res://tests/lod_hierarchy_smoke_test.gd
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:GODOT_EXE" --headless --path . --script res://tests/shadow_lod_smoke_test.gd
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:GODOT_EXE" --headless --path . --script res://tests/voxel_surface_scatter_smoke_test.gd
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run LOD benchmark
         shell: pwsh
