@@ -85,7 +85,7 @@ func build_tile(
                 "basis": rock_basis,
                 "radius_m": radius_m
             })
-        reservations.append({"p": Vector2(local_x, local_z), "r": exclusion_radius})
+        host._reserve(local_x, local_z, exclusion_radius, reservations)
 
 func make_rock_grid(
         host, radius: float, palette_data: Dictionary, rock_seed: int, quality_lod: int = 0):
