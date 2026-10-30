@@ -81,6 +81,8 @@ var _build_estimate_refresh_timer: float = 0.0
 var _max_queue_wait_usec: int = 0
 var _stale_result_count: int = 0
 var _world_started: bool = false
+var _last_frame_delta_ms: float = 16.67
+var _adaptive_apply_limit: int = 1
 
 func _ready() -> void:
     if not ClassDB.class_exists("VoxEnNativeBuilder"):
@@ -124,6 +126,11 @@ func _ready() -> void:
         call_deferred("_prepare_world_for_epoch", _generation_epoch)
 
 func _process(delta: float) -> void:
+    _last_frame_delta_ms = delta * 1000.0
+    if _last_frame_delta_ms >= 33.0:
+        _adaptive_apply_limit = 1
+    else:
+        _adaptive_apply_limit = maxi(1, max_mesh_applies_per_frame)
     _build_estimate_refresh_timer += delta
     if _build_estimate_refresh_timer >= 0.5:
         _build_estimate_refresh_timer = 0.0
@@ -836,8 +843,9 @@ func _apply_completed_jobs() -> void:
     var coords: Array = _completed_jobs.keys()
     var world_coverage_ready: bool = is_world_coverage_ready()
     coords.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
-        var lod_a: int = int(_decode_lod_key(a)["lod"])
-        var lod_b: int = int(_decode_lod_key(b)["lod"])
+        # Decode the packed LOD key arithmetically; this comparator runs O(n log n) times.
+        var lod_a: int = clampi(floori(float(a.x) / float(LOD_KEY_STRIDE)), 0, 7)
+        var lod_b: int = clampi(floori(float(b.x) / float(LOD_KEY_STRIDE)), 0, 7)
         if not world_coverage_ready and lod_a != lod_b:
             return lod_a > lod_b
         var distance_a: float = float(_wanted.get(a, {"distance": INF})["distance"])
@@ -848,7 +856,7 @@ func _apply_completed_jobs() -> void:
     var applied: int = 0
     var apply_started_usec: int = Time.get_ticks_usec()
     for coord in coords:
-        if applied >= max_mesh_applies_per_frame:
+        if applied >= _adaptive_apply_limit:
             break
         # Always allow one upload; later uploads obey a soft main-thread budget.
         if applied > 0 and Time.get_ticks_usec() - apply_started_usec >= int(max_mesh_apply_time_ms * 1000.0):
