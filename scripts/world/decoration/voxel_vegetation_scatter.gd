@@ -84,7 +84,7 @@ func _try_add_flower(
         output, piece, Basis.IDENTITY,
         Vector3(local_x, float(surface["height"]), local_z)
     )
-    reservations.append({"p": Vector2(local_x, local_z), "r": exclusion_radius})
+    host._reserve(local_x, local_z, exclusion_radius, reservations)
 
 func scatter_grass(
         host, output, reservations: Array[Dictionary], palette_data: Dictionary,
@@ -135,7 +135,7 @@ func scatter_grass(
             output, piece, Basis.IDENTITY,
             Vector3(local_x, float(surface["height"]), local_z)
         )
-        reservations.append({"p": Vector2(local_x, local_z), "r": exclusion_radius})
+        host._reserve(local_x, local_z, exclusion_radius, reservations)
 
 func _make_flower_set(grid, rng: RandomNumberGenerator) -> Array:
     var definitions: Array = [
