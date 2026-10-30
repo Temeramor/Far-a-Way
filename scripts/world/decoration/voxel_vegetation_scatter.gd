@@ -67,8 +67,9 @@ func _try_add_flower(
         return
     var world_x: float = origin_x + local_x
     var world_z: float = origin_z + local_z
-    var surface: Dictionary = host._surface_info(world_x, world_z)
-    if float(surface["rock_weight"]) > 0.17 or float(surface["slope"]) > 0.82:
+    var surface: Vector4 = host._surface_info(world_x, world_z)
+    var surface_slope: float = Vector2(surface.y, surface.z).length()
+    if surface.w > 0.17 or surface_slope > 0.82:
         return
 
     var grid = host._make_object_grid(22, 20, 22, palette_data)
@@ -82,7 +83,7 @@ func _try_add_flower(
     mesh_grid.emit(piece, Vector3.ZERO, PROP_VOXEL_SIZE * float(1 << voxel_lod), flower_seed)
     host._append_transformed_mesh(
         output, piece, Basis.IDENTITY,
-        Vector3(local_x, float(surface["height"]), local_z)
+        Vector3(local_x, surface.x, local_z)
     )
     host._reserve(local_x, local_z, exclusion_radius, reservations)
 
@@ -99,8 +100,9 @@ func scatter_grass(
         var local_z: float = rng.randf_range(0.8, maxf(0.9, depth_m - 0.8))
         var world_x: float = origin_x + local_x
         var world_z: float = origin_z + local_z
-        var surface: Dictionary = host._surface_info(world_x, world_z)
-        if float(surface["rock_weight"]) > 0.24 or float(surface["slope"]) > 0.94:
+        var surface: Vector4 = host._surface_info(world_x, world_z)
+        var surface_slope: float = Vector2(surface.y, surface.z).length()
+        if surface.w > 0.24 or surface_slope > 0.94:
             continue
         var meadow_detail: float = meadow.get_noise_2d(world_x, world_z)
         if meadow_detail < -0.35:
