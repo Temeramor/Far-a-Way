@@ -47,7 +47,6 @@ func _run_benchmark() -> void:
                 push_error("Native benchmark returned an invalid triangle index count for LOD%d." % lod)
                 failed = true
                 break
-            # First run is a warm-up and is excluded from the timing distribution.
             if run_index > 0:
                 timings.append(elapsed)
             vertex_count = vertices.size()
@@ -55,7 +54,7 @@ func _run_benchmark() -> void:
         if failed:
             break
         timings.sort()
-        var median_ms := float(timings[timings.size() / 2]) / 1000.0
+        var median_ms := float(timings[int(timings.size() / 2)]) / 1000.0
         var min_ms := float(timings[0]) / 1000.0
         var p95_index := clampi(int(ceil(float(timings.size()) * 0.95)) - 1, 0, timings.size() - 1)
         var p95_ms := float(timings[p95_index]) / 1000.0
