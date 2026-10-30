@@ -343,7 +343,7 @@ vec3 voxel_lod_rock_color(vec2 world_xz, float cell_size) {
     return mountain_rock_color(center, cell_size, false);
 }
 
-// Avoid evaluating the full multi-noise crack field once fissures are sub-pixel.
+// Switch to the five-point relief approximation when fine details become sub-pixel.
 vec3 distance_aware_rock_pixel(
         vec2 pixel_cell, vec2 pixel_world, float crack_weight, float cell_size) {
     if (crack_weight <= 0.001) {
