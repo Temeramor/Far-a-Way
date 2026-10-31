@@ -392,7 +392,7 @@ func _schedule_rock_tile(
 
     var build_collisions: bool = distance_m <= _world.collision_distance_m + DECOR_COLLISION_HYSTERESIS_M
     var builder = DecorJobScript.new()
-    builder.configure(_world.seed_value, _world.world_size_m)
+    builder.configure(_world.seed_value, _world.world_size_m, _world._generator.get_native_sampler())
     var job_data: Dictionary = {
         "palette": palette_data,
         "tile_seed": tile_seed,
@@ -434,7 +434,7 @@ func _schedule_plant_tile(coord: Vector2i, voxel_lod: int, build_token: int) -> 
         reservations.append(occupied.duplicate(true))
 
     var builder = DecorJobScript.new()
-    builder.configure(_world.seed_value, _world.world_size_m)
+    builder.configure(_world.seed_value, _world.world_size_m, _world._generator.get_native_sampler())
     var job_data: Dictionary = {
         "palette": entry["palette"],
         "reservations": reservations,
