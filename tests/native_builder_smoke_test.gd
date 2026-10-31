@@ -94,6 +94,10 @@ func _run_native_builder_test() -> void:
 
     var cancelled_builder: Object = ClassDB.instantiate("VoxEnNativeBuilder")
     cancelled_builder.call("cancel")
+    if not bool(cancelled_builder.call("is_cancelled")):
+        push_error("Native cancellation state must be visible to worker-side polling.")
+        quit(1)
+        return
     var cancelled_result: Dictionary = cancelled_builder.call("build_mesh_data", job_data)
     if not cancelled_result.is_empty():
         push_error("A native build cancelled before execution must return no geometry.")
