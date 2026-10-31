@@ -122,7 +122,6 @@ struct NoiseSet {
     }
 
     double surface_height(double x, double z) const {
-        const double frequency_scale = std::clamp(REFERENCE_WORLD_SIZE_M / std::max(world_size_m, 1.0), 0.35, 6.0);
         const double macro_value = macro.GetNoise(x, z);
         const double hills_value = hills.GetNoise(x, z);
         const double detail_value = detail.GetNoise(x, z);
@@ -263,7 +262,6 @@ struct NoiseSet {
     }
 
     double surface_rock_weight(double slope, double x, double z) const {
-        const double frequency_scale = std::clamp(REFERENCE_WORLD_SIZE_M / std::max(world_size_m, 1.0), 0.35, 6.0);
         const double transition_noise = transition.GetNoise(x, z) * 0.12;
         const double normal_slope = 1.0 - 1.0 / std::sqrt(1.0 + slope * slope);
         return smoothstep(0.30, 0.48, normal_slope + transition_noise);
