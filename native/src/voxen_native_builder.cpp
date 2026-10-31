@@ -1031,6 +1031,7 @@ void VoxEnNativeBuilder::_bind_methods() {
         D_METHOD("build_mesh_data", "job_data"),
         &VoxEnNativeBuilder::build_mesh_data);
     ClassDB::bind_method(D_METHOD("cancel"), &VoxEnNativeBuilder::cancel);
+    ClassDB::bind_method(D_METHOD("is_cancelled"), &VoxEnNativeBuilder::is_cancelled);
     ClassDB::bind_method(D_METHOD("set_result", "value"), &VoxEnNativeBuilder::set_result);
     ClassDB::bind_method(D_METHOD("get_result"), &VoxEnNativeBuilder::get_result);
     ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "result"), "set_result", "get_result");
@@ -1049,6 +1050,10 @@ Dictionary VoxEnNativeBuilder::build_mesh_data(const Dictionary &job_data) {
 
 void VoxEnNativeBuilder::cancel() {
     cancel_requested.store(true, std::memory_order_relaxed);
+}
+
+bool VoxEnNativeBuilder::is_cancelled() const {
+    return cancel_requested.load(std::memory_order_relaxed);
 }
 
 void VoxEnNativeBuilder::set_result(const Dictionary &value) {
