@@ -390,14 +390,14 @@ void fragment() {
         // simplifies with LOD: the cell size follows the same 20 cm-to-25.6 m voxel ladder.
         float lod_voxel_size = lod_cell_size;
         if (is_top_surface || is_surface_side) {
-            ALBEDO = voxel_lod_grass_color(world_position.xz, lod_voxel_size);
+            ALBEDO = voxel_lod_grass_color(world_position.xz, lod_voxel_size) * 0.95;
             if (top_rock_amount > 0.001) {
                 vec3 rock_color = voxel_lod_rock_color(rock_world, lod_voxel_size);
                 ALBEDO = mix(ALBEDO, rock_color, top_rock_amount);
             }
             ROUGHNESS = mix(0.95, 1.0, top_rock_amount);
         } else if (COLOR.g > COLOR.r * 1.35) {
-            ALBEDO = voxel_lod_grass_color(world_position.xz, lod_voxel_size);
+            ALBEDO = voxel_lod_grass_color(world_position.xz, lod_voxel_size) * 0.95;
             ROUGHNESS = 0.95;
         } else if (COLOR.r > COLOR.g * 1.15) {
             ALBEDO = voxel_lod_soil_color(world_position.xz, lod_voxel_size);
@@ -416,7 +416,7 @@ void fragment() {
         if (is_top_surface || is_surface_side) {
             vec2 pixel_cell = floor(rock_world / lod_voxel_size);
             vec2 pixel_world = (pixel_cell + vec2(0.5)) * lod_voxel_size;
-            ALBEDO = grass_pixel(pixel_cell, pixel_world);
+            ALBEDO = grass_pixel(pixel_cell, pixel_world) * (lod_index >= 2 ? 0.95 : 1.0);
             if (top_rock_amount > 0.001) {
                 vec3 rock_color = distance_aware_rock_pixel(
                     pixel_cell, pixel_world, rock_crack_weight, lod_voxel_size
@@ -427,7 +427,7 @@ void fragment() {
         } else if (COLOR.g > COLOR.r * 1.35) {
             vec2 pixel_cell = floor(world_position.xz / lod_voxel_size);
             vec2 pixel_world = (pixel_cell + vec2(0.5)) * lod_voxel_size;
-            ALBEDO = grass_pixel(pixel_cell, pixel_world);
+            ALBEDO = grass_pixel(pixel_cell, pixel_world) * (lod_index >= 2 ? 0.95 : 1.0);
             ROUGHNESS = 0.95;
         } else if (COLOR.r > COLOR.g * 1.15) {
             vec2 pixel_cell = floor(world_position.xz / lod_voxel_size);
