@@ -190,6 +190,7 @@ godot --headless --path . --script res://tests/native_chunk_benchmark.gd
 - scripts/player/, scripts/menu/, scripts/ui/, scripts/systems/ — управление, меню, интерфейс и настройки.
 - scripts/sky/ и shaders/ — небо, освещение и графические материалы.
 - native/src/ — C++-построитель террейна, общий потокобезопасный сэмплер NoiseSet и регистрация GDExtension.
+- native/thirdparty/FastNoiseLite.h — header-only FastNoiseLite из Godot 4.7.2 (лицензия MIT указана в заголовке).
 - tests/ — smoke-тесты генерации, LOD, теней и декора.
 
 Будущие RTS/выживание и биомы следует добавлять отдельными модулями данных и игрового процесса, а не включать в генератор террейна. Предполагаемые направления — scripts/biomes/ для параметров биомов и scripts/gameplay/ для юнитов, строительства, ресурсов и механик выживания. Пока эти директории не содержат активной игровой логики.
