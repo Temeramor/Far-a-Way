@@ -17,12 +17,7 @@ const REFERENCE_WORLD_SIZE_M: float = 10000.0
 
 var seed_value: int = 1337
 var world_size_m: float = 2000.0
-var _macro_noise: FastNoiseLite
-var _hill_noise: FastNoiseLite
-var _detail_noise: FastNoiseLite
-var _ridge_noise: FastNoiseLite
-var _micro_ridge_noise: FastNoiseLite
-var _transition_noise: FastNoiseLite
+var _native_sampler: Object
 var _mountain_starts: Array[Vector2] = []
 var _mountain_deltas: Array[Vector2] = []
 var _mountain_lengths_squared: Array[float] = []
@@ -30,37 +25,32 @@ var _mountain_widths: Array[float] = []
 var _mountain_heights: Array[float] = []
 var _mountain_phases: Array[float] = []
 var _surface_height_cache: Dictionary = {}
+var _surface_height_cache_order: Array[Vector2i] = []
+var _surface_height_cache_cursor: int = 0
 
 
-func _init(p_seed: int = 1337, p_world_size_m: float = 2000.0) -> void:
+func _init(
+        p_seed: int = 1337, p_world_size_m: float = 2000.0,
+        p_native_sampler: Object = null) -> void:
     seed_value = p_seed
     world_size_m = maxf(256.0, p_world_size_m)
-    _create_noise_fields()
+    if p_native_sampler != null:
+        _native_sampler = p_native_sampler
+        return
     _create_mountain_ranges()
+    _native_sampler = ClassDB.instantiate("VoxEnNativeBuilder")
+    if _native_sampler == null:
+        push_error("VoxelTerrainGenerator requires VoxEnNativeBuilder as its native terrain sampler.")
+        return
+    _native_sampler.call("configure_terrain_sampler", {
+        "seed": seed_value,
+        "terrain_world_size_m": world_size_m,
+        "mountain_profile": get_mountain_profile()
+    })
 
 
-func _make_noise(noise_seed: int, frequency_value: float, octave_count: int, fractal_mode: FastNoiseLite.FractalType) -> FastNoiseLite:
-    var noise := FastNoiseLite.new()
-    noise.seed = noise_seed
-    noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
-    noise.frequency = frequency_value
-    noise.fractal_type = fractal_mode
-    noise.fractal_octaves = octave_count
-    noise.fractal_lacunarity = 2.05
-    noise.fractal_gain = 0.52
-    return noise
-
-
-func _create_noise_fields() -> void:
-    # Keep the old terrain's relative landform size on a 2 km map. Otherwise the
-    # macro field is wider than the whole world and the landscape becomes bland.
-    var frequency_scale: float = clampf(REFERENCE_WORLD_SIZE_M / world_size_m, 0.35, 6.0)
-    _macro_noise = _make_noise(seed_value + 101, 0.00028 * frequency_scale, 4, FastNoiseLite.FRACTAL_FBM)
-    _hill_noise = _make_noise(seed_value + 307, 0.00115 * frequency_scale, 4, FastNoiseLite.FRACTAL_FBM)
-    _detail_noise = _make_noise(seed_value + 503, 0.0048 * frequency_scale, 3, FastNoiseLite.FRACTAL_FBM)
-    _ridge_noise = _make_noise(seed_value + 709, 0.00082 * frequency_scale, 5, FastNoiseLite.FRACTAL_RIDGED)
-    _micro_ridge_noise = _make_noise(seed_value + 907, 0.0034 * frequency_scale, 3, FastNoiseLite.FRACTAL_RIDGED)
-    _transition_noise = _make_noise(seed_value + 1301, 0.008 * frequency_scale, 2, FastNoiseLite.FRACTAL_FBM)
+func get_native_sampler() -> Object:
+    return _native_sampler
 
 
 func _create_mountain_ranges() -> void:
@@ -153,69 +143,24 @@ func _get_cached_grid_height(grid_x: int, grid_z: int) -> float:
     var key := Vector2i(grid_x, grid_z)
     if _surface_height_cache.has(key):
         return float(_surface_height_cache[key])
-    if _surface_height_cache.size() >= MAX_SURFACE_CACHE_ENTRIES:
-        _surface_height_cache.clear()
     var x: float = float(grid_x) * HEIGHT_SAMPLE_STEP_M
     var z: float = float(grid_z) * HEIGHT_SAMPLE_STEP_M
     var height: float = _calculate_surface_height(x, z)
+    if _surface_height_cache.size() >= MAX_SURFACE_CACHE_ENTRIES:
+        var expired_key: Vector2i = _surface_height_cache_order[_surface_height_cache_cursor]
+        _surface_height_cache.erase(expired_key)
+        _surface_height_cache_order[_surface_height_cache_cursor] = key
+        _surface_height_cache_cursor = (_surface_height_cache_cursor + 1) % MAX_SURFACE_CACHE_ENTRIES
+    else:
+        _surface_height_cache_order.append(key)
     _surface_height_cache[key] = height
     return height
 
 
 func _calculate_surface_height(x: float, z: float) -> float:
-    var macro: float = _macro_noise.get_noise_2d(x, z)
-    var hills: float = _hill_noise.get_noise_2d(x, z)
-    var detail: float = _detail_noise.get_noise_2d(x, z)
-    var ridge_detail: float = (_ridge_noise.get_noise_2d(x, z) + 1.0) * 0.5
-    var micro_ridge: float = _micro_ridge_noise.get_noise_2d(x, z)
-    var height: float = 26.0 + macro * 17.0 + hills * 10.0
-    height += maxf(hills - 0.12, 0.0) * 18.0
-    height += detail * 3.8
-    var world_scale: float = world_size_m / REFERENCE_WORLD_SIZE_M
-    # A restrained ridged-noise layer adds secondary spurs between the main ranges.
-    height += pow(maxf(ridge_detail - 0.58, 0.0), 1.7) * (12.0 + 38.0 * world_scale)
-    var mountain_height: float = 0.0
-    var point := Vector2(x, z)
-    for segment_index in range(_mountain_starts.size()):
-        var a: Vector2 = _mountain_starts[segment_index]
-        var ab: Vector2 = _mountain_deltas[segment_index]
-        var length_squared: float = _mountain_lengths_squared[segment_index]
-        var along: float = clampf((point - a).dot(ab) / length_squared, 0.0, 1.0)
-        var closest: Vector2 = a + ab * along
-        var offset: Vector2 = point - closest
-        var distance_squared: float = offset.length_squared()
-        var width: float = _mountain_widths[segment_index]
-        var broad_radius: float = width * 1.72
-        if distance_squared >= broad_radius * broad_radius:
-            continue
-        var distance: float = sqrt(distance_squared)
-        var peak_height: float = _mountain_heights[segment_index]
-        var phase: float = _mountain_phases[segment_index]
-        # Domain-warp the flank by a small fraction of its width. This breaks the
-        # perfectly smooth conical/ridge cross-section into irregular rock shoulders.
-        var flank_warp: float = (detail * 0.60 + micro_ridge * 0.40) * width * 0.11
-        var shaped_distance: float = maxf(0.0, distance + flank_warp)
-        var broad_mask: float = clampf(1.0 - shaped_distance / broad_radius, 0.0, 1.0)
-        var cliff_mask: float = clampf(1.0 - shaped_distance / width, 0.0, 1.0)
-        var crest_profile: float = 0.72 + 0.28 * absf(sin(along * PI * 2.1 + phase))
-        var rough_profile: float = 0.72 + 0.28 * ridge_detail
-        var foothills: float = pow(broad_mask, 1.36) * (peak_height * 0.36 + 75.0 * world_scale)
-        var crest: float = pow(cliff_mask, 0.82) * peak_height * crest_profile * rough_profile
-        mountain_height = maxf(mountain_height, maxf(foothills, crest))
-    height += mountain_height
-    if mountain_height > 1.0:
-        var mountain_mask: float = clampf(mountain_height / 900.0, 0.0, 1.0)
-        height += mountain_mask * (micro_ridge * 42.0 + detail * 28.0)
-    var spawn_fade: float = 1.0 - _smoothstep(420.0 * world_scale, 1420.0 * world_scale, point.length())
-    var spawn_height: float = 25.0 + macro * 3.0 + detail * 0.8
-    height = lerpf(height, spawn_height, spawn_fade)
-    # Column meshing starts at Y=0; preserve the profile while ensuring at least one voxel of ground.
-    return maxf(VOXEL_SIZE, clampf(height, MIN_TERRAIN_HEIGHT, MAX_TERRAIN_HEIGHT))
-
-
-func _smoothstep(edge_a: float, edge_b: float, value: float) -> float:
-    var t: float = clampf((value - edge_a) / (edge_b - edge_a), 0.0, 1.0)
-    return t * t * (3.0 - 2.0 * t)
+    if _native_sampler == null:
+        return VOXEL_SIZE
+    return float(_native_sampler.call("get_surface_height", x, z))
 
 
 func get_surface_height_voxels(x: float, z: float) -> int:
@@ -223,12 +168,9 @@ func get_surface_height_voxels(x: float, z: float) -> int:
 
 
 func get_surface_rock_weight(gradient: float, x: float, z: float) -> float:
-    # Main's shader evaluates slope as 1 - normal.y, not raw height-gradient magnitude.
-    # Convert the gradient to that same normal-based slope before applying its 0.30–0.48
-    # blend range. This keeps gentle high-altitude shelves grassy and avoids overly early rock.
-    var normal_slope: float = 1.0 - 1.0 / sqrt(1.0 + gradient * gradient)
-    var transition_noise: float = _transition_noise.get_noise_2d(x, z) * 0.12
-    return _smoothstep(0.30, 0.48, normal_slope + transition_noise)
+    if _native_sampler == null:
+        return 0.0
+    return float(_native_sampler.call("get_surface_rock_weight", gradient, x, z))
 
 
 func get_surface_material(height_m: float, slope: float, x: float, z: float) -> int:
