@@ -19,6 +19,7 @@ protected:
 public:
     Dictionary build_mesh_data(const Dictionary &job_data);
     void cancel();
+    bool is_cancelled() const;
     void set_result(const Dictionary &value);
     Dictionary get_result() const;
 };
