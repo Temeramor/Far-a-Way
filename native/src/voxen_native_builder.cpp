@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <vector>
 
 using namespace godot;
@@ -1032,6 +1033,9 @@ void VoxEnNativeBuilder::_bind_methods() {
         &VoxEnNativeBuilder::build_mesh_data);
     ClassDB::bind_method(D_METHOD("cancel"), &VoxEnNativeBuilder::cancel);
     ClassDB::bind_method(D_METHOD("is_cancelled"), &VoxEnNativeBuilder::is_cancelled);
+    ClassDB::bind_method(D_METHOD("configure_terrain_sampler", "job_data"), &VoxEnNativeBuilder::configure_terrain_sampler);
+    ClassDB::bind_method(D_METHOD("get_surface_height", "x", "z"), &VoxEnNativeBuilder::get_surface_height);
+    ClassDB::bind_method(D_METHOD("get_surface_rock_weight", "slope", "x", "z"), &VoxEnNativeBuilder::get_surface_rock_weight);
     ClassDB::bind_method(D_METHOD("set_result", "value"), &VoxEnNativeBuilder::set_result);
     ClassDB::bind_method(D_METHOD("get_result"), &VoxEnNativeBuilder::get_result);
     ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "result"), "set_result", "get_result");
@@ -1054,6 +1058,26 @@ void VoxEnNativeBuilder::cancel() {
 
 bool VoxEnNativeBuilder::is_cancelled() const {
     return cancel_requested.load(std::memory_order_relaxed);
+}
+
+void VoxEnNativeBuilder::configure_terrain_sampler(const Dictionary &job_data) {
+    const int64_t seed = static_cast<int64_t>(job_data.get("seed", 1337));
+    const double world_size_m = static_cast<double>(job_data.get("terrain_world_size_m", 2000.0));
+    auto sampler = std::make_shared<NoiseSet>(seed);
+    sampler->configure_from_job(job_data, world_size_m);
+    terrain_sampler_data = std::static_pointer_cast<void>(sampler);
+}
+
+double VoxEnNativeBuilder::get_surface_height(double x, double z) const {
+    if (!terrain_sampler_data) return VOXEL_SIZE;
+    const auto sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
+    return sampler->surface_height(x, z);
+}
+
+double VoxEnNativeBuilder::get_surface_rock_weight(double slope, double x, double z) const {
+    if (!terrain_sampler_data) return 0.0;
+    const auto sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
+    return sampler->surface_rock_weight(slope, x, z);
 }
 
 void VoxEnNativeBuilder::set_result(const Dictionary &value) {
