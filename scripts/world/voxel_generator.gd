@@ -12,7 +12,6 @@ const ROCK: int = 3
 const MIN_TERRAIN_HEIGHT: float = -80.0
 const MAX_TERRAIN_HEIGHT: float = 1600.0
 const HEIGHT_SAMPLE_STEP_M: float = 0.5
-const MAX_SURFACE_CACHE_ENTRIES: int = 131072
 const REFERENCE_WORLD_SIZE_M: float = 10000.0
 
 var seed_value: int = 1337
@@ -24,9 +23,6 @@ var _mountain_lengths_squared: Array[float] = []
 var _mountain_widths: Array[float] = []
 var _mountain_heights: Array[float] = []
 var _mountain_phases: Array[float] = []
-var _surface_height_cache: Dictionary = {}
-var _surface_height_cache_order: Array[Vector2i] = []
-var _surface_height_cache_cursor: int = 0
 
 
 func _init(
@@ -111,56 +107,25 @@ func get_mountain_profile() -> Array[Dictionary]:
 
 
 func get_surface_height(x: float, z: float) -> float:
-    var grid_x: int = roundi(x / HEIGHT_SAMPLE_STEP_M)
-    var grid_z: int = roundi(z / HEIGHT_SAMPLE_STEP_M)
-    if absf(x - float(grid_x) * HEIGHT_SAMPLE_STEP_M) < 0.0001 and absf(z - float(grid_z) * HEIGHT_SAMPLE_STEP_M) < 0.0001:
-        return _get_cached_grid_height(grid_x, grid_z)
-    return _calculate_surface_height(x, z)
-
-
-func get_surface_sample(x: float, z: float) -> Vector3:
-    # Bilinear sample the same half-metre height lattice used by voxel mesh jobs.
-    # This keeps the original vegetation API inexpensive without a giant height map.
-    var grid_x_float: float = x / HEIGHT_SAMPLE_STEP_M
-    var grid_z_float: float = z / HEIGHT_SAMPLE_STEP_M
-    var grid_x: int = floori(grid_x_float)
-    var grid_z: int = floori(grid_z_float)
-    var tx: float = clampf(grid_x_float - float(grid_x), 0.0, 1.0)
-    var tz: float = clampf(grid_z_float - float(grid_z), 0.0, 1.0)
-    var h00: float = _get_cached_grid_height(grid_x, grid_z)
-    var h10: float = _get_cached_grid_height(grid_x + 1, grid_z)
-    var h01: float = _get_cached_grid_height(grid_x, grid_z + 1)
-    var h11: float = _get_cached_grid_height(grid_x + 1, grid_z + 1)
-    var top: float = lerpf(h00, h10, tx)
-    var bottom: float = lerpf(h01, h11, tx)
-    var height: float = lerpf(top, bottom, tz)
-    var slope_x: float = lerpf(h10 - h00, h11 - h01, tz) / HEIGHT_SAMPLE_STEP_M
-    var slope_z: float = lerpf(h01 - h00, h11 - h10, tx) / HEIGHT_SAMPLE_STEP_M
-    return Vector3(height, slope_x, slope_z)
-
-
-func _get_cached_grid_height(grid_x: int, grid_z: int) -> float:
-    var key := Vector2i(grid_x, grid_z)
-    if _surface_height_cache.has(key):
-        return float(_surface_height_cache[key])
-    var x: float = float(grid_x) * HEIGHT_SAMPLE_STEP_M
-    var z: float = float(grid_z) * HEIGHT_SAMPLE_STEP_M
-    var height: float = _calculate_surface_height(x, z)
-    if _surface_height_cache.size() >= MAX_SURFACE_CACHE_ENTRIES:
-        var expired_key: Vector2i = _surface_height_cache_order[_surface_height_cache_cursor]
-        _surface_height_cache.erase(expired_key)
-        _surface_height_cache_order[_surface_height_cache_cursor] = key
-        _surface_height_cache_cursor = (_surface_height_cache_cursor + 1) % MAX_SURFACE_CACHE_ENTRIES
-    else:
-        _surface_height_cache_order.append(key)
-    _surface_height_cache[key] = height
-    return height
-
-
-func _calculate_surface_height(x: float, z: float) -> float:
     if _native_sampler == null:
         return VOXEL_SIZE
     return float(_native_sampler.call("get_surface_height", x, z))
+
+
+func get_surface_sample(x: float, z: float) -> Vector3:
+    if _native_sampler == null:
+        return Vector3(VOXEL_SIZE, 0.0, 0.0)
+    return _native_sampler.call("get_surface_sample", x, z, HEIGHT_SAMPLE_STEP_M)
+
+
+func get_surface_height_grid(
+        origin_x: float, origin_z: float, columns: int, rows: int,
+        step_m: float = HEIGHT_SAMPLE_STEP_M) -> PackedFloat32Array:
+    if _native_sampler == null:
+        return PackedFloat32Array()
+    return _native_sampler.call(
+        "sample_height_grid", origin_x, origin_z, columns, rows, step_m
+    )
 
 
 func get_surface_height_voxels(x: float, z: float) -> int:
