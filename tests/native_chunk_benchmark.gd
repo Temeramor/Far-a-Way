@@ -28,6 +28,7 @@ func _run_benchmark() -> void:
 
     print("lod,runs,min_ms,median_ms,p95_ms,vertices,indices")
     var failed := false
+    var p95_by_lod: Array[float] = []
     for lod in range(8):
         var timings: Array[int] = []
         var vertex_count := 0
@@ -58,6 +59,7 @@ func _run_benchmark() -> void:
         var min_ms := float(timings[0]) / 1000.0
         var p95_index := clampi(int(ceil(float(timings.size()) * 0.95)) - 1, 0, timings.size() - 1)
         var p95_ms := float(timings[p95_index]) / 1000.0
+        p95_by_lod.append(p95_ms)
         print("%d,%d,%.3f,%.3f,%.3f,%d,%d" % [
             lod, RUNS_PER_LOD, min_ms, median_ms, p95_ms, vertex_count, index_count
         ])
@@ -65,8 +67,45 @@ func _run_benchmark() -> void:
     if failed:
         quit(1)
         return
+    if not _check_regression_baseline(p95_by_lod):
+        quit(1)
+        return
     print("Native chunk benchmark completed.")
     quit(0)
+
+
+func _check_regression_baseline(p95_values: Array[float]) -> bool:
+    var baseline_path: String = OS.get_environment("VOXEN_BENCHMARK_BASELINE_PATH")
+    if baseline_path.is_empty():
+        push_warning("No VOXEN_BENCHMARK_BASELINE_PATH set; benchmark ran without a regression baseline.")
+        return true
+
+    var baseline_values: Array = []
+    if FileAccess.file_exists(baseline_path):
+        var input := FileAccess.open(baseline_path, FileAccess.READ)
+        if input != null:
+            var parsed = JSON.parse_string(input.get_as_text())
+            if parsed is Dictionary:
+                baseline_values = parsed.get("p95_ms", [])
+
+    if baseline_values.size() == p95_values.size():
+        for lod in range(p95_values.size()):
+            var baseline_ms: float = float(baseline_values[lod])
+            var allowed_ms: float = baseline_ms * 1.25
+            if baseline_ms > 0.0 and p95_values[lod] > allowed_ms:
+                push_error("LOD%d p95 regression: %.3f ms exceeds the 25%% threshold over %.3f ms baseline." % [
+                    lod, p95_values[lod], baseline_ms
+                ])
+                return false
+    else:
+        print("No complete LOD benchmark baseline found; this run establishes the baseline.")
+
+    var output := FileAccess.open(baseline_path, FileAccess.WRITE)
+    if output == null:
+        push_error("Could not write benchmark baseline: " + baseline_path)
+        return false
+    output.store_string(JSON.stringify({"p95_ms": p95_values}, "\\t"))
+    return true
 
 
 func _make_job(lod: int, generator) -> Dictionary:
