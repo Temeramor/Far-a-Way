@@ -21,14 +21,16 @@ func build_tile(
         count += int((noise_pick - 0.5) * 6.0)
 
     for i in range(count):
+        if host._is_cancelled():
+            return
         var local_x: float = rng.randf_range(1.6, maxf(1.7, width_m - 1.6))
         var local_z: float = rng.randf_range(1.6, maxf(1.7, depth_m - 1.6))
         var world_x: float = origin_x + local_x
         var world_z: float = origin_z + local_z
         if host._near_spawn(world_x, world_z):
             continue
-        var surface: Dictionary = host._surface_info(world_x, world_z)
-        var rock_weight: float = float(surface["rock_weight"])
+        var surface: Vector4 = host._surface_info(world_x, world_z)
+        var rock_weight: float = surface.w
         if rock_weight < 0.18 and rng.randf() > 0.28:
             continue
         if distance_m > 240.0 and rock_weight < 0.38:
@@ -64,7 +66,7 @@ func build_tile(
         # Orient the base plane to the terrain normal so the rock rests on the slope
         # instead of intersecting it with a world-axis-aligned side.
         var surface_normal := Vector3(
-            -float(surface["gradient_x"]), 1.0, -float(surface["gradient_z"])
+            -surface.y, 1.0, -surface.z
         ).normalized()
         var yaw: float = rng.randf_range(0.0, TAU)
         var local_x_axis := Vector3(cos(yaw), 0.0, sin(yaw))
@@ -76,7 +78,7 @@ func build_tile(
             local_x_axis = (fallback_axis - surface_normal * fallback_axis.dot(surface_normal)).normalized()
         var local_z_axis: Vector3 = local_x_axis.cross(surface_normal).normalized()
         var rock_basis := Basis(local_x_axis, surface_normal, local_z_axis)
-        var base_position := Vector3(local_x, float(surface["height"]) - 0.06, local_z)
+        var base_position := Vector3(local_x, surface.x - 0.06, local_z)
         host._append_transformed_mesh(output, rock_piece, rock_basis, base_position)
 
         if radius_m >= 0.5 and build_collisions:
@@ -85,7 +87,7 @@ func build_tile(
                 "basis": rock_basis,
                 "radius_m": radius_m
             })
-        reservations.append({"p": Vector2(local_x, local_z), "r": exclusion_radius})
+        host._reserve(local_x, local_z, exclusion_radius, reservations)
 
 func make_rock_grid(
         host, radius: float, palette_data: Dictionary, rock_seed: int, quality_lod: int = 0):
@@ -115,8 +117,12 @@ func _fill_rock(
     var cy: float = ry * 0.45
     var ext: float = 1.3
     for y in range(0, mini(grid.h, ceili(cy + ry * ext) + 1)):
+        if host._is_cancelled():
+            return
         var ny: float = (float(y) - cy) / ry
         for zz in range(-ceili(rz * ext), ceili(rz * ext) + 1):
+            if host._is_cancelled():
+                return
             var nz: float = float(zz) / rz
             for xx in range(-ceili(rx * ext), ceili(rx * ext) + 1):
                 var nx: float = float(xx) / rx

@@ -81,6 +81,8 @@ var _build_estimate_refresh_timer: float = 0.0
 var _max_queue_wait_usec: int = 0
 var _stale_result_count: int = 0
 var _world_started: bool = false
+var _last_frame_delta_ms: float = 16.67
+var _adaptive_apply_limit: int = 1
 
 func _ready() -> void:
     if not ClassDB.class_exists("VoxEnNativeBuilder"):
@@ -124,6 +126,11 @@ func _ready() -> void:
         call_deferred("_prepare_world_for_epoch", _generation_epoch)
 
 func _process(delta: float) -> void:
+    _last_frame_delta_ms = delta * 1000.0
+    if _last_frame_delta_ms >= 33.0:
+        _adaptive_apply_limit = 1
+    else:
+        _adaptive_apply_limit = maxi(1, max_mesh_applies_per_frame)
     _build_estimate_refresh_timer += delta
     if _build_estimate_refresh_timer >= 0.5:
         _build_estimate_refresh_timer = 0.0
@@ -654,7 +661,13 @@ func _distance_to_tile_xz(point: Vector2, coord: Vector2i) -> float:
 
 func _process_chunk_jobs() -> void:
     var worker_limit: int = maxi(1, mini(max_concurrent_mesh_jobs, maxi(1, OS.get_processor_count() - 1)))
-    var available_jobs: int = worker_limit - _running_tasks.size()
+    var active_decor_jobs: int = 0
+    for child in get_children():
+        if child is VoxelSurfaceScatter:
+            active_decor_jobs = child._running_decor_tasks.size()
+            break
+    # Terrain owns scheduling priority; decor may use only the remaining shared worker slots.
+    var available_jobs: int = worker_limit - _running_tasks.size() - active_decor_jobs
     if available_jobs <= 0 or _queued.is_empty():
         return
     var started_jobs: int = 0
@@ -788,11 +801,22 @@ func _create_mesh_builder() -> Object:
     var native_builder: Object = ClassDB.instantiate("VoxEnNativeBuilder")
     if native_builder == null:
         push_error("Cannot instantiate VoxEnNativeBuilder. Check the native library build.")
+        return null
+    if _generator != null:
+        native_builder.call("share_terrain_sampler", _generator.get_native_sampler())
     return native_builder
 
 func _poll_worker_tasks() -> void:
     for task_key in _running_tasks.keys():
         var task_id: int = int(task_key)
+        var active_record: Dictionary = _running_tasks[task_id]
+        var active_coord: Vector2i = active_record["coord"]
+        if not bool(active_record.get("cancel_requested", false)) and not _job_record_matches_current(active_record, active_coord):
+            var active_builder = active_record.get("builder")
+            if active_builder != null and active_builder.has_method("cancel"):
+                active_builder.call("cancel")
+            active_record["cancel_requested"] = true
+            _running_tasks[task_id] = active_record
         if not WorkerThreadPool.is_task_completed(task_id):
             continue
         WorkerThreadPool.wait_for_task_completion(task_id)
@@ -836,8 +860,9 @@ func _apply_completed_jobs() -> void:
     var coords: Array = _completed_jobs.keys()
     var world_coverage_ready: bool = is_world_coverage_ready()
     coords.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
-        var lod_a: int = int(_decode_lod_key(a)["lod"])
-        var lod_b: int = int(_decode_lod_key(b)["lod"])
+        # Decode the packed LOD key arithmetically; this comparator runs O(n log n) times.
+        var lod_a: int = clampi(floori(float(a.x) / float(LOD_KEY_STRIDE)), 0, 7)
+        var lod_b: int = clampi(floori(float(b.x) / float(LOD_KEY_STRIDE)), 0, 7)
         if not world_coverage_ready and lod_a != lod_b:
             return lod_a > lod_b
         var distance_a: float = float(_wanted.get(a, {"distance": INF})["distance"])
@@ -848,7 +873,7 @@ func _apply_completed_jobs() -> void:
     var applied: int = 0
     var apply_started_usec: int = Time.get_ticks_usec()
     for coord in coords:
-        if applied >= max_mesh_applies_per_frame:
+        if applied >= _adaptive_apply_limit:
             break
         # Always allow one upload; later uploads obey a soft main-thread budget.
         if applied > 0 and Time.get_ticks_usec() - apply_started_usec >= int(max_mesh_apply_time_ms * 1000.0):

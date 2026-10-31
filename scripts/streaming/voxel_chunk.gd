@@ -70,6 +70,7 @@ func build(
     if builder == null:
         push_error("VoxEnNativeBuilder could not be instantiated.")
         return
+    builder.call("share_terrain_sampler", generator.get_native_sampler())
     job_data["terrain_world_size_m"] = float(world_size_voxels) * VOXEL_SIZE
     job_data["mountain_profile"] = generator.get_mountain_profile()
     job_data["build_collision"] = want_collision

@@ -1,6 +1,6 @@
 #include "voxen_native_builder.h"
 
-#include <godot_cpp/classes/fast_noise_lite.hpp>
+#include "../thirdparty/FastNoiseLite.h"
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/array.hpp>
@@ -14,9 +14,13 @@
 #include <godot_cpp/variant/vector3.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
 #include <vector>
 
 using namespace godot;
@@ -41,45 +45,58 @@ constexpr int ROCK = 3;
 struct NoiseSet {
     int64_t seed_value = 0;
     double world_size_m = 2000.0;
-    Ref<FastNoiseLite> macro;
-    Ref<FastNoiseLite> hills;
-    Ref<FastNoiseLite> detail;
-    Ref<FastNoiseLite> ridges;
-    Ref<FastNoiseLite> micro_ridge;
-    Ref<FastNoiseLite> transition;
+    fastnoiselite::FastNoiseLite macro;
+    fastnoiselite::FastNoiseLite hills;
+    fastnoiselite::FastNoiseLite detail;
+    fastnoiselite::FastNoiseLite ridges;
+    fastnoiselite::FastNoiseLite micro_ridge;
+    fastnoiselite::FastNoiseLite transition;
 
     struct MountainSegment {
         double ax = 0.0, az = 0.0, dx = 0.0, dz = 0.0;
         double length_squared = 1.0, width = 1.0, height = 1.0, phase = 0.0;
     };
     std::vector<MountainSegment> mountain_segments;
+    mutable std::mutex surface_cache_mutex;
+    mutable std::unordered_map<uint64_t, double> surface_height_cache;
+    mutable std::vector<uint64_t> surface_height_cache_order;
+    mutable size_t surface_height_cache_cursor = 0;
+    static constexpr size_t MAX_SURFACE_CACHE_ENTRIES = 131072;
 
-    static Ref<FastNoiseLite> make_noise(int32_t seed, int octaves, double gain,
-            FastNoiseLite::FractalType fractal_mode = FastNoiseLite::FRACTAL_FBM) {
-        Ref<FastNoiseLite> noise;
-        noise.instantiate();
-        noise->set_seed(seed);
-        noise->set_noise_type(FastNoiseLite::TYPE_SIMPLEX);
-        noise->set_frequency(1.0);
-        noise->set_fractal_type(fractal_mode);
-        noise->set_fractal_octaves(octaves);
-        noise->set_fractal_lacunarity(2.05);
-        noise->set_fractal_gain(gain);
+    static fastnoiselite::FastNoiseLite make_noise(
+            int32_t seed, int octaves, float gain, bool ridged = false) {
+        fastnoiselite::FastNoiseLite noise;
+        noise.SetSeed(seed);
+        noise.SetNoiseType(fastnoiselite::FastNoiseLite::NoiseType_OpenSimplex2);
+        noise.SetFrequency(1.0f);
+        noise.SetFractalType(ridged
+            ? fastnoiselite::FastNoiseLite::FractalType_Ridged
+            : fastnoiselite::FastNoiseLite::FractalType_FBm);
+        noise.SetFractalOctaves(octaves);
+        noise.SetFractalLacunarity(2.05f);
+        noise.SetFractalGain(gain);
         return noise;
     }
 
-    explicit NoiseSet(int64_t seed) : seed_value(seed) {
-        // Per-job noise resources avoid sharing mutable Godot objects across workers.
-        macro = make_noise(static_cast<int32_t>(seed + 101), 4, 0.52);
-        hills = make_noise(static_cast<int32_t>(seed + 307), 4, 0.52);
-        detail = make_noise(static_cast<int32_t>(seed + 503), 3, 0.52);
-        ridges = make_noise(static_cast<int32_t>(seed + 709), 5, 0.52, FastNoiseLite::FRACTAL_RIDGED);
-        micro_ridge = make_noise(static_cast<int32_t>(seed + 907), 3, 0.52, FastNoiseLite::FRACTAL_RIDGED);
-        transition = make_noise(static_cast<int32_t>(seed + 1301), 2, 0.52);
-    }
+    explicit NoiseSet(int64_t seed)
+            : seed_value(seed),
+              macro(make_noise(static_cast<int32_t>(seed + 101), 4, 0.52f)),
+              hills(make_noise(static_cast<int32_t>(seed + 307), 4, 0.52f)),
+              detail(make_noise(static_cast<int32_t>(seed + 503), 3, 0.52f)),
+              ridges(make_noise(static_cast<int32_t>(seed + 709), 5, 0.52f, true)),
+              micro_ridge(make_noise(static_cast<int32_t>(seed + 907), 3, 0.52f, true)),
+              transition(make_noise(static_cast<int32_t>(seed + 1301), 2, 0.52f)) {}
 
     void configure_from_job(const Dictionary &job_data, double fallback_world_size_m) {
         world_size_m = static_cast<double>(job_data.get("terrain_world_size_m", fallback_world_size_m));
+        const float frequency_scale = static_cast<float>(
+            std::clamp(REFERENCE_WORLD_SIZE_M / std::max(world_size_m, 1.0), 0.35, 6.0));
+        macro.SetFrequency(0.00028f * frequency_scale);
+        hills.SetFrequency(0.00115f * frequency_scale);
+        detail.SetFrequency(0.0048f * frequency_scale);
+        ridges.SetFrequency(0.00082f * frequency_scale);
+        micro_ridge.SetFrequency(0.0034f * frequency_scale);
+        transition.SetFrequency(0.008f * frequency_scale);
         mountain_segments.clear();
         const Array profile = job_data.get("mountain_profile", Array());
         for (int64_t i = 0; i < profile.size(); ++i) {
@@ -99,18 +116,22 @@ struct NoiseSet {
         }
     }
 
+    static float sample_noise(const fastnoiselite::FastNoiseLite &noise, double x, double z) {
+        // Godot's real_t is float in the current Windows build; preserve its input precision.
+        return noise.GetNoise(static_cast<float>(x), static_cast<float>(z));
+    }
+
     static double smoothstep(double edge_a, double edge_b, double value) {
         const double t = std::clamp((value - edge_a) / (edge_b - edge_a), 0.0, 1.0);
         return t * t * (3.0 - 2.0 * t);
     }
 
     double surface_height(double x, double z) const {
-        const double frequency_scale = std::clamp(REFERENCE_WORLD_SIZE_M / std::max(world_size_m, 1.0), 0.35, 6.0);
-        const double macro_value = macro->get_noise_2d(x * 0.00028 * frequency_scale, z * 0.00028 * frequency_scale);
-        const double hills_value = hills->get_noise_2d(x * 0.00115 * frequency_scale, z * 0.00115 * frequency_scale);
-        const double detail_value = detail->get_noise_2d(x * 0.0048 * frequency_scale, z * 0.0048 * frequency_scale);
-        const double ridge_detail = (ridges->get_noise_2d(x * 0.00082 * frequency_scale, z * 0.00082 * frequency_scale) + 1.0) * 0.5;
-        const double micro_value = micro_ridge->get_noise_2d(x * 0.0034 * frequency_scale, z * 0.0034 * frequency_scale);
+        const double macro_value = sample_noise(macro, x, z);
+        const double hills_value = sample_noise(hills, x, z);
+        const double detail_value = sample_noise(detail, x, z);
+        const double ridge_detail = (sample_noise(ridges, x, z) + 1.0) * 0.5;
+        const double micro_value = sample_noise(micro_ridge, x, z);
 
         double height = 26.0 + macro_value * 17.0 + hills_value * 10.0;
         height += std::max(hills_value - 0.12, 0.0) * 18.0;
@@ -154,13 +175,99 @@ struct NoiseSet {
         return std::max(VOXEL_SIZE, std::clamp(height, -80.0, 1600.0));
     }
 
+    double cached_grid_height(int32_t grid_x, int32_t grid_z) const {
+        const uint64_t key =
+            (static_cast<uint64_t>(static_cast<uint32_t>(grid_x)) << 32) |
+            static_cast<uint32_t>(grid_z);
+        {
+            std::lock_guard<std::mutex> lock(surface_cache_mutex);
+            const auto found = surface_height_cache.find(key);
+            if (found != surface_height_cache.end()) return found->second;
+        }
+
+        constexpr double sample_step = 0.5;
+        const double height = surface_height(
+            static_cast<double>(grid_x) * sample_step,
+            static_cast<double>(grid_z) * sample_step);
+        {
+            std::lock_guard<std::mutex> lock(surface_cache_mutex);
+            const auto found = surface_height_cache.find(key);
+            if (found != surface_height_cache.end()) return found->second;
+            if (surface_height_cache.size() >= MAX_SURFACE_CACHE_ENTRIES) {
+                const uint64_t expired_key = surface_height_cache_order[surface_height_cache_cursor];
+                surface_height_cache.erase(expired_key);
+                surface_height_cache_order[surface_height_cache_cursor] = key;
+                surface_height_cache_cursor =
+                    (surface_height_cache_cursor + 1) % MAX_SURFACE_CACHE_ENTRIES;
+            } else {
+                surface_height_cache_order.push_back(key);
+            }
+            surface_height_cache.emplace(key, height);
+        }
+        return height;
+    }
+
+    double surface_height_cached(double x, double z) const {
+        constexpr double sample_step = 0.5;
+        const int32_t grid_x = static_cast<int32_t>(std::llround(x / sample_step));
+        const int32_t grid_z = static_cast<int32_t>(std::llround(z / sample_step));
+        if (std::abs(x - static_cast<double>(grid_x) * sample_step) < 0.0001 &&
+                std::abs(z - static_cast<double>(grid_z) * sample_step) < 0.0001) {
+            return cached_grid_height(grid_x, grid_z);
+        }
+        return surface_height(x, z);
+    }
+
+    Vector3 surface_sample(double x, double z, double step_m) const {
+        const double safe_step = std::max(step_m, 0.0001);
+        const double grid_x_float = x / safe_step;
+        const double grid_z_float = z / safe_step;
+        const int32_t grid_x = static_cast<int32_t>(std::floor(grid_x_float));
+        const int32_t grid_z = static_cast<int32_t>(std::floor(grid_z_float));
+        const double tx = std::clamp(grid_x_float - static_cast<double>(grid_x), 0.0, 1.0);
+        const double tz = std::clamp(grid_z_float - static_cast<double>(grid_z), 0.0, 1.0);
+        const auto sample = [this, safe_step](int32_t sx, int32_t sz) {
+            if (std::abs(safe_step - 0.5) < 0.000001) {
+                return cached_grid_height(sx, sz);
+            }
+            return surface_height(static_cast<double>(sx) * safe_step,
+                static_cast<double>(sz) * safe_step);
+        };
+        const double h00 = sample(grid_x, grid_z);
+        const double h10 = sample(grid_x + 1, grid_z);
+        const double h01 = sample(grid_x, grid_z + 1);
+        const double h11 = sample(grid_x + 1, grid_z + 1);
+        const double top = h00 + (h10 - h00) * tx;
+        const double bottom = h01 + (h11 - h01) * tx;
+        const double height = top + (bottom - top) * tz;
+        const double slope_x = ((h10 - h00) * (1.0 - tz) + (h11 - h01) * tz) / safe_step;
+        const double slope_z = ((h01 - h00) * (1.0 - tx) + (h11 - h10) * tx) / safe_step;
+        return Vector3(height, slope_x, slope_z);
+    }
+
+    PackedFloat32Array sample_height_grid(double origin_x, double origin_z,
+            int32_t columns, int32_t rows, double step_m) const {
+        PackedFloat32Array samples;
+        if (columns <= 0 || rows <= 0) return samples;
+        const int64_t total = static_cast<int64_t>(columns) * rows;
+        samples.resize(total);
+        for (int32_t z = 0; z < rows; ++z) {
+            for (int32_t x = 0; x < columns; ++x) {
+                const double world_x = origin_x + static_cast<double>(x) * step_m;
+                const double world_z = origin_z + static_cast<double>(z) * step_m;
+                samples.set(static_cast<int64_t>(z) * columns + x,
+                    static_cast<float>(surface_height_cached(world_x, world_z)));
+            }
+        }
+        return samples;
+    }
+
     int32_t surface_height_voxels(double x, double z) const {
         return std::max<int32_t>(1, static_cast<int32_t>(std::llround(surface_height(x, z) / VOXEL_SIZE)));
     }
 
     double surface_rock_weight(double slope, double x, double z) const {
-        const double frequency_scale = std::clamp(REFERENCE_WORLD_SIZE_M / std::max(world_size_m, 1.0), 0.35, 6.0);
-        const double transition_noise = transition->get_noise_2d(x * 0.008 * frequency_scale, z * 0.008 * frequency_scale) * 0.12;
+        const double transition_noise = sample_noise(transition, x, z) * 0.12;
         const double normal_slope = 1.0 - 1.0 / std::sqrt(1.0 + slope * slope);
         return smoothstep(0.30, 0.48, normal_slope + transition_noise);
     }
@@ -178,7 +285,9 @@ Color rgb8(int r, int g, int b, double a = 1.0) {
 }
 
 struct MeshBuild {
-    NoiseSet noise;
+    std::shared_ptr<NoiseSet> noise;
+    bool configure_noise_from_job = true;
+    const std::atomic<bool> *cancel_flag = nullptr;
     Vector2i coord;
     int lod = 0;
     bool want_collision = false;
@@ -219,7 +328,14 @@ struct MeshBuild {
     std::vector<Vector3> smooth_shadow_normals;
     std::vector<int32_t> smooth_shadow_indices;
 
-    explicit MeshBuild(int64_t seed) : noise(seed) {}
+    explicit MeshBuild(int64_t seed, const std::atomic<bool> *token,
+            const std::shared_ptr<NoiseSet> &shared_sampler)
+            : noise(shared_sampler ? shared_sampler : std::make_shared<NoiseSet>(seed)),
+              configure_noise_from_job(!shared_sampler), cancel_flag(token) {}
+
+    bool is_cancelled() const {
+        return cancel_flag != nullptr && cancel_flag->load(std::memory_order_relaxed);
+    }
 
     static double cubic_interpolate(double p0, double p1, double p2, double p3, double t) {
         return p1 + 0.5 * t * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 +
@@ -262,7 +378,7 @@ struct MeshBuild {
         const double world_x = world_min_x + gx * VOXEL_SIZE;
         const double world_z = world_min_z + gz * VOXEL_SIZE;
         // Keep continuous heights until the interpolated mesh sample is quantised.
-        return std::max(1.0, noise.surface_height(world_x, world_z) / VOXEL_SIZE);
+        return std::max(1.0, noise->surface_height(world_x, world_z) / VOXEL_SIZE);
     }
 
     int32_t cached_height_voxels(double gx, double gz) const {
@@ -476,6 +592,7 @@ struct MeshBuild {
         height_cache.resize(static_cast<size_t>(cache_width) * cache_depth);
 
         for (int32_t cz = 0; cz < cache_depth; ++cz) {
+            if (is_cancelled()) return;
             const double cache_z = static_cast<double>(cache_origin_z + cz * cache_step_voxels);
             for (int32_t cx = 0; cx < cache_width; ++cx) {
                 const double cache_x = static_cast<double>(cache_origin_x + cx * cache_step_voxels);
@@ -485,6 +602,7 @@ struct MeshBuild {
 
         raw_heights.resize(static_cast<size_t>(total_samples));
         for (int32_t gz = 0; gz < grid_depth; ++gz) {
+            if (is_cancelled()) return;
             const int32_t local_cell_z = (gz - halo) * step_voxels;
             double sample_local_z = static_cast<double>(local_cell_z) + static_cast<double>(step_voxels) * 0.5;
             if (local_cell_z >= 0 && local_cell_z < size_voxels_z) {
@@ -507,6 +625,7 @@ struct MeshBuild {
         // matches the horizontal cell size, so distant samples remain voxel-like.
         if (step_voxels > 1) {
             for (int32_t &height : heights) {
+                if (is_cancelled()) return;
                 if (height <= 0) continue;
                 height = std::max<int32_t>(
                     step_voxels,
@@ -522,6 +641,7 @@ struct MeshBuild {
 
         // A one-cell halo keeps the grass/rock blend continuous across chunk borders.
         for (int32_t z = -1; z <= cells_z; ++z) {
+            if (is_cancelled()) return;
             for (int32_t x = -1; x <= cells_x; ++x) {
                 const int32_t gx = x + halo;
                 const int32_t gz = z + halo;
@@ -546,7 +666,7 @@ struct MeshBuild {
                     (static_cast<double>(start_voxel_x) + local_sample_x) * VOXEL_SIZE;
                 const double world_z = world_min_z +
                     (static_cast<double>(start_voxel_z) + local_sample_z) * VOXEL_SIZE;
-                const double weight = noise.surface_rock_weight(slope, world_x, world_z);
+                const double weight = noise->surface_rock_weight(slope, world_x, world_z);
                 surface_rock_weights[static_cast<size_t>(z + 1) * (cells_x + 2) + x + 1] = weight;
                 if (x >= 0 && x < cells_x && z >= 0 && z < cells_z) {
                     surface_types[static_cast<size_t>(z) * cells_x + x] =
@@ -560,6 +680,7 @@ struct MeshBuild {
         std::vector<uint8_t> visited(static_cast<size_t>(cells_x) * cells_z, 0);
 
         for (int32_t z = 0; z < cells_z; ++z) {
+            if (is_cancelled()) return;
             for (int32_t x = 0; x < cells_x; ++x) {
                 const size_t cell_index = static_cast<size_t>(z) * cells_x + x;
                 if (visited[cell_index] != 0) {
@@ -625,6 +746,7 @@ struct MeshBuild {
         const auto emit_left_runs = [this](int32_t x, bool right_side) {
             const double x_pos = static_cast<double>(std::min(right_side ? (x + 1) * step_voxels : x * step_voxels, size_voxels_x)) * VOXEL_SIZE;
             for (int32_t z = 0; z < cells_z;) {
+                if (is_cancelled()) return;
                 const int32_t h = heights[grid_index(x, z)];
                 const int32_t other_h = heights[grid_index(x + (right_side ? 1 : -1), z)];
                 if (h <= other_h) {
@@ -672,6 +794,7 @@ struct MeshBuild {
         const auto emit_z_runs = [this](int32_t z, bool south_side) {
             const double z_pos = static_cast<double>(std::min(south_side ? (z + 1) * step_voxels : z * step_voxels, size_voxels_z)) * VOXEL_SIZE;
             for (int32_t x = 0; x < cells_x;) {
+                if (is_cancelled()) return;
                 const int32_t h = heights[grid_index(x, z)];
                 const int32_t other_h = heights[grid_index(x, z + (south_side ? 1 : -1))];
                 if (h <= other_h) {
@@ -717,10 +840,12 @@ struct MeshBuild {
         };
 
         for (int32_t x = 0; x < cells_x; ++x) {
+            if (is_cancelled()) return;
             emit_left_runs(x, false);
             emit_left_runs(x, true);
         }
         for (int32_t z = 0; z < cells_z; ++z) {
+            if (is_cancelled()) return;
             emit_z_runs(z, false);
             emit_z_runs(z, true);
         }
@@ -735,6 +860,7 @@ struct MeshBuild {
 
         if (neighbor_lod("left") >= 0) {
             for (int32_t z = 0; z < cells_z; ++z) {
+                if (is_cancelled()) return;
                 const int32_t h = heights[grid_index(0, z)];
                 const int32_t outer_h = heights[grid_index(-1, z)];
                 const int32_t top = std::min(h, outer_h);
@@ -750,6 +876,7 @@ struct MeshBuild {
         }
         if (neighbor_lod("right") >= 0) {
             for (int32_t z = 0; z < cells_z; ++z) {
+                if (is_cancelled()) return;
                 const int32_t h = heights[grid_index(cells_x - 1, z)];
                 const int32_t outer_h = heights[grid_index(cells_x, z)];
                 const int32_t top = std::min(h, outer_h);
@@ -765,6 +892,7 @@ struct MeshBuild {
         }
         if (neighbor_lod("north") >= 0) {
             for (int32_t x = 0; x < cells_x; ++x) {
+                if (is_cancelled()) return;
                 const int32_t h = heights[grid_index(x, 0)];
                 const int32_t outer_h = heights[grid_index(x, -1)];
                 const int32_t top = std::min(h, outer_h);
@@ -780,6 +908,7 @@ struct MeshBuild {
         }
         if (neighbor_lod("south") >= 0) {
             for (int32_t x = 0; x < cells_x; ++x) {
+                if (is_cancelled()) return;
                 const int32_t h = heights[grid_index(x, cells_z - 1)];
                 const int32_t outer_h = heights[grid_index(x, cells_z)];
                 const int32_t top = std::min(h, outer_h);
@@ -817,6 +946,7 @@ struct MeshBuild {
         smooth_shadow_indices.reserve(index_count);
 
         for (int32_t z = 0; z < shadow_depth; ++z) {
+            if (is_cancelled()) return;
             const int32_t local_voxel_z = std::min(z * shadow_step_voxels, size_voxels_z);
             const double world_z = world_min_z +
                 static_cast<double>(start_voxel_z + local_voxel_z) * VOXEL_SIZE;
@@ -838,10 +968,10 @@ struct MeshBuild {
                     if (cache_x >= 0 && cache_x < cache_width && cache_z >= 0 && cache_z < cache_depth) {
                         height_m = height_cache[static_cast<size_t>(cache_z) * cache_width + cache_x] * VOXEL_SIZE;
                     } else {
-                        height_m = noise.surface_height(world_x, world_z);
+                        height_m = noise->surface_height(world_x, world_z);
                     }
                 } else {
-                    height_m = noise.surface_height(world_x, world_z);
+                    height_m = noise->surface_height(world_x, world_z);
                 }
                 smooth_shadow_vertices.emplace_back(
                     static_cast<double>(local_voxel_x) * VOXEL_SIZE,
@@ -852,6 +982,7 @@ struct MeshBuild {
         }
 
         for (int32_t z = 0; z < shadow_cells_z; ++z) {
+            if (is_cancelled()) return;
             for (int32_t x = 0; x < shadow_cells_x; ++x) {
                 const int32_t top_left = z * shadow_width + x;
                 const int32_t top_right = top_left + 1;
@@ -893,12 +1024,15 @@ struct MeshBuild {
         cells_x = static_cast<int32_t>(std::ceil(static_cast<double>(size_voxels_x) / step_voxels));
         cells_z = static_cast<int32_t>(std::ceil(static_cast<double>(size_voxels_z) / step_voxels));
 
-        noise.configure_from_job(job_data, static_cast<double>(world_size_voxels) * VOXEL_SIZE);
+        if (configure_noise_from_job) noise->configure_from_job(job_data, static_cast<double>(world_size_voxels) * VOXEL_SIZE);
 
         // Every LOD stays voxel-based. Only the cell size changes with distance;
         // shared smooth heightfields are reserved for invisible shadow proxies.
+        if (is_cancelled()) return Dictionary();
         build_cache_and_heights();
+        if (is_cancelled()) return Dictionary();
         build_surface_types();
+        if (is_cancelled()) return Dictionary();
 
         const size_t base_cells = static_cast<size_t>(cells_x) * cells_z;
         vertices.reserve(base_cells * 6);
@@ -907,13 +1041,17 @@ struct MeshBuild {
         indices.reserve(base_cells * 9);
 
         build_greedy_top_faces();
+        if (is_cancelled()) return Dictionary();
         build_exposed_side_faces();
+        if (is_cancelled()) return Dictionary();
         build_lod_skirts();
+        if (is_cancelled()) return Dictionary();
 
         // Terrain-shadow proxies are useful near the camera, but expensive and invisible
         // outside the shadow range. Avoid their CPU noise sampling and GPU upload at distance.
         if (static_cast<bool>(request.get("shadow_proxy", static_cast<double>(request.get("distance", 0.0)) <= 640.0))) {
             build_smooth_shadow_surface();
+            if (is_cancelled()) return Dictionary();
         }
 
         PackedVector3Array packed_vertices;
@@ -973,6 +1111,7 @@ struct MeshBuild {
             PackedFloat32Array collision_heights;
             collision_heights.resize(static_cast<int64_t>(collision_width) * collision_depth);
             for (int32_t cz = 0; cz < collision_depth; ++cz) {
+                if (is_cancelled()) return Dictionary();
                 const double global_z = static_cast<double>(start_voxel_z + cz * collision_step_voxels);
                 for (int32_t cx = 0; cx < collision_width; ++cx) {
                     const double global_x = static_cast<double>(start_voxel_x + cx * collision_step_voxels);
@@ -1001,6 +1140,14 @@ void VoxEnNativeBuilder::_bind_methods() {
     ClassDB::bind_method(
         D_METHOD("build_mesh_data", "job_data"),
         &VoxEnNativeBuilder::build_mesh_data);
+    ClassDB::bind_method(D_METHOD("cancel"), &VoxEnNativeBuilder::cancel);
+    ClassDB::bind_method(D_METHOD("is_cancelled"), &VoxEnNativeBuilder::is_cancelled);
+    ClassDB::bind_method(D_METHOD("configure_terrain_sampler", "job_data"), &VoxEnNativeBuilder::configure_terrain_sampler);
+    ClassDB::bind_method(D_METHOD("share_terrain_sampler", "source"), &VoxEnNativeBuilder::share_terrain_sampler);
+    ClassDB::bind_method(D_METHOD("get_surface_height", "x", "z"), &VoxEnNativeBuilder::get_surface_height);
+    ClassDB::bind_method(D_METHOD("get_surface_rock_weight", "slope", "x", "z"), &VoxEnNativeBuilder::get_surface_rock_weight);
+    ClassDB::bind_method(D_METHOD("get_surface_sample", "x", "z", "step_m"), &VoxEnNativeBuilder::get_surface_sample);
+    ClassDB::bind_method(D_METHOD("sample_height_grid", "origin_x", "origin_z", "columns", "rows", "step_m"), &VoxEnNativeBuilder::sample_height_grid);
     ClassDB::bind_method(D_METHOD("set_result", "value"), &VoxEnNativeBuilder::set_result);
     ClassDB::bind_method(D_METHOD("get_result"), &VoxEnNativeBuilder::get_result);
     ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "result"), "set_result", "get_result");
@@ -1009,9 +1156,64 @@ void VoxEnNativeBuilder::_bind_methods() {
 Dictionary VoxEnNativeBuilder::build_mesh_data(const Dictionary &job_data) {
     const int64_t started_usec = Time::get_singleton()->get_ticks_usec();
     const int64_t seed = static_cast<int64_t>(job_data.get("seed", 240518));
-    MeshBuild build(seed);
+    std::shared_ptr<NoiseSet> shared_sampler;
+    if (terrain_sampler_data) {
+        shared_sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
+    }
+    MeshBuild build(seed, &cancel_requested, shared_sampler);
     result = build.run(job_data, started_usec);
+    if (cancel_requested.load(std::memory_order_relaxed)) {
+        result = Dictionary();
+    }
     return result;
+}
+
+void VoxEnNativeBuilder::cancel() {
+    cancel_requested.store(true, std::memory_order_relaxed);
+}
+
+bool VoxEnNativeBuilder::is_cancelled() const {
+    return cancel_requested.load(std::memory_order_relaxed);
+}
+
+void VoxEnNativeBuilder::share_terrain_sampler(Object *source) {
+    VoxEnNativeBuilder *source_builder = Object::cast_to<VoxEnNativeBuilder>(source);
+    if (source_builder != nullptr) {
+        terrain_sampler_data = source_builder->terrain_sampler_data;
+    }
+}
+
+void VoxEnNativeBuilder::configure_terrain_sampler(const Dictionary &job_data) {
+    const int64_t seed = static_cast<int64_t>(job_data.get("seed", 1337));
+    const double world_size_m = static_cast<double>(job_data.get("terrain_world_size_m", 2000.0));
+    auto sampler = std::make_shared<NoiseSet>(seed);
+    sampler->configure_from_job(job_data, world_size_m);
+    terrain_sampler_data = std::static_pointer_cast<void>(sampler);
+}
+
+double VoxEnNativeBuilder::get_surface_height(double x, double z) const {
+    if (!terrain_sampler_data) return VOXEL_SIZE;
+    const auto sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
+    return sampler->surface_height_cached(x, z);
+}
+
+double VoxEnNativeBuilder::get_surface_rock_weight(double slope, double x, double z) const {
+    if (!terrain_sampler_data) return 0.0;
+    const auto sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
+    return sampler->surface_rock_weight(slope, x, z);
+}
+
+Vector3 VoxEnNativeBuilder::get_surface_sample(double x, double z, double step_m) const {
+    if (!terrain_sampler_data) return Vector3(VOXEL_SIZE, 0.0, 0.0);
+    const auto sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
+    return sampler->surface_sample(x, z, step_m);
+}
+
+PackedFloat32Array VoxEnNativeBuilder::sample_height_grid(double origin_x, double origin_z,
+        int32_t columns, int32_t rows, double step_m) const {
+    if (!terrain_sampler_data) return PackedFloat32Array();
+    const auto sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
+    return sampler->sample_height_grid(origin_x, origin_z, columns, rows, step_m);
 }
 
 void VoxEnNativeBuilder::set_result(const Dictionary &value) {

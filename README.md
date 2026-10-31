@@ -167,11 +167,17 @@ scons platform=windows target=template_release arch=x86_64
 ~~~powershell
 godot --headless --editor --path . --quit
 godot --headless --path . --script res://tests/terrain_smoke_test.gd
+godot --headless --path . --script res://tests/native_terrain_sampler_test.gd
+godot --headless --path . --script res://tests/fastnoise_parity_test.gd
 godot --headless --path . --script res://tests/lod_hierarchy_smoke_test.gd
 godot --headless --path . --script res://tests/native_builder_smoke_test.gd
 godot --headless --path . --script res://tests/shadow_lod_smoke_test.gd
 godot --headless --path . --script res://tests/voxel_surface_scatter_smoke_test.gd
+godot --headless --path . --script res://tests/decoration_spatial_index_test.gd
+godot --headless --path . --script res://tests/native_chunk_benchmark.gd
 ~~~
+
+Бенчмарк измеряет сборку чанка для каждого LOD0–LOD7, отбрасывает прогревочный запуск и выводит минимум, медиану и p95. Для локального контроля регрессий можно задать путь к JSON-файлу baseline через `VOXEN_BENCHMARK_BASELINE_PATH`; при превышении p95 более чем на 25% тест завершится с ошибкой. GitHub Actions хранит отдельный baseline для Windows runner и обновляет его после успешной проверки.
 
 ## Организация скриптов
 
@@ -183,7 +189,8 @@ godot --headless --path . --script res://tests/voxel_surface_scatter_smoke_test.
 - scripts/vegetation/ — вспомогательные воксельные сетки, палитры и накопители геометрии.
 - scripts/player/, scripts/menu/, scripts/ui/, scripts/systems/ — управление, меню, интерфейс и настройки.
 - scripts/sky/ и shaders/ — небо, освещение и графические материалы.
-- native/src/ — C++-построитель террейна и регистрация GDExtension.
+- native/src/ — C++-построитель террейна, общий потокобезопасный сэмплер NoiseSet и регистрация GDExtension.
+- native/thirdparty/FastNoiseLite.h — header-only FastNoiseLite из Godot 4.7.2 (лицензия MIT указана в заголовке).
 - tests/ — smoke-тесты генерации, LOD, теней и декора.
 
 Будущие RTS/выживание и биомы следует добавлять отдельными модулями данных и игрового процесса, а не включать в генератор террейна. Предполагаемые направления — scripts/biomes/ для параметров биомов и scripts/gameplay/ для юнитов, строительства, ресурсов и механик выживания. Пока эти директории не содержат активной игровой логики.
