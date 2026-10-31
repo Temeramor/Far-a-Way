@@ -14,6 +14,7 @@
 #include <godot_cpp/variant/vector3.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -179,6 +180,7 @@ Color rgb8(int r, int g, int b, double a = 1.0) {
 
 struct MeshBuild {
     NoiseSet noise;
+    const std::atomic<bool> *cancel_flag = nullptr;
     Vector2i coord;
     int lod = 0;
     bool want_collision = false;
@@ -219,7 +221,11 @@ struct MeshBuild {
     std::vector<Vector3> smooth_shadow_normals;
     std::vector<int32_t> smooth_shadow_indices;
 
-    explicit MeshBuild(int64_t seed) : noise(seed) {}
+    explicit MeshBuild(int64_t seed, const std::atomic<bool> *token) : noise(seed), cancel_flag(token) {}
+
+    bool is_cancelled() const {
+        return cancel_flag != nullptr && cancel_flag->load(std::memory_order_relaxed);
+    }
 
     static double cubic_interpolate(double p0, double p1, double p2, double p3, double t) {
         return p1 + 0.5 * t * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 +
@@ -476,6 +482,7 @@ struct MeshBuild {
         height_cache.resize(static_cast<size_t>(cache_width) * cache_depth);
 
         for (int32_t cz = 0; cz < cache_depth; ++cz) {
+            if (is_cancelled()) return;
             const double cache_z = static_cast<double>(cache_origin_z + cz * cache_step_voxels);
             for (int32_t cx = 0; cx < cache_width; ++cx) {
                 const double cache_x = static_cast<double>(cache_origin_x + cx * cache_step_voxels);
@@ -485,6 +492,7 @@ struct MeshBuild {
 
         raw_heights.resize(static_cast<size_t>(total_samples));
         for (int32_t gz = 0; gz < grid_depth; ++gz) {
+            if (is_cancelled()) return;
             const int32_t local_cell_z = (gz - halo) * step_voxels;
             double sample_local_z = static_cast<double>(local_cell_z) + static_cast<double>(step_voxels) * 0.5;
             if (local_cell_z >= 0 && local_cell_z < size_voxels_z) {
@@ -507,6 +515,7 @@ struct MeshBuild {
         // matches the horizontal cell size, so distant samples remain voxel-like.
         if (step_voxels > 1) {
             for (int32_t &height : heights) {
+                if (is_cancelled()) return;
                 if (height <= 0) continue;
                 height = std::max<int32_t>(
                     step_voxels,
@@ -522,6 +531,7 @@ struct MeshBuild {
 
         // A one-cell halo keeps the grass/rock blend continuous across chunk borders.
         for (int32_t z = -1; z <= cells_z; ++z) {
+            if (is_cancelled()) return;
             for (int32_t x = -1; x <= cells_x; ++x) {
                 const int32_t gx = x + halo;
                 const int32_t gz = z + halo;
@@ -560,6 +570,7 @@ struct MeshBuild {
         std::vector<uint8_t> visited(static_cast<size_t>(cells_x) * cells_z, 0);
 
         for (int32_t z = 0; z < cells_z; ++z) {
+            if (is_cancelled()) return;
             for (int32_t x = 0; x < cells_x; ++x) {
                 const size_t cell_index = static_cast<size_t>(z) * cells_x + x;
                 if (visited[cell_index] != 0) {
@@ -625,6 +636,7 @@ struct MeshBuild {
         const auto emit_left_runs = [this](int32_t x, bool right_side) {
             const double x_pos = static_cast<double>(std::min(right_side ? (x + 1) * step_voxels : x * step_voxels, size_voxels_x)) * VOXEL_SIZE;
             for (int32_t z = 0; z < cells_z;) {
+                if (is_cancelled()) return;
                 const int32_t h = heights[grid_index(x, z)];
                 const int32_t other_h = heights[grid_index(x + (right_side ? 1 : -1), z)];
                 if (h <= other_h) {
@@ -672,6 +684,7 @@ struct MeshBuild {
         const auto emit_z_runs = [this](int32_t z, bool south_side) {
             const double z_pos = static_cast<double>(std::min(south_side ? (z + 1) * step_voxels : z * step_voxels, size_voxels_z)) * VOXEL_SIZE;
             for (int32_t x = 0; x < cells_x;) {
+                if (is_cancelled()) return;
                 const int32_t h = heights[grid_index(x, z)];
                 const int32_t other_h = heights[grid_index(x, z + (south_side ? 1 : -1))];
                 if (h <= other_h) {
@@ -717,10 +730,12 @@ struct MeshBuild {
         };
 
         for (int32_t x = 0; x < cells_x; ++x) {
+            if (is_cancelled()) return;
             emit_left_runs(x, false);
             emit_left_runs(x, true);
         }
         for (int32_t z = 0; z < cells_z; ++z) {
+            if (is_cancelled()) return;
             emit_z_runs(z, false);
             emit_z_runs(z, true);
         }
@@ -735,6 +750,7 @@ struct MeshBuild {
 
         if (neighbor_lod("left") >= 0) {
             for (int32_t z = 0; z < cells_z; ++z) {
+                if (is_cancelled()) return;
                 const int32_t h = heights[grid_index(0, z)];
                 const int32_t outer_h = heights[grid_index(-1, z)];
                 const int32_t top = std::min(h, outer_h);
@@ -750,6 +766,7 @@ struct MeshBuild {
         }
         if (neighbor_lod("right") >= 0) {
             for (int32_t z = 0; z < cells_z; ++z) {
+                if (is_cancelled()) return;
                 const int32_t h = heights[grid_index(cells_x - 1, z)];
                 const int32_t outer_h = heights[grid_index(cells_x, z)];
                 const int32_t top = std::min(h, outer_h);
@@ -765,6 +782,7 @@ struct MeshBuild {
         }
         if (neighbor_lod("north") >= 0) {
             for (int32_t x = 0; x < cells_x; ++x) {
+                if (is_cancelled()) return;
                 const int32_t h = heights[grid_index(x, 0)];
                 const int32_t outer_h = heights[grid_index(x, -1)];
                 const int32_t top = std::min(h, outer_h);
@@ -780,6 +798,7 @@ struct MeshBuild {
         }
         if (neighbor_lod("south") >= 0) {
             for (int32_t x = 0; x < cells_x; ++x) {
+                if (is_cancelled()) return;
                 const int32_t h = heights[grid_index(x, cells_z - 1)];
                 const int32_t outer_h = heights[grid_index(x, cells_z)];
                 const int32_t top = std::min(h, outer_h);
@@ -817,6 +836,7 @@ struct MeshBuild {
         smooth_shadow_indices.reserve(index_count);
 
         for (int32_t z = 0; z < shadow_depth; ++z) {
+            if (is_cancelled()) return;
             const int32_t local_voxel_z = std::min(z * shadow_step_voxels, size_voxels_z);
             const double world_z = world_min_z +
                 static_cast<double>(start_voxel_z + local_voxel_z) * VOXEL_SIZE;
@@ -852,6 +872,7 @@ struct MeshBuild {
         }
 
         for (int32_t z = 0; z < shadow_cells_z; ++z) {
+            if (is_cancelled()) return;
             for (int32_t x = 0; x < shadow_cells_x; ++x) {
                 const int32_t top_left = z * shadow_width + x;
                 const int32_t top_right = top_left + 1;
@@ -897,8 +918,11 @@ struct MeshBuild {
 
         // Every LOD stays voxel-based. Only the cell size changes with distance;
         // shared smooth heightfields are reserved for invisible shadow proxies.
+        if (is_cancelled()) return Dictionary();
         build_cache_and_heights();
+        if (is_cancelled()) return Dictionary();
         build_surface_types();
+        if (is_cancelled()) return Dictionary();
 
         const size_t base_cells = static_cast<size_t>(cells_x) * cells_z;
         vertices.reserve(base_cells * 6);
@@ -907,13 +931,17 @@ struct MeshBuild {
         indices.reserve(base_cells * 9);
 
         build_greedy_top_faces();
+        if (is_cancelled()) return Dictionary();
         build_exposed_side_faces();
+        if (is_cancelled()) return Dictionary();
         build_lod_skirts();
+        if (is_cancelled()) return Dictionary();
 
         // Terrain-shadow proxies are useful near the camera, but expensive and invisible
         // outside the shadow range. Avoid their CPU noise sampling and GPU upload at distance.
         if (static_cast<bool>(request.get("shadow_proxy", static_cast<double>(request.get("distance", 0.0)) <= 640.0))) {
             build_smooth_shadow_surface();
+            if (is_cancelled()) return Dictionary();
         }
 
         PackedVector3Array packed_vertices;
@@ -973,6 +1001,7 @@ struct MeshBuild {
             PackedFloat32Array collision_heights;
             collision_heights.resize(static_cast<int64_t>(collision_width) * collision_depth);
             for (int32_t cz = 0; cz < collision_depth; ++cz) {
+                if (is_cancelled()) return Dictionary();
                 const double global_z = static_cast<double>(start_voxel_z + cz * collision_step_voxels);
                 for (int32_t cx = 0; cx < collision_width; ++cx) {
                     const double global_x = static_cast<double>(start_voxel_x + cx * collision_step_voxels);
@@ -1001,6 +1030,7 @@ void VoxEnNativeBuilder::_bind_methods() {
     ClassDB::bind_method(
         D_METHOD("build_mesh_data", "job_data"),
         &VoxEnNativeBuilder::build_mesh_data);
+    ClassDB::bind_method(D_METHOD("cancel"), &VoxEnNativeBuilder::cancel);
     ClassDB::bind_method(D_METHOD("set_result", "value"), &VoxEnNativeBuilder::set_result);
     ClassDB::bind_method(D_METHOD("get_result"), &VoxEnNativeBuilder::get_result);
     ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "result"), "set_result", "get_result");
@@ -1009,9 +1039,16 @@ void VoxEnNativeBuilder::_bind_methods() {
 Dictionary VoxEnNativeBuilder::build_mesh_data(const Dictionary &job_data) {
     const int64_t started_usec = Time::get_singleton()->get_ticks_usec();
     const int64_t seed = static_cast<int64_t>(job_data.get("seed", 240518));
-    MeshBuild build(seed);
+    MeshBuild build(seed, &cancel_requested);
     result = build.run(job_data, started_usec);
+    if (cancel_requested.load(std::memory_order_relaxed)) {
+        result = Dictionary();
+    }
     return result;
+}
+
+void VoxEnNativeBuilder::cancel() {
+    cancel_requested.store(true, std::memory_order_relaxed);
 }
 
 void VoxEnNativeBuilder::set_result(const Dictionary &value) {
