@@ -39,5 +39,11 @@ func _initialize() -> void:
         quit(1)
         return
 
+    job.cancel()
+    if not job._is_cancelled():
+        push_error("Decoration workers must observe the shared native cancellation token.")
+        quit(1)
+        return
+
     print("Decoration spatial-index and packed-sample tests passed.")
     quit(0)
