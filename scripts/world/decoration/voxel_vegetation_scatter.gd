@@ -35,6 +35,8 @@ func scatter_flowers(
     var flower_index: int = 0
 
     for patch_index in range(patch_count):
+        if host._is_cancelled():
+            return
         var center_x: float = rng.randf_range(3.0, maxf(3.1, width_m - 3.0))
         var center_z: float = rng.randf_range(3.0, maxf(3.1, depth_m - 3.0))
         var flower_a: Dictionary = flower_set[rng.randi_range(0, flower_set.size() - 1)]
@@ -42,6 +44,8 @@ func scatter_flowers(
         var count: int = rng.randi_range(8, 24) if voxel_lod == 0 else rng.randi_range(3, 7)
         var sigma: float = rng.randf_range(1.3, 2.8)
         for j in range(count):
+            if host._is_cancelled():
+                return
             var local_x: float = center_x + rng.randfn(0.0, sigma)
             var local_z: float = center_z + rng.randfn(0.0, sigma)
             var flower: Dictionary = flower_a if rng.randf() < 0.75 else flower_b
@@ -50,6 +54,8 @@ func scatter_flowers(
             flower_index += 1
 
     for single_index in range(10 if voxel_lod == 0 else 2):
+        if host._is_cancelled():
+            return
         var local_x: float = rng.randf_range(1.0, maxf(1.1, width_m - 1.0))
         var local_z: float = rng.randf_range(1.0, maxf(1.1, depth_m - 1.0))
         var flower: Dictionary = flower_set[rng.randi_range(0, flower_set.size() - 1)]
@@ -62,6 +68,8 @@ func _try_add_flower(
         rng: RandomNumberGenerator, flower: Dictionary,
         local_x: float, local_z: float, origin_x: float, origin_z: float,
         width_m: float, depth_m: float, index: int, voxel_lod: int) -> void:
+    if host._is_cancelled():
+        return
     var exclusion_radius: float = 0.32
     if not host._can_reserve(local_x, local_z, exclusion_radius, width_m, depth_m, reservations):
         return
@@ -81,6 +89,8 @@ func _try_add_flower(
     var flower_seed: int = host._mix(index + int(origin_x * 10.0), int(local_x * 100.0), int(local_z * 100.0))
     var mesh_grid = _coarsen_grid(grid, voxel_lod)
     mesh_grid.emit(piece, Vector3.ZERO, PROP_VOXEL_SIZE * float(1 << voxel_lod), flower_seed)
+    if host._is_cancelled():
+        return
     host._append_transformed_mesh(
         output, piece, Basis.IDENTITY,
         Vector3(local_x, surface.x, local_z)
@@ -96,6 +106,8 @@ func scatter_grass(
     var counts: Array = palette_data["grass_counts"]
     var target_clumps: int = GRASS_BLADE_COUNT if voxel_lod == 0 else 30
     for clump_index in range(target_clumps):
+        if host._is_cancelled():
+            return
         var local_x: float = rng.randf_range(0.8, maxf(0.9, width_m - 0.8))
         var local_z: float = rng.randf_range(0.8, maxf(0.9, depth_m - 0.8))
         var world_x: float = origin_x + local_x
@@ -133,6 +145,8 @@ func scatter_grass(
         var grass_seed: int = host._mix(clump_index + int(origin_x * 10.0), int(local_x * 100.0), int(local_z * 100.0))
         var mesh_grid = _coarsen_grid(grid, voxel_lod)
         mesh_grid.emit(piece, Vector3.ZERO, PROP_VOXEL_SIZE * float(1 << voxel_lod), grass_seed)
+        if host._is_cancelled():
+            return
         host._append_transformed_mesh(
             output, piece, Basis.IDENTITY,
             Vector3(local_x, surface.x, local_z)
