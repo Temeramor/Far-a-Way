@@ -806,6 +806,14 @@ func _create_mesh_builder() -> Object:
 func _poll_worker_tasks() -> void:
     for task_key in _running_tasks.keys():
         var task_id: int = int(task_key)
+        var active_record: Dictionary = _running_tasks[task_id]
+        var active_coord: Vector2i = active_record["coord"]
+        if not bool(active_record.get("cancel_requested", false)) and not _job_record_matches_current(active_record, active_coord):
+            var active_builder = active_record.get("builder")
+            if active_builder != null and active_builder.has_method("cancel"):
+                active_builder.call("cancel")
+            active_record["cancel_requested"] = true
+            _running_tasks[task_id] = active_record
         if not WorkerThreadPool.is_task_completed(task_id):
             continue
         WorkerThreadPool.wait_for_task_completion(task_id)
