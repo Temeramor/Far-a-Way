@@ -104,7 +104,7 @@ func _check_regression_baseline(p95_values: Array[float]) -> bool:
     if output == null:
         push_error("Could not write benchmark baseline: " + baseline_path)
         return false
-    output.store_string(JSON.stringify({"p95_ms": p95_values}, "\\t"))
+    output.store_string(JSON.stringify({"p95_ms": p95_values}, "\t"))
     return true
 
 
