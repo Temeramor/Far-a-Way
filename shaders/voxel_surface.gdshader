@@ -335,7 +335,9 @@ vec2 mountain_rock_projection(vec3 position, vec3 surface_normal) {
 }
 
 vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world, float crack_weight) {
-    return mountain_rock_color(pixel_world, lod_cell_size, lod_index == 0);
+    // The centre sample preserves the complete block/flute/chip texture. Four neighbours
+    // are enough for its relief gradient; 25 samples only softened the cavity term.
+    return mountain_rock_color(pixel_world, lod_cell_size, false);
 }
 
 vec3 voxel_lod_grass_color(vec2 world_xz, float cell_size) {
@@ -444,11 +446,11 @@ void fragment() {
         // simplifies with LOD: the cell size follows the same 20 cm-to-25.6 m voxel ladder.
         float lod_voxel_size = lod_cell_size;
         if (is_top_surface || is_surface_side) {
-            ALBEDO = mix(
-                voxel_lod_grass_color(world_position.xz, lod_voxel_size),
-                voxel_lod_rock_color(rock_world, lod_voxel_size),
-                top_rock_amount
-            );
+            ALBEDO = voxel_lod_grass_color(world_position.xz, lod_voxel_size);
+            if (top_rock_amount > 0.001) {
+                vec3 rock_color = voxel_lod_rock_color(rock_world, lod_voxel_size);
+                ALBEDO = mix(ALBEDO, rock_color, top_rock_amount);
+            }
             ROUGHNESS = mix(0.95, 0.84, top_rock_amount);
         } else if (COLOR.g > COLOR.r * 1.35) {
             ALBEDO = voxel_lod_grass_color(world_position.xz, lod_voxel_size);
@@ -470,11 +472,13 @@ void fragment() {
         if (is_top_surface || is_surface_side) {
             vec2 pixel_cell = floor(rock_world / lod_voxel_size);
             vec2 pixel_world = (pixel_cell + vec2(0.5)) * lod_voxel_size;
-            ALBEDO = mix(
-                grass_pixel(pixel_cell, pixel_world),
-                distance_aware_rock_pixel(pixel_cell, pixel_world, rock_crack_weight, lod_voxel_size),
-                top_rock_amount
-            );
+            ALBEDO = grass_pixel(pixel_cell, pixel_world);
+            if (top_rock_amount > 0.001) {
+                vec3 rock_color = distance_aware_rock_pixel(
+                    pixel_cell, pixel_world, rock_crack_weight, lod_voxel_size
+                );
+                ALBEDO = mix(ALBEDO, rock_color, top_rock_amount);
+            }
             ROUGHNESS = mix(0.95, 0.84, top_rock_amount);
         } else if (COLOR.g > COLOR.r * 1.35) {
             vec2 pixel_cell = floor(world_position.xz / lod_voxel_size);
@@ -502,10 +506,12 @@ void fragment() {
         float rock_mask = (is_top_surface || is_surface_side)
             ? top_rock_amount
             : ((COLOR.g > COLOR.r * 1.35 || COLOR.r > COLOR.g * 1.15) ? 0.0 : 1.0);
-        float roughness_frequency = lod_index >= 6 ? 0.0040 : (lod_index >= 4 ? 0.018 : 0.11);
-        float roughness_field = value_noise(world_position.xz * roughness_frequency
-            + vec2(seed_low * 0.00029, 37.4));
-        ROUGHNESS = clamp(ROUGHNESS + (roughness_field - 0.5) * 0.18 * rock_mask, 0.70, 0.99);
+        if (rock_mask > 0.001) {
+            float roughness_frequency = lod_index >= 6 ? 0.0040 : (lod_index >= 4 ? 0.018 : 0.11);
+            float roughness_field = value_noise(world_position.xz * roughness_frequency
+                + vec2(seed_low * 0.00029, 37.4));
+            ROUGHNESS = clamp(ROUGHNESS + (roughness_field - 0.5) * 0.18 * rock_mask, 0.70, 0.99);
+        }
     }
     METALLIC = 0.0;
 }
