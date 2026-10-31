@@ -1,6 +1,6 @@
 #include "voxen_native_builder.h"
 
-#include <godot_cpp/classes/fast_noise_lite.hpp>
+#include "../thirdparty/FastNoiseLite.h"
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/array.hpp>
@@ -45,12 +45,12 @@ constexpr int ROCK = 3;
 struct NoiseSet {
     int64_t seed_value = 0;
     double world_size_m = 2000.0;
-    Ref<FastNoiseLite> macro;
-    Ref<FastNoiseLite> hills;
-    Ref<FastNoiseLite> detail;
-    Ref<FastNoiseLite> ridges;
-    Ref<FastNoiseLite> micro_ridge;
-    Ref<FastNoiseLite> transition;
+    fastnoiselite::FastNoiseLite macro;
+    fastnoiselite::FastNoiseLite hills;
+    fastnoiselite::FastNoiseLite detail;
+    fastnoiselite::FastNoiseLite ridges;
+    fastnoiselite::FastNoiseLite micro_ridge;
+    fastnoiselite::FastNoiseLite transition;
 
     struct MountainSegment {
         double ax = 0.0, az = 0.0, dx = 0.0, dz = 0.0;
@@ -63,29 +63,29 @@ struct NoiseSet {
     mutable size_t surface_height_cache_cursor = 0;
     static constexpr size_t MAX_SURFACE_CACHE_ENTRIES = 131072;
 
-    static Ref<FastNoiseLite> make_noise(int32_t seed, int octaves, double gain,
-            FastNoiseLite::FractalType fractal_mode = FastNoiseLite::FRACTAL_FBM) {
-        Ref<FastNoiseLite> noise;
-        noise.instantiate();
-        noise->set_seed(seed);
-        noise->set_noise_type(FastNoiseLite::TYPE_SIMPLEX);
-        noise->set_frequency(1.0);
-        noise->set_fractal_type(fractal_mode);
-        noise->set_fractal_octaves(octaves);
-        noise->set_fractal_lacunarity(2.05);
-        noise->set_fractal_gain(gain);
+    static fastnoiselite::FastNoiseLite make_noise(
+            int32_t seed, int octaves, float gain, bool ridged = false) {
+        fastnoiselite::FastNoiseLite noise;
+        noise.SetSeed(seed);
+        noise.SetNoiseType(fastnoiselite::FastNoiseLite::NoiseType_OpenSimplex2);
+        noise.SetFrequency(1.0f);
+        noise.SetFractalType(ridged
+            ? fastnoiselite::FastNoiseLite::FractalType_Ridged
+            : fastnoiselite::FastNoiseLite::FractalType_FBm);
+        noise.SetFractalOctaves(octaves);
+        noise.SetFractalLacunarity(2.05f);
+        noise.SetFractalGain(gain);
         return noise;
     }
 
-    explicit NoiseSet(int64_t seed) : seed_value(seed) {
-        // Per-job noise resources avoid sharing mutable Godot objects across workers.
-        macro = make_noise(static_cast<int32_t>(seed + 101), 4, 0.52);
-        hills = make_noise(static_cast<int32_t>(seed + 307), 4, 0.52);
-        detail = make_noise(static_cast<int32_t>(seed + 503), 3, 0.52);
-        ridges = make_noise(static_cast<int32_t>(seed + 709), 5, 0.52, FastNoiseLite::FRACTAL_RIDGED);
-        micro_ridge = make_noise(static_cast<int32_t>(seed + 907), 3, 0.52, FastNoiseLite::FRACTAL_RIDGED);
-        transition = make_noise(static_cast<int32_t>(seed + 1301), 2, 0.52);
-    }
+    explicit NoiseSet(int64_t seed)
+            : seed_value(seed),
+              macro(make_noise(static_cast<int32_t>(seed + 101), 4, 0.52f)),
+              hills(make_noise(static_cast<int32_t>(seed + 307), 4, 0.52f)),
+              detail(make_noise(static_cast<int32_t>(seed + 503), 3, 0.52f)),
+              ridges(make_noise(static_cast<int32_t>(seed + 709), 5, 0.52f, true)),
+              micro_ridge(make_noise(static_cast<int32_t>(seed + 907), 3, 0.52f, true)),
+              transition(make_noise(static_cast<int32_t>(seed + 1301), 2, 0.52f)) {}
 
     void configure_from_job(const Dictionary &job_data, double fallback_world_size_m) {
         world_size_m = static_cast<double>(job_data.get("terrain_world_size_m", fallback_world_size_m));
@@ -115,11 +115,11 @@ struct NoiseSet {
 
     double surface_height(double x, double z) const {
         const double frequency_scale = std::clamp(REFERENCE_WORLD_SIZE_M / std::max(world_size_m, 1.0), 0.35, 6.0);
-        const double macro_value = macro->get_noise_2d(x * 0.00028 * frequency_scale, z * 0.00028 * frequency_scale);
-        const double hills_value = hills->get_noise_2d(x * 0.00115 * frequency_scale, z * 0.00115 * frequency_scale);
-        const double detail_value = detail->get_noise_2d(x * 0.0048 * frequency_scale, z * 0.0048 * frequency_scale);
-        const double ridge_detail = (ridges->get_noise_2d(x * 0.00082 * frequency_scale, z * 0.00082 * frequency_scale) + 1.0) * 0.5;
-        const double micro_value = micro_ridge->get_noise_2d(x * 0.0034 * frequency_scale, z * 0.0034 * frequency_scale);
+        const double macro_value = macro.GetNoise(x * 0.00028 * frequency_scale, z * 0.00028 * frequency_scale);
+        const double hills_value = hills.GetNoise(x * 0.00115 * frequency_scale, z * 0.00115 * frequency_scale);
+        const double detail_value = detail.GetNoise(x * 0.0048 * frequency_scale, z * 0.0048 * frequency_scale);
+        const double ridge_detail = (ridges.GetNoise(x * 0.00082 * frequency_scale, z * 0.00082 * frequency_scale) + 1.0) * 0.5;
+        const double micro_value = micro_ridge.GetNoise(x * 0.0034 * frequency_scale, z * 0.0034 * frequency_scale);
 
         double height = 26.0 + macro_value * 17.0 + hills_value * 10.0;
         height += std::max(hills_value - 0.12, 0.0) * 18.0;
@@ -256,7 +256,7 @@ struct NoiseSet {
 
     double surface_rock_weight(double slope, double x, double z) const {
         const double frequency_scale = std::clamp(REFERENCE_WORLD_SIZE_M / std::max(world_size_m, 1.0), 0.35, 6.0);
-        const double transition_noise = transition->get_noise_2d(x * 0.008 * frequency_scale, z * 0.008 * frequency_scale) * 0.12;
+        const double transition_noise = transition.GetNoise(x * 0.008 * frequency_scale, z * 0.008 * frequency_scale) * 0.12;
         const double normal_slope = 1.0 - 1.0 / std::sqrt(1.0 + slope * slope);
         return smoothstep(0.30, 0.48, normal_slope + transition_noise);
     }
