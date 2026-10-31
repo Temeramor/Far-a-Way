@@ -801,6 +801,9 @@ func _create_mesh_builder() -> Object:
     var native_builder: Object = ClassDB.instantiate("VoxEnNativeBuilder")
     if native_builder == null:
         push_error("Cannot instantiate VoxEnNativeBuilder. Check the native library build.")
+        return null
+    if _generator != null:
+        native_builder.call("share_terrain_sampler", _generator.get_native_sampler())
     return native_builder
 
 func _poll_worker_tasks() -> void:
