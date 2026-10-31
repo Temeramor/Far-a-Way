@@ -465,13 +465,26 @@ func _poll_decor_tasks() -> void:
     var applied_count: int = 0
     for task_key in _running_decor_tasks.keys():
         var task_id: int = int(task_key)
+        var active_record: Dictionary = _running_decor_tasks[task_id]
+        var active_coord: Vector2i = active_record["coord"]
+        var stale_task: bool = (
+            int(active_record["epoch"]) != _generation_epoch
+            or not _entries.has(active_coord)
+            or not _world._wanted.has(active_coord)
+        )
+        if stale_task and not bool(active_record.get("cancel_requested", false)):
+            var active_builder = active_record.get("builder")
+            if active_builder != null and active_builder.has_method("cancel"):
+                active_builder.call("cancel")
+            active_record["cancel_requested"] = true
+            _running_decor_tasks[task_id] = active_record
         if not WorkerThreadPool.is_task_completed(task_id):
             continue
         WorkerThreadPool.wait_for_task_completion(task_id)
         var record: Dictionary = _running_decor_tasks[task_id]
         _running_decor_tasks.erase(task_id)
         var coord: Vector2i = record["coord"]
-        if int(record["epoch"]) != _generation_epoch or not _entries.has(coord):
+        if int(record["epoch"]) != _generation_epoch or not _entries.has(coord) or not _world._wanted.has(coord):
             continue
 
         var entry: Dictionary = _entries[coord]
