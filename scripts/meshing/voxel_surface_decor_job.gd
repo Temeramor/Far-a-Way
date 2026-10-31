@@ -21,9 +21,9 @@ var _reservation_cells: Dictionary = {}
 var _cancellation_token: Object
 
 
-func configure(seed_value: int, size_m: float) -> void:
+func configure(seed_value: int, size_m: float, native_sampler: Object = null) -> void:
     world_size_m = size_m
-    _generator = GeneratorScript.new(seed_value, size_m)
+    _generator = GeneratorScript.new(seed_value, size_m, native_sampler)
     _cancellation_token = ClassDB.instantiate("VoxEnNativeBuilder")
     # This task owns its terrain sampler and cache; it does not read mutable VoxelWorld state.
 
