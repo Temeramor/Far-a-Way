@@ -252,7 +252,7 @@ vec3 mountain_ramp_moss(float q) {
 
 // Pixel coordinates are locked to world space. Low-detail LODs use a five-point
 // stencil to retain the same relief language without evaluating 25 expensive samples.
-vec3 mountain_rock_color(vec2 world_xy, float meters_per_pixel, bool full_relief) {
+vec3 mountain_rock_color(vec2 world_xy, float meters_per_pixel) {
     float pixel_scale = max(meters_per_pixel, 0.1);
     ivec2 pixel = ivec2(floor(world_xy / pixel_scale));
     int seed = int(seed_low) + int(seed_high) * 65536;
@@ -270,9 +270,9 @@ vec3 mountain_rock_color(vec2 world_xy, float meters_per_pixel, bool full_relief
         for (int i = -2; i <= 2; i++) {
             bool center = (i == 0 && j == 0);
             bool cross_neighbor = (j == 0 && abs(i) == 1) || (i == 0 && abs(j) == 1);
-            if (full_relief || center || cross_neighbor) {
+            if (center || cross_neighbor) {
                 vec3 sample_value = rock_sample(vec2(pixel + ivec2(i, j)), s);
-                float sample_weight = full_relief ? 1.0 : (center ? 21.0 : 1.0);
+                float sample_weight = center ? 21.0 : 1.0;
                 sum += sample_value.x * sample_weight;
                 if (center) {
                     height_center = sample_value.x;
@@ -337,7 +337,7 @@ vec2 mountain_rock_projection(vec3 position, vec3 surface_normal) {
 vec3 rock_pixel(vec2 pixel_cell, vec2 pixel_world, float crack_weight) {
     // The centre sample preserves the complete block/flute/chip texture. Four neighbours
     // are enough for its relief gradient; 25 samples only softened the cavity term.
-    return mountain_rock_color(pixel_world, lod_cell_size, false);
+    return mountain_rock_color(pixel_world, lod_cell_size);
 }
 
 vec3 voxel_lod_grass_color(vec2 world_xz, float cell_size) {
@@ -354,7 +354,7 @@ vec3 voxel_lod_grass_color(vec2 world_xz, float cell_size) {
 vec3 voxel_lod_rock_color(vec2 world_xz, float cell_size) {
     vec2 cell = floor(world_xz / cell_size);
     vec2 center = (cell + vec2(0.5)) * cell_size;
-    return mountain_rock_color(center, cell_size, false);
+    return mountain_rock_color(center, cell_size);
 }
 
 // Switch to the five-point relief approximation when fine details become sub-pixel.
