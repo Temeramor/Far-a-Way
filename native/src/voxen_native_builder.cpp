@@ -285,7 +285,8 @@ Color rgb8(int r, int g, int b, double a = 1.0) {
 }
 
 struct MeshBuild {
-    NoiseSet noise;
+    std::shared_ptr<NoiseSet> noise;
+    bool configure_noise_from_job = true;
     const std::atomic<bool> *cancel_flag = nullptr;
     Vector2i coord;
     int lod = 0;
@@ -327,7 +328,10 @@ struct MeshBuild {
     std::vector<Vector3> smooth_shadow_normals;
     std::vector<int32_t> smooth_shadow_indices;
 
-    explicit MeshBuild(int64_t seed, const std::atomic<bool> *token) : noise(seed), cancel_flag(token) {}
+    explicit MeshBuild(int64_t seed, const std::atomic<bool> *token,
+            const std::shared_ptr<NoiseSet> &shared_sampler)
+            : noise(shared_sampler ? shared_sampler : std::make_shared<NoiseSet>(seed)),
+              configure_noise_from_job(!shared_sampler), cancel_flag(token) {}
 
     bool is_cancelled() const {
         return cancel_flag != nullptr && cancel_flag->load(std::memory_order_relaxed);
@@ -374,7 +378,7 @@ struct MeshBuild {
         const double world_x = world_min_x + gx * VOXEL_SIZE;
         const double world_z = world_min_z + gz * VOXEL_SIZE;
         // Keep continuous heights until the interpolated mesh sample is quantised.
-        return std::max(1.0, noise.surface_height(world_x, world_z) / VOXEL_SIZE);
+        return std::max(1.0, noise->surface_height(world_x, world_z) / VOXEL_SIZE);
     }
 
     int32_t cached_height_voxels(double gx, double gz) const {
@@ -1139,6 +1143,7 @@ void VoxEnNativeBuilder::_bind_methods() {
     ClassDB::bind_method(D_METHOD("cancel"), &VoxEnNativeBuilder::cancel);
     ClassDB::bind_method(D_METHOD("is_cancelled"), &VoxEnNativeBuilder::is_cancelled);
     ClassDB::bind_method(D_METHOD("configure_terrain_sampler", "job_data"), &VoxEnNativeBuilder::configure_terrain_sampler);
+    ClassDB::bind_method(D_METHOD("share_terrain_sampler", "source"), &VoxEnNativeBuilder::share_terrain_sampler);
     ClassDB::bind_method(D_METHOD("get_surface_height", "x", "z"), &VoxEnNativeBuilder::get_surface_height);
     ClassDB::bind_method(D_METHOD("get_surface_rock_weight", "slope", "x", "z"), &VoxEnNativeBuilder::get_surface_rock_weight);
     ClassDB::bind_method(D_METHOD("get_surface_sample", "x", "z", "step_m"), &VoxEnNativeBuilder::get_surface_sample);
@@ -1151,7 +1156,11 @@ void VoxEnNativeBuilder::_bind_methods() {
 Dictionary VoxEnNativeBuilder::build_mesh_data(const Dictionary &job_data) {
     const int64_t started_usec = Time::get_singleton()->get_ticks_usec();
     const int64_t seed = static_cast<int64_t>(job_data.get("seed", 240518));
-    MeshBuild build(seed, &cancel_requested);
+    std::shared_ptr<NoiseSet> shared_sampler;
+    if (terrain_sampler_data) {
+        shared_sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
+    }
+    MeshBuild build(seed, &cancel_requested, shared_sampler);
     result = build.run(job_data, started_usec);
     if (cancel_requested.load(std::memory_order_relaxed)) {
         result = Dictionary();
@@ -1165,6 +1174,13 @@ void VoxEnNativeBuilder::cancel() {
 
 bool VoxEnNativeBuilder::is_cancelled() const {
     return cancel_requested.load(std::memory_order_relaxed);
+}
+
+void VoxEnNativeBuilder::share_terrain_sampler(Object *source) {
+    VoxEnNativeBuilder *source_builder = Object::cast_to<VoxEnNativeBuilder>(source);
+    if (source_builder != nullptr) {
+        terrain_sampler_data = source_builder->terrain_sampler_data;
+    }
 }
 
 void VoxEnNativeBuilder::configure_terrain_sampler(const Dictionary &job_data) {
