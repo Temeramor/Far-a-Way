@@ -116,17 +116,22 @@ struct NoiseSet {
         }
     }
 
+    static float sample_noise(const fastnoiselite::FastNoiseLite &noise, double x, double z) {
+        // Godot's real_t is float in the current Windows build; preserve its input precision.
+        return noise.GetNoise(static_cast<float>(x), static_cast<float>(z));
+    }
+
     static double smoothstep(double edge_a, double edge_b, double value) {
         const double t = std::clamp((value - edge_a) / (edge_b - edge_a), 0.0, 1.0);
         return t * t * (3.0 - 2.0 * t);
     }
 
     double surface_height(double x, double z) const {
-        const double macro_value = macro.GetNoise(x, z);
-        const double hills_value = hills.GetNoise(x, z);
-        const double detail_value = detail.GetNoise(x, z);
-        const double ridge_detail = (ridges.GetNoise(x, z) + 1.0) * 0.5;
-        const double micro_value = micro_ridge.GetNoise(x, z);
+        const double macro_value = sample_noise(macro, x, z);
+        const double hills_value = sample_noise(hills, x, z);
+        const double detail_value = sample_noise(detail, x, z);
+        const double ridge_detail = (sample_noise(ridges, x, z) + 1.0) * 0.5;
+        const double micro_value = sample_noise(micro_ridge, x, z);
 
         double height = 26.0 + macro_value * 17.0 + hills_value * 10.0;
         height += std::max(hills_value - 0.12, 0.0) * 18.0;
@@ -262,7 +267,7 @@ struct NoiseSet {
     }
 
     double surface_rock_weight(double slope, double x, double z) const {
-        const double transition_noise = transition.GetNoise(x, z) * 0.12;
+        const double transition_noise = sample_noise(transition, x, z) * 0.12;
         const double normal_slope = 1.0 - 1.0 / std::sqrt(1.0 + slope * slope);
         return smoothstep(0.30, 0.48, normal_slope + transition_noise);
     }
