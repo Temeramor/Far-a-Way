@@ -18,6 +18,7 @@ var _generator: VoxelTerrainGenerator
 var _rock_scatter = RockScatterScript.new()
 var _vegetation_scatter = VegetationScatterScript.new()
 var _reservation_cells: Dictionary = {}
+var _cancellation_token: Object
 
 
 func configure(seed_value: int, size_m: float) -> void:
@@ -26,7 +27,18 @@ func configure(seed_value: int, size_m: float) -> void:
     # This task owns its terrain sampler and cache; it does not read mutable VoxelWorld state.
 
 
+func cancel() -> void:
+    if _cancellation_token != null:
+        _cancellation_token.call("cancel")
+
+
+func _is_cancelled() -> bool:
+    return _cancellation_token != null and bool(_cancellation_token.call("is_cancelled"))
+
+
 func build_rock_data(job_data: Dictionary) -> void:
+    if _is_cancelled():
+        return
     _reservation_cells.clear()
     var mesh_data = MeshDataScript.new()
     var reservations: Array[Dictionary] = []
@@ -46,6 +58,8 @@ func build_rock_data(job_data: Dictionary) -> void:
             float(job_data["width_m"]), float(job_data["depth_m"]),
             int(job_data["prop_lod"]), distance_m, collision_data, build_collisions
         )
+    if _is_cancelled():
+        return
 
     result = {
         "kind": "rocks",
@@ -57,6 +71,8 @@ func build_rock_data(job_data: Dictionary) -> void:
 
 
 func build_plant_data(job_data: Dictionary) -> void:
+    if _is_cancelled():
+        return
     _reservation_cells.clear()
     var mesh_data = MeshDataScript.new()
     var reservations: Array[Dictionary] = []
@@ -73,6 +89,8 @@ func build_plant_data(job_data: Dictionary) -> void:
         float(job_data["width_m"]), float(job_data["depth_m"]),
         int(job_data["voxel_lod"])
     )
+    if _is_cancelled():
+        return
     result = {
         "kind": "plants",
         "mesh_data": mesh_data,
@@ -150,17 +168,22 @@ func _make_object_grid(width: int, height: int, depth: int, palette_data: Dictio
 
 
 func _append_transformed_mesh(destination, source, basis: Basis, origin: Vector3) -> void:
-    if source.verts.is_empty():
+    if _is_cancelled() or source.verts.is_empty():
         return
     var first_index: int = destination.verts.size()
     for i in range(source.verts.size()):
+        if (i & 255) == 0 and _is_cancelled():
+            return
         destination.verts.append(origin + basis * source.verts[i])
         destination.normals.append((basis * source.normals[i]).normalized())
         destination.colors.append(source.colors[i])
         destination.uv2s.append(
             source.uv2s[i] if source.uv2s.size() == source.verts.size() else Vector2.ZERO
         )
-    for index_value in source.indices:
+    for index_index in range(source.indices.size()):
+        if (index_index & 1023) == 0 and _is_cancelled():
+            return
+        var index_value: int = source.indices[index_index]
         destination.indices.append(first_index + int(index_value))
 
 
