@@ -59,6 +59,7 @@ jobs:
             if ($exitCode -ne 0) { exit $exitCode }
           }
           Invoke-GodotTest "res://tests/terrain_smoke_test.gd" "terrain-test.log"
+          Invoke-GodotTest "res://tests/native_terrain_sampler_test.gd" "native-sampler-test.log"
           Invoke-GodotTest "res://tests/native_builder_smoke_test.gd" "native-builder-test.log"
           Invoke-GodotTest "res://tests/decoration_spatial_index_test.gd" "decor-index-test.log"
           Invoke-GodotTest "res://tests/lod_hierarchy_smoke_test.gd" "lod-test.log"
