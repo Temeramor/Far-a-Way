@@ -168,6 +168,7 @@ scons platform=windows target=template_release arch=x86_64
 godot --headless --editor --path . --quit
 godot --headless --path . --script res://tests/terrain_smoke_test.gd
 godot --headless --path . --script res://tests/native_terrain_sampler_test.gd
+godot --headless --path . --script res://tests/fastnoise_parity_test.gd
 godot --headless --path . --script res://tests/lod_hierarchy_smoke_test.gd
 godot --headless --path . --script res://tests/native_builder_smoke_test.gd
 godot --headless --path . --script res://tests/shadow_lod_smoke_test.gd
