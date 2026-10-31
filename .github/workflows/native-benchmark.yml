@@ -61,11 +61,30 @@ jobs:
           & "$env:GODOT_EXE" --headless --path . --script res://tests/voxel_surface_scatter_smoke_test.gd
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Restore LOD benchmark baseline
+        uses: actions/cache/restore@v4
+        with:
+          path: .ci/native-chunk-benchmark-baseline.json
+          key: voxen-chunk-baseline-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            voxen-chunk-baseline-${{ runner.os }}-${{ github.ref_name }}-
+            voxen-chunk-baseline-${{ runner.os }}-main-
+
       - name: Run LOD benchmark
         shell: pwsh
+        env:
+          VOXEN_BENCHMARK_BASELINE_PATH: ${{ github.workspace }}/.ci/native-chunk-benchmark-baseline.json
         run: |
+          New-Item -ItemType Directory -Force .ci | Out-Null
           & "$env:GODOT_EXE" --headless --path . --script res://tests/native_chunk_benchmark.gd 2>&1 | Tee-Object -FilePath native-benchmark.csv
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Save LOD benchmark baseline
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: .ci/native-chunk-benchmark-baseline.json
+          key: voxen-chunk-baseline-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload benchmark output
         if: always()
