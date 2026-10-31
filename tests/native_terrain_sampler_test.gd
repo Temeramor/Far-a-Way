@@ -34,6 +34,13 @@ func _initialize() -> void:
     var surface: Vector3 = generator.get_surface_sample(point_x, point_z)
     var shared_generator = GeneratorScript.new(1337, 2000.0, sampler)
     var shared_surface: Vector3 = shared_generator.get_surface_sample(point_x, point_z)
+    var shared_builder: Object = ClassDB.instantiate("VoxEnNativeBuilder")
+    shared_builder.call("share_terrain_sampler", sampler)
+    var builder_height: float = float(shared_builder.call("get_surface_height", point_x, point_z))
+    if absf(builder_height - generator.get_surface_height(point_x, point_z)) > 0.0001:
+        push_error("Native chunk builders must share the world's exact NoiseSet instance.")
+        quit(1)
+        return
     if surface.distance_to(shared_surface) > 0.0001:
         push_error("World and decoration generators must share identical native samples.")
         quit(1)
