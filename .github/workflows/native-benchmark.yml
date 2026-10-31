@@ -7,6 +7,10 @@ on:
     branches: [main, update]
   workflow_dispatch:
 
+concurrency:
+  group: native-benchmark-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   windows-native-benchmark:
     runs-on: windows-latest
