@@ -19,6 +19,8 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <mutex>
+#include <unordered_map>
 #include <vector>
 
 using namespace godot;
@@ -55,6 +57,11 @@ struct NoiseSet {
         double length_squared = 1.0, width = 1.0, height = 1.0, phase = 0.0;
     };
     std::vector<MountainSegment> mountain_segments;
+    mutable std::mutex surface_cache_mutex;
+    mutable std::unordered_map<uint64_t, double> surface_height_cache;
+    mutable std::vector<uint64_t> surface_height_cache_order;
+    mutable size_t surface_height_cache_cursor = 0;
+    static constexpr size_t MAX_SURFACE_CACHE_ENTRIES = 131072;
 
     static Ref<FastNoiseLite> make_noise(int32_t seed, int octaves, double gain,
             FastNoiseLite::FractalType fractal_mode = FastNoiseLite::FRACTAL_FBM) {
@@ -154,6 +161,93 @@ struct NoiseSet {
         const double spawn_height = 25.0 + macro_value * 3.0 + detail_value * 0.8;
         height = height * (1.0 - spawn_fade) + spawn_height * spawn_fade;
         return std::max(VOXEL_SIZE, std::clamp(height, -80.0, 1600.0));
+    }
+
+    double cached_grid_height(int32_t grid_x, int32_t grid_z) const {
+        const uint64_t key =
+            (static_cast<uint64_t>(static_cast<uint32_t>(grid_x)) << 32) |
+            static_cast<uint32_t>(grid_z);
+        {
+            std::lock_guard<std::mutex> lock(surface_cache_mutex);
+            const auto found = surface_height_cache.find(key);
+            if (found != surface_height_cache.end()) return found->second;
+        }
+
+        constexpr double sample_step = 0.5;
+        const double height = surface_height(
+            static_cast<double>(grid_x) * sample_step,
+            static_cast<double>(grid_z) * sample_step);
+        {
+            std::lock_guard<std::mutex> lock(surface_cache_mutex);
+            const auto found = surface_height_cache.find(key);
+            if (found != surface_height_cache.end()) return found->second;
+            if (surface_height_cache.size() >= MAX_SURFACE_CACHE_ENTRIES) {
+                const uint64_t expired_key = surface_height_cache_order[surface_height_cache_cursor];
+                surface_height_cache.erase(expired_key);
+                surface_height_cache_order[surface_height_cache_cursor] = key;
+                surface_height_cache_cursor =
+                    (surface_height_cache_cursor + 1) % MAX_SURFACE_CACHE_ENTRIES;
+            } else {
+                surface_height_cache_order.push_back(key);
+            }
+            surface_height_cache.emplace(key, height);
+        }
+        return height;
+    }
+
+    double surface_height_cached(double x, double z) const {
+        constexpr double sample_step = 0.5;
+        const int32_t grid_x = static_cast<int32_t>(std::llround(x / sample_step));
+        const int32_t grid_z = static_cast<int32_t>(std::llround(z / sample_step));
+        if (std::abs(x - static_cast<double>(grid_x) * sample_step) < 0.0001 &&
+                std::abs(z - static_cast<double>(grid_z) * sample_step) < 0.0001) {
+            return cached_grid_height(grid_x, grid_z);
+        }
+        return surface_height(x, z);
+    }
+
+    Vector3 surface_sample(double x, double z, double step_m) const {
+        const double safe_step = std::max(step_m, 0.0001);
+        const double grid_x_float = x / safe_step;
+        const double grid_z_float = z / safe_step;
+        const int32_t grid_x = static_cast<int32_t>(std::floor(grid_x_float));
+        const int32_t grid_z = static_cast<int32_t>(std::floor(grid_z_float));
+        const double tx = std::clamp(grid_x_float - static_cast<double>(grid_x), 0.0, 1.0);
+        const double tz = std::clamp(grid_z_float - static_cast<double>(grid_z), 0.0, 1.0);
+        const auto sample = [this, safe_step](int32_t sx, int32_t sz) {
+            if (std::abs(safe_step - 0.5) < 0.000001) {
+                return cached_grid_height(sx, sz);
+            }
+            return surface_height(static_cast<double>(sx) * safe_step,
+                static_cast<double>(sz) * safe_step);
+        };
+        const double h00 = sample(grid_x, grid_z);
+        const double h10 = sample(grid_x + 1, grid_z);
+        const double h01 = sample(grid_x, grid_z + 1);
+        const double h11 = sample(grid_x + 1, grid_z + 1);
+        const double top = h00 + (h10 - h00) * tx;
+        const double bottom = h01 + (h11 - h01) * tx;
+        const double height = top + (bottom - top) * tz;
+        const double slope_x = ((h10 - h00) * (1.0 - tz) + (h11 - h01) * tz) / safe_step;
+        const double slope_z = ((h01 - h00) * (1.0 - tx) + (h11 - h10) * tx) / safe_step;
+        return Vector3(height, slope_x, slope_z);
+    }
+
+    PackedFloat32Array sample_height_grid(double origin_x, double origin_z,
+            int32_t columns, int32_t rows, double step_m) const {
+        PackedFloat32Array samples;
+        if (columns <= 0 || rows <= 0) return samples;
+        const int64_t total = static_cast<int64_t>(columns) * rows;
+        samples.resize(total);
+        for (int32_t z = 0; z < rows; ++z) {
+            for (int32_t x = 0; x < columns; ++x) {
+                const double world_x = origin_x + static_cast<double>(x) * step_m;
+                const double world_z = origin_z + static_cast<double>(z) * step_m;
+                samples.set(static_cast<int64_t>(z) * columns + x,
+                    static_cast<float>(surface_height_cached(world_x, world_z)));
+            }
+        }
+        return samples;
     }
 
     int32_t surface_height_voxels(double x, double z) const {
