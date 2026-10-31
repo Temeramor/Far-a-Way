@@ -26,6 +26,7 @@ public:
     void cancel();
     bool is_cancelled() const;
     void configure_terrain_sampler(const Dictionary &job_data);
+    void share_terrain_sampler(Object *source);
     double get_surface_height(double x, double z) const;
     Vector3 get_surface_sample(double x, double z, double step_m) const;
     PackedFloat32Array sample_height_grid(double origin_x, double origin_z, int32_t columns, int32_t rows, double step_m) const;
