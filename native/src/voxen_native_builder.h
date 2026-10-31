@@ -5,6 +5,8 @@
 
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_float32_array.hpp>
+#include <godot_cpp/variant/vector3.hpp>
 
 namespace godot {
 
@@ -24,6 +26,8 @@ public:
     bool is_cancelled() const;
     void configure_terrain_sampler(const Dictionary &job_data);
     double get_surface_height(double x, double z) const;
+    Vector3 get_surface_sample(double x, double z, double step_m) const;
+    PackedFloat32Array sample_height_grid(double origin_x, double origin_z, int32_t columns, int32_t rows, double step_m) const;
     double get_surface_rock_weight(double slope, double x, double z) const;
     void set_result(const Dictionary &value);
     Dictionary get_result() const;
