@@ -14,9 +14,6 @@ uniform int lod_index = 0;
 uniform float mountain_blocks : hint_range(0.0, 1.5) = 0.25;
 uniform float mountain_flutes : hint_range(0.0, 1.5) = 1.1;
 uniform float mountain_chips : hint_range(0.0, 1.5) = 0.6;
-uniform float mountain_streaks : hint_range(0.0, 1.5) = 0.9;
-uniform float mountain_moss : hint_range(0.0, 1.0) = 0.0;
-uniform float mountain_relief : hint_range(1.0, 10.0) = 4.0;
 uniform float mountain_contrast : hint_range(0.6, 1.8) = 1.1;
 uniform float mountain_levels : hint_range(4.0, 24.0, 1.0) = 10.0;
 uniform float mountain_dither : hint_range(0.0, 1.0) = 0.5;
@@ -25,6 +22,7 @@ varying vec3 world_position;
 varying vec3 world_normal;
 varying vec3 view_up_direction;
 varying float camera_distance;
+varying float rock_specular_suppression;
 
 vec3 palette_color(vec3 srgb) {
     return pow(srgb, vec3(2.2));
@@ -184,8 +182,8 @@ RockWorley rock_worley(vec2 p, int s) {
     return RockWorley(sqrt(f1), sqrt(f2), best_cell, best_delta);
 }
 
-// Returns height, local darkening and the stable block hue identifier.
-vec3 rock_sample(vec2 pixel_position, int s) {
+// Returns the procedural colour-pattern field and stable block hue identifier.
+vec2 rock_sample(vec2 pixel_position, int s) {
     float x = pixel_position.x;
     float y = pixel_position.y;
     float wx = x + (rock_fbm(vec2(x * 0.018, y * 0.018), s + 1, 3) - 0.5) * 34.0;
@@ -215,11 +213,7 @@ vec3 rock_sample(vec2 pixel_position, int s) {
     float height = mountain_blocks * block + mountain_flutes * flute
         + mountain_chips * chip + grain * 0.12;
 
-    float streak = rock_sm((rock_fbm(vec2(x * 0.2, y * 0.012), s + 20, 3) - 0.5) / 0.18);
-    float macro = rock_fbm(vec2(x * 0.01, y * 0.01), s + 21, 3) - 0.5;
-    float darkening = crack * 0.2 * mountain_blocks + streak * mountain_streaks * 0.3
-        - macro * 0.3;
-    return vec3(height, darkening, id);
+    return vec2(height, id);
 }
 
 const float ROCK_BAYER[16] = float[16](
@@ -232,72 +226,24 @@ const vec3 MOUNTAIN_ROCK_RAMP[7] = vec3[7](
     vec3(139.0, 142.0, 144.0), vec3(185.0, 187.0, 186.0),
     vec3(226.0, 226.0, 222.0)
 );
-const vec3 MOUNTAIN_MOSS_RAMP[6] = vec3[6](
-    vec3(29.0, 36.0, 18.0), vec3(58.0, 66.0, 25.0),
-    vec3(95.0, 101.0, 33.0), vec3(138.0, 127.0, 44.0),
-    vec3(183.0, 154.0, 58.0), vec3(211.0, 185.0, 87.0)
-);
-
 vec3 mountain_ramp_rock(float q) {
     float p = q * 6.0;
     int index = min(5, int(floor(p)));
     return mix(MOUNTAIN_ROCK_RAMP[index], MOUNTAIN_ROCK_RAMP[index + 1], p - float(index));
 }
 
-vec3 mountain_ramp_moss(float q) {
-    float p = q * 5.0;
-    int index = min(4, int(floor(p)));
-    return mix(MOUNTAIN_MOSS_RAMP[index], MOUNTAIN_MOSS_RAMP[index + 1], p - float(index));
-}
-
-// Pixel coordinates are locked to world space. Low-detail LODs use a five-point
-// stencil to retain the same relief language without evaluating 25 expensive samples.
+// Pixel coordinates are locked to world space. This function generates colour only:
+// no height-gradient lighting, cavity shading, baked streak shadows or material reflections.
 vec3 mountain_rock_color(vec2 world_xy, float meters_per_pixel) {
     float pixel_scale = max(meters_per_pixel, 0.1);
     ivec2 pixel = ivec2(floor(world_xy / pixel_scale));
     int seed = int(seed_low) + int(seed_high) * 65536;
     int s = seed * 131 + 7;
 
-    float sum = 0.0;
-    float height_left = 0.0;
-    float height_right = 0.0;
-    float height_up = 0.0;
-    float height_down = 0.0;
-    float height_center = 0.0;
-    vec3 center_sample = vec3(0.0);
-
-    for (int j = -2; j <= 2; j++) {
-        for (int i = -2; i <= 2; i++) {
-            bool center = (i == 0 && j == 0);
-            bool cross_neighbor = (j == 0 && abs(i) == 1) || (i == 0 && abs(j) == 1);
-            if (center || cross_neighbor) {
-                vec3 sample_value = rock_sample(vec2(pixel + ivec2(i, j)), s);
-                float sample_weight = center ? 21.0 : 1.0;
-                sum += sample_value.x * sample_weight;
-                if (center) {
-                    height_center = sample_value.x;
-                    center_sample = sample_value;
-                } else if (j == 0 && i == -1) {
-                    height_left = sample_value.x;
-                } else if (j == 0 && i == 1) {
-                    height_right = sample_value.x;
-                } else if (i == 0 && j == -1) {
-                    height_up = sample_value.x;
-                } else if (i == 0 && j == 1) {
-                    height_down = sample_value.x;
-                }
-            }
-        }
-    }
-
-    vec3 light_direction = normalize(vec3(-0.55, -0.65, 0.52));
-    float normal_x = -mountain_relief * (height_right - height_left) * 0.5;
-    float normal_y = -mountain_relief * (height_down - height_up) * 0.5;
-    float diffuse = (normal_x * light_direction.x + normal_y * light_direction.y
-        + light_direction.z) / sqrt(normal_x * normal_x + normal_y * normal_y + 1.0);
-    float cavity = height_center - sum / 25.0;
-    float value = 0.52 + (diffuse - light_direction.z) * 1.3
-        + clamp(cavity * 0.8, -0.3, 0.3) - center_sample.y;
+    // One sample is sufficient for the colour pattern; neighbouring samples were only
+    // used to synthesize fake lighting and cavity darkening.
+    vec2 pattern = rock_sample(vec2(pixel), s);
+    float value = 0.5 + (pattern.x - 0.4) * 0.75;
     value = (value - 0.5) * mountain_contrast + 0.5;
 
     int bayer_index = (pixel.y & 3) * 4 + (pixel.x & 3);
@@ -307,17 +253,11 @@ vec3 mountain_rock_color(vec2 world_xy, float meters_per_pixel) {
     float q = clamp(floor(quantized + 0.5), 0.0, mountain_levels - 1.0)
         / (mountain_levels - 1.0);
 
-    vec3 color;
-    if (mountain_moss > 0.0
-        && rock_fbm(vec2(pixel) * 0.045, s + 30, 3) > 0.72 - mountain_moss * 0.3
-        && cavity < 0.05) {
-        color = mountain_ramp_moss(q);
-    } else {
-        color = mountain_ramp_rock(q);
-        float hue_shift = (center_sample.z - 0.5) * 16.0;
-        color.r += hue_shift;
-        color.b -= hue_shift;
-    }
+    vec3 color = mountain_ramp_rock(q);
+    float hue_shift = (pattern.y - 0.5) * 16.0;
+    color.r += hue_shift;
+    color.b -= hue_shift;
+
     // Palette constants are authored in sRGB, while ALBEDO expects linear values.
     return pow(clamp(color, vec3(0.0), vec3(255.0)) / 255.0, vec3(2.2));
 }
@@ -399,6 +339,8 @@ void fragment() {
         if (edge_visible < 0.5) discard;
     }
 
+    rock_specular_suppression = 0.0;
+
     // Derivatives are valid here. Estimate the 10 cm riser footprint once and smooth
     // its lighting normal before the light pass, without any MSAA 4x full-screen cost.
     float world_units_per_pixel = 0.0;
@@ -451,7 +393,7 @@ void fragment() {
                 vec3 rock_color = voxel_lod_rock_color(rock_world, lod_voxel_size);
                 ALBEDO = mix(ALBEDO, rock_color, top_rock_amount);
             }
-            ROUGHNESS = mix(0.95, 0.84, top_rock_amount);
+            ROUGHNESS = mix(0.95, 1.0, top_rock_amount);
         } else if (COLOR.g > COLOR.r * 1.35) {
             ALBEDO = voxel_lod_grass_color(world_position.xz, lod_voxel_size);
             ROUGHNESS = 0.95;
@@ -460,7 +402,7 @@ void fragment() {
             ROUGHNESS = 0.91;
         } else {
             ALBEDO = voxel_lod_rock_color(rock_world, lod_voxel_size);
-            ROUGHNESS = 0.84;
+            ROUGHNESS = 1.0;
         }
     } else {
         // The voxel colour is sampled on the current LOD's cell lattice, without fading
@@ -500,18 +442,10 @@ void fragment() {
         }
     }
 
-    // Procedural roughness variation completes the generated rock material without
-    // disturbing the flat voxel-face normals or the existing grass/soil response.
     if (!debug_lod_colors) {
-        float rock_mask = (is_top_surface || is_surface_side)
+        rock_specular_suppression = (is_top_surface || is_surface_side)
             ? top_rock_amount
             : ((COLOR.g > COLOR.r * 1.35 || COLOR.r > COLOR.g * 1.15) ? 0.0 : 1.0);
-        if (rock_mask > 0.001) {
-            float roughness_frequency = lod_index >= 6 ? 0.0040 : (lod_index >= 4 ? 0.018 : 0.11);
-            float roughness_field = value_noise(world_position.xz * roughness_frequency
-                + vec2(seed_low * 0.00029, 37.4));
-            ROUGHNESS = clamp(ROUGHNESS + (roughness_field - 0.5) * 0.18 * rock_mask, 0.70, 0.99);
-        }
     }
     METALLIC = 0.0;
 }
@@ -529,7 +463,8 @@ void light() {
     }
     if (LIGHT_IS_AREA) {
         DIFFUSE_LIGHT += LIGHT_AREA_DIFFUSE_MULTIPLIER * attenuation * LIGHT_COLOR;
-        SPECULAR_LIGHT += LIGHT_AREA_SPECULAR_MULTIPLIER * attenuation * LIGHT_COLOR * SPECULAR_AMOUNT;
+        SPECULAR_LIGHT += LIGHT_AREA_SPECULAR_MULTIPLIER * attenuation * LIGHT_COLOR * SPECULAR_AMOUNT
+            * (1.0 - rock_specular_suppression);
     } else {
         float n_dot_l = dot(light_normal, LIGHT);
         float lambert = clamp(n_dot_l, 0.0, 1.0);
@@ -540,6 +475,7 @@ void light() {
         vec3 half_vector = normalize(LIGHT + VIEW);
         float roughness = clamp(ROUGHNESS, 0.04, 1.0);
         float lobe = pow(max(dot(light_normal, half_vector), 0.0), mix(128.0, 4.0, roughness));
-        SPECULAR_LIGHT += lobe * attenuation * LIGHT_COLOR * SPECULAR_AMOUNT * (1.0 - roughness) * 0.08;
+        SPECULAR_LIGHT += lobe * attenuation * LIGHT_COLOR * SPECULAR_AMOUNT
+            * (1.0 - roughness) * 0.08 * (1.0 - rock_specular_suppression);
     }
 }
