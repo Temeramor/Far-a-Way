@@ -175,6 +175,8 @@ godot --headless --path . --script res://tests/decoration_spatial_index_test.gd
 godot --headless --path . --script res://tests/native_chunk_benchmark.gd
 ~~~
 
+Бенчмарк измеряет сборку чанка для каждого LOD0–LOD7, отбрасывает прогревочный запуск и выводит минимум, медиану и p95. Для локального контроля регрессий можно задать путь к JSON-файлу baseline через `VOXEN_BENCHMARK_BASELINE_PATH`; при превышении p95 более чем на 25% тест завершится с ошибкой. GitHub Actions хранит отдельный baseline для Windows runner и обновляет его после успешной проверки.
+
 ## Организация скриптов
 
 - scripts/world/ — профиль ландшафта и координация генерации мира.
