@@ -21,6 +21,8 @@ func build_tile(
         count += int((noise_pick - 0.5) * 6.0)
 
     for i in range(count):
+        if host._is_cancelled():
+            return
         var local_x: float = rng.randf_range(1.6, maxf(1.7, width_m - 1.6))
         var local_z: float = rng.randf_range(1.6, maxf(1.7, depth_m - 1.6))
         var world_x: float = origin_x + local_x
@@ -115,8 +117,12 @@ func _fill_rock(
     var cy: float = ry * 0.45
     var ext: float = 1.3
     for y in range(0, mini(grid.h, ceili(cy + ry * ext) + 1)):
+        if host._is_cancelled():
+            return
         var ny: float = (float(y) - cy) / ry
         for zz in range(-ceili(rz * ext), ceili(rz * ext) + 1):
+            if host._is_cancelled():
+                return
             var nz: float = float(zz) / rz
             for xx in range(-ceili(rx * ext), ceili(rx * ext) + 1):
                 var nx: float = float(xx) / rx
