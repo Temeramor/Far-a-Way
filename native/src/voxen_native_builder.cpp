@@ -666,7 +666,7 @@ struct MeshBuild {
                     (static_cast<double>(start_voxel_x) + local_sample_x) * VOXEL_SIZE;
                 const double world_z = world_min_z +
                     (static_cast<double>(start_voxel_z) + local_sample_z) * VOXEL_SIZE;
-                const double weight = noise.surface_rock_weight(slope, world_x, world_z);
+                const double weight = noise->surface_rock_weight(slope, world_x, world_z);
                 surface_rock_weights[static_cast<size_t>(z + 1) * (cells_x + 2) + x + 1] = weight;
                 if (x >= 0 && x < cells_x && z >= 0 && z < cells_z) {
                     surface_types[static_cast<size_t>(z) * cells_x + x] =
@@ -968,10 +968,10 @@ struct MeshBuild {
                     if (cache_x >= 0 && cache_x < cache_width && cache_z >= 0 && cache_z < cache_depth) {
                         height_m = height_cache[static_cast<size_t>(cache_z) * cache_width + cache_x] * VOXEL_SIZE;
                     } else {
-                        height_m = noise.surface_height(world_x, world_z);
+                        height_m = noise->surface_height(world_x, world_z);
                     }
                 } else {
-                    height_m = noise.surface_height(world_x, world_z);
+                    height_m = noise->surface_height(world_x, world_z);
                 }
                 smooth_shadow_vertices.emplace_back(
                     static_cast<double>(local_voxel_x) * VOXEL_SIZE,
@@ -1024,7 +1024,7 @@ struct MeshBuild {
         cells_x = static_cast<int32_t>(std::ceil(static_cast<double>(size_voxels_x) / step_voxels));
         cells_z = static_cast<int32_t>(std::ceil(static_cast<double>(size_voxels_z) / step_voxels));
 
-        noise.configure_from_job(job_data, static_cast<double>(world_size_voxels) * VOXEL_SIZE);
+        if (configure_noise_from_job) noise->configure_from_job(job_data, static_cast<double>(world_size_voxels) * VOXEL_SIZE);
 
         // Every LOD stays voxel-based. Only the cell size changes with distance;
         // shared smooth heightfields are reserved for invisible shadow proxies.
