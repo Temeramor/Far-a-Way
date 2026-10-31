@@ -221,10 +221,12 @@ const float ROCK_BAYER[16] = float[16](
     3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0
 );
 const vec3 MOUNTAIN_ROCK_RAMP[7] = vec3[7](
+    // Preserve the deepest charcoal tones; shift the midtones and highlights
+    // toward darker, humid tropical slate-blue rock.
     vec3(16.0, 18.0, 20.0), vec3(35.0, 38.0, 42.0),
-    vec3(60.0, 64.0, 68.0), vec3(94.0, 98.0, 102.0),
-    vec3(139.0, 142.0, 144.0), vec3(185.0, 187.0, 186.0),
-    vec3(226.0, 226.0, 222.0)
+    vec3(60.0, 64.0, 68.0), vec3(67.0, 82.0, 115.0),
+    vec3(95.0, 97.0, 118.0), vec3(109.0, 115.0, 131.0),
+    vec3(132.0, 137.0, 151.0)
 );
 vec3 mountain_ramp_rock(float q) {
     float p = q * 6.0;
