@@ -135,7 +135,7 @@ func scatter_grass(
         mesh_grid.emit(piece, Vector3.ZERO, PROP_VOXEL_SIZE * float(1 << voxel_lod), grass_seed)
         host._append_transformed_mesh(
             output, piece, Basis.IDENTITY,
-            Vector3(local_x, float(surface["height"]), local_z)
+            Vector3(local_x, surface.x, local_z)
         )
         host._reserve(local_x, local_z, exclusion_radius, reservations)
 
