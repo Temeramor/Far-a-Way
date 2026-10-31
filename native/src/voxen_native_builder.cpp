@@ -1130,6 +1130,8 @@ void VoxEnNativeBuilder::_bind_methods() {
     ClassDB::bind_method(D_METHOD("configure_terrain_sampler", "job_data"), &VoxEnNativeBuilder::configure_terrain_sampler);
     ClassDB::bind_method(D_METHOD("get_surface_height", "x", "z"), &VoxEnNativeBuilder::get_surface_height);
     ClassDB::bind_method(D_METHOD("get_surface_rock_weight", "slope", "x", "z"), &VoxEnNativeBuilder::get_surface_rock_weight);
+    ClassDB::bind_method(D_METHOD("get_surface_sample", "x", "z", "step_m"), &VoxEnNativeBuilder::get_surface_sample);
+    ClassDB::bind_method(D_METHOD("sample_height_grid", "origin_x", "origin_z", "columns", "rows", "step_m"), &VoxEnNativeBuilder::sample_height_grid);
     ClassDB::bind_method(D_METHOD("set_result", "value"), &VoxEnNativeBuilder::set_result);
     ClassDB::bind_method(D_METHOD("get_result"), &VoxEnNativeBuilder::get_result);
     ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "result"), "set_result", "get_result");
@@ -1165,13 +1167,26 @@ void VoxEnNativeBuilder::configure_terrain_sampler(const Dictionary &job_data) {
 double VoxEnNativeBuilder::get_surface_height(double x, double z) const {
     if (!terrain_sampler_data) return VOXEL_SIZE;
     const auto sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
-    return sampler->surface_height(x, z);
+    return sampler->surface_height_cached(x, z);
 }
 
 double VoxEnNativeBuilder::get_surface_rock_weight(double slope, double x, double z) const {
     if (!terrain_sampler_data) return 0.0;
     const auto sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
     return sampler->surface_rock_weight(slope, x, z);
+}
+
+Vector3 VoxEnNativeBuilder::get_surface_sample(double x, double z, double step_m) const {
+    if (!terrain_sampler_data) return Vector3(VOXEL_SIZE, 0.0, 0.0);
+    const auto sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
+    return sampler->surface_sample(x, z, step_m);
+}
+
+PackedFloat32Array VoxEnNativeBuilder::sample_height_grid(double origin_x, double origin_z,
+        int32_t columns, int32_t rows, double step_m) const {
+    if (!terrain_sampler_data) return PackedFloat32Array();
+    const auto sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
+    return sampler->sample_height_grid(origin_x, origin_z, columns, rows, step_m);
 }
 
 void VoxEnNativeBuilder::set_result(const Dictionary &value) {
