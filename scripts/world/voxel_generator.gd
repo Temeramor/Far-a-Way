@@ -5,10 +5,12 @@ class_name VoxelTerrainGenerator
 ## Chunk meshing is streamed; no world-sized height array or per-voxel Node allocation is used.
 
 const VOXEL_SIZE: float = 0.2
+const VERTICAL_OFFSET_VOXELS: int = 512
 const AIR: int = 0
 const GRASS: int = 1
 const SOIL: int = 2
 const ROCK: int = 3
+const SAND: int = 4
 const MIN_TERRAIN_HEIGHT: float = -80.0
 const MAX_TERRAIN_HEIGHT: float = 1600.0
 const HEIGHT_SAMPLE_STEP_M: float = 0.5
@@ -59,8 +61,8 @@ func _create_mountain_ranges() -> void:
     var mountain_scale: float = world_size_m / REFERENCE_WORLD_SIZE_M
     var rng := RandomNumberGenerator.new()
     rng.seed = int(seed_value) + 17011
-    # Reduce chain density on smaller maps without changing the seeded chain-based algorithm.
-    var range_count: int = clampi(roundi(3.0 * sqrt(mountain_scale)), 2, 5)
+    # Mountain presence is seed-driven: some islands are low and hilly, others carry one to three ranges.
+    var range_count: int = rng.randi_range(0, 3)
     var narrow_offset: float = 600.0 * mountain_scale
     var wide_offset: float = 1050.0 * mountain_scale
     for _range_index in range(range_count):
@@ -129,7 +131,42 @@ func get_surface_height_grid(
 
 
 func get_surface_height_voxels(x: float, z: float) -> int:
-    return maxi(1, int(round(get_surface_height(x, z) / VOXEL_SIZE)))
+    # Signed world-space height; the native mesher applies its internal vertical origin.
+    return int(round(get_surface_height(x, z) / VOXEL_SIZE))
+
+
+func find_highest_land_position() -> Vector2:
+    # Coarse scan over the complete map, followed by a local refinement around the
+    # highest positive sample. This avoids imposing any artificial flat spawn zone.
+    var half: float = world_size_m * 0.5
+    var coarse_step: float = 50.0
+    var columns: int = int(floor(world_size_m / coarse_step)) + 1
+    var samples: PackedFloat32Array = get_surface_height_grid(
+        -half, -half, columns, columns, coarse_step
+    )
+    var best_height: float = -INF
+    var best_position := Vector2.ZERO
+    for z in range(columns):
+        for x in range(columns):
+            var index: int = z * columns + x
+            if index >= samples.size():
+                continue
+            var h: float = samples[index]
+            if h > best_height:
+                best_height = h
+                best_position = Vector2(-half + float(x) * coarse_step,
+                    -half + float(z) * coarse_step)
+    var refine_center: Vector2 = best_position
+    var refine_step: float = 5.0
+    for z in range(-5, 6):
+        for x in range(-5, 6):
+            var px: float = refine_center.x + float(x) * refine_step
+            var pz: float = refine_center.y + float(z) * refine_step
+            var h: float = get_surface_height(px, pz)
+            if h > best_height:
+                best_height = h
+                best_position = Vector2(px, pz)
+    return best_position
 
 
 func get_surface_rock_weight(gradient: float, x: float, z: float) -> float:
@@ -139,8 +176,15 @@ func get_surface_rock_weight(gradient: float, x: float, z: float) -> float:
 
 
 func get_surface_material(height_m: float, slope: float, x: float, z: float) -> int:
-    # Categorical helper for vertical faces; top faces use the continuous weight directly.
-    return ROCK if get_surface_rock_weight(slope, x, z) >= 0.5 else GRASS
+    if _native_sampler == null:
+        return GRASS
+    return int(_native_sampler.call("get_surface_material", height_m, slope, x, z))
+
+
+func is_sand_surface(x: float, z: float) -> bool:
+    var sample: Vector3 = get_surface_sample(x, z)
+    var slope: float = Vector2(sample.y, sample.z).length()
+    return get_surface_material(sample.x, slope, x, z) == SAND
 
 
 func get_terrain_density(world_x: float, world_y: float, world_z: float) -> float:
@@ -148,23 +192,24 @@ func get_terrain_density(world_x: float, world_y: float, world_z: float) -> floa
 
 
 func get_voxel_material(voxel: Vector3i, world_min_x: float, world_min_z: float, world_size_voxels: int) -> int:
-    if voxel.x < 0 or voxel.z < 0 or voxel.x >= world_size_voxels or voxel.z >= world_size_voxels or voxel.y < 0:
+    if voxel.x < 0 or voxel.z < 0 or voxel.x >= world_size_voxels or voxel.z >= world_size_voxels:
         return AIR
     var world_x: float = world_min_x + (float(voxel.x) + 0.5) * VOXEL_SIZE
     var world_z: float = world_min_z + (float(voxel.z) + 0.5) * VOXEL_SIZE
-    var surface_y: int = get_surface_height_voxels(world_x, world_z)
-    if voxel.y >= surface_y:
+    var surface_y: int = get_surface_height_voxels(world_x, world_z) + VERTICAL_OFFSET_VOXELS
+    var internal_y: int = voxel.y + VERTICAL_OFFSET_VOXELS
+    if internal_y >= surface_y:
         return AIR
     var surface_sample: Vector3 = get_surface_sample(world_x, world_z)
     var surface_slope: float = Vector2(surface_sample.y, surface_sample.z).length()
     var top_material: int = get_surface_material(
-        float(surface_y) * VOXEL_SIZE, surface_slope, world_x, world_z
+        float(surface_y - VERTICAL_OFFSET_VOXELS) * VOXEL_SIZE, surface_slope, world_x, world_z
     )
-    if voxel.y == surface_y - 1:
+    if internal_y == surface_y - 1:
         return top_material
     # A gray rock-topped mountain is a solid stone mass, not a brown soil rind.
     if top_material == ROCK:
         return ROCK
-    if voxel.y >= surface_y - 5:
+    if internal_y >= surface_y - 5:
         return SOIL
     return ROCK

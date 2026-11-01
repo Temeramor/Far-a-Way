@@ -9,7 +9,7 @@ signal generation_progress(seed_value: int, progress: float, status: String)
 signal generation_finished(seed_value: int)
 
 @export_group("World")
-@export var world_size: float = 2000.0
+@export var world_size: float = 5000.0
 @export_range(1024, 2048, 1024) var resolution: int = 2048
 @export var world_seed: int = 1337
 

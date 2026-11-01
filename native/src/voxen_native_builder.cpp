@@ -28,6 +28,10 @@ using namespace godot;
 namespace {
 
 constexpr double VOXEL_SIZE = 0.2;
+// Internal heightfield origin keeps signed sea-floor elevations inside the legacy
+// non-negative voxel lattice. Chunk transforms and collision samples subtract it.
+constexpr int32_t VERTICAL_OFFSET_VOXELS = 512;
+constexpr double VERTICAL_OFFSET_M = VERTICAL_OFFSET_VOXELS * VOXEL_SIZE;
 constexpr double REFERENCE_WORLD_SIZE_M = 10000.0;
 constexpr int32_t BASE_MESH_STEP_VOXELS = 1;
 constexpr int HEIGHT_CACHE_STEP_VOXELS = 5;
@@ -41,6 +45,7 @@ constexpr int AIR = 0;
 constexpr int GRASS = 1;
 constexpr int SOIL = 2;
 constexpr int ROCK = 3;
+constexpr int SAND = 4;
 
 struct NoiseSet {
     int64_t seed_value = 0;
@@ -116,6 +121,22 @@ struct NoiseSet {
         }
     }
 
+    double coast_distance(double x, double z) const {
+        const double seed_phase = static_cast<double>(seed_value % 1000003) * 0.000173;
+        const double aspect = 1.0 + 3.0 * (0.5 + 0.5 * std::sin(seed_phase * 1.37));
+        const double angle = seed_phase * 0.71;
+        const double ca = std::cos(angle), sa = std::sin(angle);
+        const double rx = x * ca - z * sa;
+        const double rz = x * sa + z * ca;
+        constexpr double radius = 1128.38;
+        const double a = radius * std::sqrt(aspect);
+        const double b = radius / std::sqrt(aspect);
+        const double radial = std::sqrt((rx * rx) / (a * a) + (rz * rz) / (b * b));
+        const double warp = sample_noise(macro, x * 0.72, z * 0.72) * 0.075 +
+                            sample_noise(hills, x * 1.9, z * 1.9) * 0.035;
+        return radial + warp;
+    }
+
     static float sample_noise(const fastnoiselite::FastNoiseLite &noise, double x, double z) {
         // Godot's real_t is float in the current Windows build; preserve its input precision.
         return noise.GetNoise(static_cast<float>(x), static_cast<float>(z));
@@ -168,11 +189,30 @@ struct NoiseSet {
             const double mountain_mask = std::clamp(mountain_height / 900.0, 0.0, 1.0);
             height += mountain_mask * (micro_value * 42.0 + detail_value * 28.0);
         }
-        const double point_length = std::sqrt(x * x + z * z);
-        const double spawn_fade = 1.0 - smoothstep(420.0 * world_scale, 1420.0 * world_scale, point_length);
-        const double spawn_height = 25.0 + macro_value * 3.0 + detail_value * 0.8;
-        height = height * (1.0 - spawn_fade) + spawn_height * spawn_fade;
-        return std::max(VOXEL_SIZE, std::clamp(height, -80.0, 1600.0));
+        // One irregular central island with approximately 4 km² of land. Its aspect
+        // ratio and orientation are seed-derived, while multi-scale noise perturbs
+        // the coastline without creating a circular or smoothed spawn platform.
+        const double seed_phase = static_cast<double>(seed_value % 1000003) * 0.000173;
+        const double aspect = 1.0 + 3.0 * (0.5 + 0.5 * std::sin(seed_phase * 1.37));
+        const double angle = seed_phase * 0.71;
+        const double ca = std::cos(angle), sa = std::sin(angle);
+        const double rx = x * ca - z * sa;
+        const double rz = x * sa + z * ca;
+        constexpr double equivalent_radius = 1128.38; // sqrt(4,000,000 / pi)
+        const double axis_a = equivalent_radius * std::sqrt(aspect);
+        const double axis_b = equivalent_radius / std::sqrt(aspect);
+        const double radial = std::sqrt((rx * rx) / (axis_a * axis_a) +
+                                        (rz * rz) / (axis_b * axis_b));
+        const double coast_warp = sample_noise(macro, x * 0.72, z * 0.72) * 0.075 +
+                                  sample_noise(hills, x * 1.9, z * 1.9) * 0.035;
+        const double coast_distance = radial + coast_warp;
+        const double land_mask = 1.0 - smoothstep(0.965, 1.035, coast_distance);
+        const double ocean_depth = -3.0 - 72.0 * smoothstep(1.0, 2.25, coast_distance);
+        // The island's existing hills/ridges/mountain profile is retained, but fades
+        // only at the actual shoreline. There is deliberately no spawn-centre fade.
+        const double land_height = std::clamp(height, 0.25, 1600.0);
+        height = land_height * land_mask + ocean_depth * (1.0 - land_mask);
+        return std::clamp(height, -80.0, 1600.0);
     }
 
     double cached_grid_height(int32_t grid_x, int32_t grid_z) const {
@@ -263,7 +303,7 @@ struct NoiseSet {
     }
 
     int32_t surface_height_voxels(double x, double z) const {
-        return std::max<int32_t>(1, static_cast<int32_t>(std::llround(surface_height(x, z) / VOXEL_SIZE)));
+        return VERTICAL_OFFSET_VOXELS + static_cast<int32_t>(std::llround(surface_height(x, z) / VOXEL_SIZE));
     }
 
     double surface_rock_weight(double slope, double x, double z) const {
@@ -273,7 +313,15 @@ struct NoiseSet {
     }
 
     int32_t surface_material(double height_m, double slope, double x, double z) const {
-        return surface_rock_weight(slope, x, z) >= 0.5 ? ROCK : GRASS;
+        const double shore = coast_distance(x, z);
+        const double rock_weight = surface_rock_weight(slope, x, z);
+        // Below sea level, grass never continues underwater: gentle seabed is sand,
+        // while genuinely steep rock faces continue as rock.
+        if (height_m < 0.0) return rock_weight >= 0.5 ? ROCK : SAND;
+        if (shore >= 0.91 && shore <= 1.13 && slope < 0.58 && height_m <= 9.0) {
+            return SAND;
+        }
+        return rock_weight >= 0.5 ? ROCK : GRASS;
     }
 };
 
@@ -378,7 +426,7 @@ struct MeshBuild {
         const double world_x = world_min_x + gx * VOXEL_SIZE;
         const double world_z = world_min_z + gz * VOXEL_SIZE;
         // Keep continuous heights until the interpolated mesh sample is quantised.
-        return std::max(1.0, noise->surface_height(world_x, world_z) / VOXEL_SIZE);
+        return static_cast<double>(VERTICAL_OFFSET_VOXELS) + noise->surface_height(world_x, world_z) / VOXEL_SIZE;
     }
 
     int32_t cached_height_voxels(double gx, double gz) const {
@@ -433,6 +481,7 @@ struct MeshBuild {
             case GRASS: return rgb8(54, 164, 42);
             case SOIL: return rgb8(128, 96, 68);
             case ROCK: return rgb8(119, 121, 115);
+            case SAND: return rgb8(224, 177, 105);
             default: return Color(1.0, 1.0, 1.0, 1.0);
         }
     }
@@ -669,8 +718,10 @@ struct MeshBuild {
                 const double weight = noise->surface_rock_weight(slope, world_x, world_z);
                 surface_rock_weights[static_cast<size_t>(z + 1) * (cells_x + 2) + x + 1] = weight;
                 if (x >= 0 && x < cells_x && z >= 0 && z < cells_z) {
+                    const double height_m = static_cast<double>(raw_heights[static_cast<size_t>(gz) * grid_width + gx] -
+                        VERTICAL_OFFSET_VOXELS) * VOXEL_SIZE;
                     surface_types[static_cast<size_t>(z) * cells_x + x] =
-                        static_cast<uint8_t>(weight >= 0.5 ? ROCK : GRASS);
+                        static_cast<uint8_t>(noise->surface_material(height_m, slope, world_x, world_z));
                 }
             }
         }
@@ -966,7 +1017,7 @@ struct MeshBuild {
                     const int32_t cache_x = cache_dx / cache_step_voxels;
                     const int32_t cache_z = cache_dz / cache_step_voxels;
                     if (cache_x >= 0 && cache_x < cache_width && cache_z >= 0 && cache_z < cache_depth) {
-                        height_m = height_cache[static_cast<size_t>(cache_z) * cache_width + cache_x] * VOXEL_SIZE;
+                        height_m = height_cache[static_cast<size_t>(cache_z) * cache_width + cache_x] * VOXEL_SIZE - VERTICAL_OFFSET_M;
                     } else {
                         height_m = noise->surface_height(world_x, world_z);
                     }
@@ -975,7 +1026,7 @@ struct MeshBuild {
                 }
                 smooth_shadow_vertices.emplace_back(
                     static_cast<double>(local_voxel_x) * VOXEL_SIZE,
-                    height_m,
+                    height_m + VERTICAL_OFFSET_M,
                     static_cast<double>(local_voxel_z) * VOXEL_SIZE);
                 smooth_shadow_normals.emplace_back(0.0, 1.0, 0.0);
             }
@@ -1098,7 +1149,7 @@ struct MeshBuild {
         out["smooth_shadow_indices"] = packed_smooth_shadow_indices;
         out["position"] = Vector3(
             world_min_x + static_cast<double>(start_voxel_x) * VOXEL_SIZE,
-            0.0,
+            -VERTICAL_OFFSET_M,
             world_min_z + static_cast<double>(start_voxel_z) * VOXEL_SIZE);
         out["has_geometry"] = !indices.empty();
         out["want_collision"] = want_collision;
@@ -1146,6 +1197,7 @@ void VoxEnNativeBuilder::_bind_methods() {
     ClassDB::bind_method(D_METHOD("share_terrain_sampler", "source"), &VoxEnNativeBuilder::share_terrain_sampler);
     ClassDB::bind_method(D_METHOD("get_surface_height", "x", "z"), &VoxEnNativeBuilder::get_surface_height);
     ClassDB::bind_method(D_METHOD("get_surface_rock_weight", "slope", "x", "z"), &VoxEnNativeBuilder::get_surface_rock_weight);
+    ClassDB::bind_method(D_METHOD("get_surface_material", "height_m", "slope", "x", "z"), &VoxEnNativeBuilder::get_surface_material);
     ClassDB::bind_method(D_METHOD("get_surface_sample", "x", "z", "step_m"), &VoxEnNativeBuilder::get_surface_sample);
     ClassDB::bind_method(D_METHOD("sample_height_grid", "origin_x", "origin_z", "columns", "rows", "step_m"), &VoxEnNativeBuilder::sample_height_grid);
     ClassDB::bind_method(D_METHOD("set_result", "value"), &VoxEnNativeBuilder::set_result);
@@ -1201,6 +1253,12 @@ double VoxEnNativeBuilder::get_surface_rock_weight(double slope, double x, doubl
     if (!terrain_sampler_data) return 0.0;
     const auto sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
     return sampler->surface_rock_weight(slope, x, z);
+}
+
+int32_t VoxEnNativeBuilder::get_surface_material(double height_m, double slope, double x, double z) const {
+    if (!terrain_sampler_data) return GRASS;
+    const auto sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
+    return sampler->surface_material(height_m, slope, x, z);
 }
 
 Vector3 VoxEnNativeBuilder::get_surface_sample(double x, double z, double step_m) const {

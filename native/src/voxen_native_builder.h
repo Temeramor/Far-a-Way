@@ -31,6 +31,7 @@ public:
     Vector3 get_surface_sample(double x, double z, double step_m) const;
     PackedFloat32Array sample_height_grid(double origin_x, double origin_z, int32_t columns, int32_t rows, double step_m) const;
     double get_surface_rock_weight(double slope, double x, double z) const;
+    int32_t get_surface_material(double height_m, double slope, double x, double z) const;
     void set_result(const Dictionary &value);
     Dictionary get_result() const;
 };

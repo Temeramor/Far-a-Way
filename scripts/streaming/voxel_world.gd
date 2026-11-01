@@ -16,7 +16,7 @@ const GeneratorScript = preload("res://scripts/world/voxel_generator.gd")
 const ChunkScript = preload("res://scripts/streaming/voxel_chunk.gd")
 
 @export_category("Voxel world")
-@export_range(256.0, 20000.0, 1.0) var world_size_m: float = 2000.0
+@export_range(256.0, 20000.0, 1.0) var world_size_m: float = 5000.0
 @export_range(8.0, 32.0, 8.0) var chunk_size_m: float = 32.0
 @export var seed_value: int = 1337
 @export var auto_start_on_ready: bool = true
@@ -36,6 +36,7 @@ const LOD_TRANSITION_PIXELS: float = 3.0
 @export_range(16.0, 128.0, 8.0) var collision_distance_m: float = 80.0
 
 var _generator: VoxelTerrainGenerator
+var _spawn_position_xz: Vector2 = Vector2.ZERO
 var _mountain_profile_cache: Array[Dictionary] = []
 var _voxel_material: ShaderMaterial
 var _player: CharacterBody3D
@@ -108,6 +109,7 @@ func _ready() -> void:
     _refresh_lod_boundaries()
     _generator = GeneratorScript.new(seed_value, world_size_m)
     _mountain_profile_cache = _generator.get_mountain_profile()
+    _spawn_position_xz = _generator.find_highest_land_position()
 
     var surface_shader := load("res://shaders/voxel_surface.gdshader") as Shader
     _voxel_material = ShaderMaterial.new()
@@ -119,7 +121,7 @@ func _ready() -> void:
         # Do not let gravity move the player before the spawn chunk's collider exists.
         _player.set_physics_process(false)
         _player.velocity = Vector3.ZERO
-        _player.global_position = Vector3(0.0, get_surface_height(0.0, 0.0) + 8.0, 0.0)
+        _player.global_position = Vector3(_spawn_position_xz.x, get_surface_height(_spawn_position_xz.x, _spawn_position_xz.y) + 8.0, _spawn_position_xz.y)
         _startup_load_pending = true
 
     if auto_start_on_ready:
@@ -223,12 +225,15 @@ func regenerate_with_seed(new_seed: int) -> void:
 
     _generator = GeneratorScript.new(seed_value, world_size_m)
     _mountain_profile_cache = _generator.get_mountain_profile()
+    _spawn_position_xz = _generator.find_highest_land_position()
     _apply_seed_to_material()
     terrain_seed_changed.emit(seed_value)
     if _player != null:
         _player.set_physics_process(false)
         _player.velocity = Vector3.ZERO
-        _player.global_position = Vector3(0.0, get_surface_height(0.0, 0.0) + 8.0, 0.0)
+        var spawn_x: float = _spawn_position_xz.x
+        var spawn_z: float = _spawn_position_xz.y
+        _player.global_position = Vector3(spawn_x, get_surface_height(spawn_x, spawn_z) + 8.0, spawn_z)
         _startup_load_pending = true
     _last_player_position = Vector2(INF, INF)
     _last_player_height = INF
@@ -348,7 +353,7 @@ func get_surface_height(x: float, z: float) -> float:
     if _generator == null:
         _generator = GeneratorScript.new(seed_value, world_size_m)
         _mountain_profile_cache = _generator.get_mountain_profile()
-    return float(_generator.get_surface_height_voxels(x, z)) * VOXEL_SIZE
+    return _generator.get_surface_height(x, z)
 
 func get_voxel_material(global_voxel: Vector3i) -> int:
     if _generator == null:
@@ -1319,8 +1324,10 @@ func _place_player_on_surface() -> void:
     if _player == null:
         _startup_load_pending = false
         return
-    var safe_surface_height: float = get_surface_height(0.0, 0.0)
-    _player.global_position = Vector3(0.0, safe_surface_height + 2.5, 0.0)
+    var spawn_x: float = _spawn_position_xz.x
+    var spawn_z: float = _spawn_position_xz.y
+    var safe_surface_height: float = get_surface_height(spawn_x, spawn_z)
+    _player.global_position = Vector3(spawn_x, safe_surface_height + 2.5, spawn_z)
     _player.velocity = Vector3.ZERO
     _startup_load_pending = false
     _player.set_physics_process(true)

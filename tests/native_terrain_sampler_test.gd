@@ -4,7 +4,7 @@ const GeneratorScript = preload("res://scripts/world/voxel_generator.gd")
 
 
 func _initialize() -> void:
-    var generator = GeneratorScript.new(1337, 2000.0)
+    var generator = GeneratorScript.new(1337, 5000.0)
     var sampler: Object = generator.get_native_sampler()
     if sampler == null:
         push_error("Terrain generator did not create a native sampler.")
@@ -32,7 +32,7 @@ func _initialize() -> void:
     var point_x := origin_x + 1.25
     var point_z := origin_z + 1.75
     var surface: Vector3 = generator.get_surface_sample(point_x, point_z)
-    var shared_generator = GeneratorScript.new(1337, 2000.0, sampler)
+    var shared_generator = GeneratorScript.new(1337, 5000.0, sampler)
     var shared_surface: Vector3 = shared_generator.get_surface_sample(point_x, point_z)
     var shared_builder: Object = ClassDB.instantiate("VoxEnNativeBuilder")
     shared_builder.call("share_terrain_sampler", sampler)

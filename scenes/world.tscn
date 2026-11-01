@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/world_controller.gd" id="1_world"]
 [ext_resource type="Script" path="res://scripts/world/terrain_generator.gd" id="2_terrain"]
@@ -8,12 +8,22 @@
 [ext_resource type="Script" path="res://scripts/streaming/voxel_world.gd" id="7_voxen_world"]
 [ext_resource type="Script" path="res://scripts/rendering/voxel_surface_scatter.gd" id="8_rock_scatter"]
 
+[sub_resource type="StandardMaterial3D" id="SeaMaterial"]
+transparency = 1
+albedo_color = Color(0.08, 0.32, 0.42, 0.46)
+roughness = 0.32
+metallic = 0.0
+
+[sub_resource type="PlaneMesh" id="SeaPlane"]
+material = SubResource("SeaMaterial")
+size = Vector2(5000, 5000)
+
 [node name="World" type="Node3D"]
 script = ExtResource("1_world")
 
 [node name="VoxelWorld" type="Node3D" parent="."]
 script = ExtResource("7_voxen_world")
-world_size_m = 2000.0
+world_size_m = 5000.0
 chunk_size_m = 32.0
 seed_value = 1337
 render_distance_m = 1536.0
@@ -21,6 +31,11 @@ auto_start_on_ready = false
 
 [node name="VoxelSurfaceScatter" type="Node3D" parent="VoxelWorld"]
 script = ExtResource("8_rock_scatter")
+
+[node name="SeaSurface" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.01, 0)
+mesh = SubResource("SeaPlane")
+cast_shadow = 0
 
 [node name="Sky" type="WorldEnvironment" parent="."]
 script = ExtResource("6_sky")
