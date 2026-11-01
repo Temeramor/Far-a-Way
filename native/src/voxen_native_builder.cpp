@@ -30,7 +30,7 @@ namespace {
 constexpr double VOXEL_SIZE = 0.2;
 // Internal heightfield origin keeps signed sea-floor elevations inside the legacy
 // non-negative voxel lattice. Chunk transforms and collision samples subtract it.
-constexpr int32_t VERTICAL_OFFSET_VOXELS = 512;
+constexpr int32_t VERTICAL_OFFSET_VOXELS = 1536;
 constexpr double VERTICAL_OFFSET_M = VERTICAL_OFFSET_VOXELS * VOXEL_SIZE;
 constexpr double REFERENCE_WORLD_SIZE_M = 10000.0;
 constexpr int32_t BASE_MESH_STEP_VOXELS = 1;
@@ -56,6 +56,9 @@ struct NoiseSet {
     fastnoiselite::FastNoiseLite ridges;
     fastnoiselite::FastNoiseLite micro_ridge;
     fastnoiselite::FastNoiseLite transition;
+    fastnoiselite::FastNoiseLite seafloor_macro;
+    fastnoiselite::FastNoiseLite seafloor_hills;
+    fastnoiselite::FastNoiseLite seafloor_detail;
 
     struct MountainSegment {
         double ax = 0.0, az = 0.0, dx = 0.0, dz = 0.0;
@@ -90,7 +93,10 @@ struct NoiseSet {
               detail(make_noise(static_cast<int32_t>(seed + 503), 3, 0.52f)),
               ridges(make_noise(static_cast<int32_t>(seed + 709), 5, 0.52f, true)),
               micro_ridge(make_noise(static_cast<int32_t>(seed + 907), 3, 0.52f, true)),
-              transition(make_noise(static_cast<int32_t>(seed + 1301), 2, 0.52f)) {}
+              transition(make_noise(static_cast<int32_t>(seed + 1301), 2, 0.52f)),
+              seafloor_macro(make_noise(static_cast<int32_t>(seed + 1601), 3, 0.54f)),
+              seafloor_hills(make_noise(static_cast<int32_t>(seed + 1801), 4, 0.52f)),
+              seafloor_detail(make_noise(static_cast<int32_t>(seed + 2003), 3, 0.50f)) {}
 
     void configure_from_job(const Dictionary &job_data, double fallback_world_size_m) {
         world_size_m = static_cast<double>(job_data.get("terrain_world_size_m", fallback_world_size_m));
@@ -102,6 +108,9 @@ struct NoiseSet {
         ridges.SetFrequency(0.00082f * frequency_scale);
         micro_ridge.SetFrequency(0.0034f * frequency_scale);
         transition.SetFrequency(0.008f * frequency_scale);
+        seafloor_macro.SetFrequency(0.0010f * frequency_scale);
+        seafloor_hills.SetFrequency(0.0042f * frequency_scale);
+        seafloor_detail.SetFrequency(0.012f * frequency_scale);
         mountain_segments.clear();
         const Array profile = job_data.get("mountain_profile", Array());
         for (int64_t i = 0; i < profile.size(); ++i) {
@@ -135,6 +144,25 @@ struct NoiseSet {
         const double warp = sample_noise(macro, x * 0.72, z * 0.72) * 0.075 +
                             sample_noise(hills, x * 1.9, z * 1.9) * 0.035;
         return radial + warp;
+    }
+
+    double mountain_coast_weight(double x, double z) const {
+        double influence = 0.0;
+        for (const MountainSegment &segment : mountain_segments) {
+            const double along = std::clamp(
+                ((x - segment.ax) * segment.dx + (z - segment.az) * segment.dz) /
+                    segment.length_squared, 0.0, 1.0);
+            const double closest_x = segment.ax + segment.dx * along;
+            const double closest_z = segment.az + segment.dz * along;
+            const double dx = x - closest_x;
+            const double dz = z - closest_z;
+            const double distance_ratio = std::sqrt(dx * dx + dz * dz) /
+                std::max(segment.width, 1.0);
+            const double footprint = 1.0 - smoothstep(0.55, 1.85, distance_ratio);
+            const double height_weight = smoothstep(180.0, 480.0, segment.height);
+            influence = std::max(influence, footprint * height_weight);
+        }
+        return std::clamp(influence, 0.0, 1.0);
     }
 
     static float sample_noise(const fastnoiselite::FastNoiseLite &noise, double x, double z) {
@@ -211,8 +239,23 @@ struct NoiseSet {
         // The island's existing hills/ridges/mountain profile is retained, but fades
         // only at the actual shoreline. There is deliberately no spawn-centre fade.
         const double land_height = std::clamp(height, 0.25, 1600.0);
+        const double underwater_weight = smoothstep(0.995, 1.16, coast_distance);
+        const double seafloor_variation =
+            static_cast<double>(sample_noise(seafloor_macro, x, z)) * 16.0 +
+            static_cast<double>(sample_noise(seafloor_hills, x, z)) * 11.0 +
+            static_cast<double>(sample_noise(seafloor_detail, x, z)) * 3.5;
+        ocean_depth += seafloor_variation * underwater_weight;
+
+        // Mountain ridges continue below the waterline as wide, softened escarpments.
+        // The falloff reaches several hundred metres offshore rather than ending at the beach.
+        const double mountain_weight = mountain_coast_weight(x, z);
+        const double cliff_falloff = smoothstep(0.99, 1.10, coast_distance) *
+            (1.0 - smoothstep(1.72, 2.38, coast_distance));
+        ocean_depth -= 118.0 * mountain_weight * cliff_falloff;
+        ocean_depth = std::min(ocean_depth, -1.0);
+
         height = land_height * land_mask + ocean_depth * (1.0 - land_mask);
-        return std::clamp(height, -80.0, 1600.0);
+        return std::clamp(height, -220.0, 1600.0);
     }
 
     double cached_grid_height(int32_t grid_x, int32_t grid_z) const {
@@ -317,7 +360,11 @@ struct NoiseSet {
         const double rock_weight = surface_rock_weight(slope, x, z);
         // Below sea level, grass never continues underwater: gentle seabed is sand,
         // while genuinely steep rock faces continue as rock.
-        if (height_m < 0.0) return rock_weight >= 0.5 ? ROCK : SAND;
+        if (height_m < 0.0) {
+            const double mountain_weight = mountain_coast_weight(x, z);
+            return (rock_weight >= 0.5 || mountain_weight >= 0.22 || slope >= 0.72)
+                ? ROCK : SAND;
+        }
         if (shore >= 0.91 && shore <= 1.13 && slope < 0.58 && height_m <= 9.0) {
             return SAND;
         }
