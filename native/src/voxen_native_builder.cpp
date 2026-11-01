@@ -235,7 +235,7 @@ struct NoiseSet {
                                   sample_noise(hills, x * 1.9, z * 1.9) * 0.035;
         const double coast_distance = radial + coast_warp;
         const double land_mask = 1.0 - smoothstep(0.965, 1.035, coast_distance);
-        const double ocean_depth = -3.0 - 72.0 * smoothstep(1.0, 2.25, coast_distance);
+        double ocean_depth = -3.0 - 72.0 * smoothstep(1.0, 2.25, coast_distance);
         // The island's existing hills/ridges/mountain profile is retained, but fades
         // only at the actual shoreline. There is deliberately no spawn-centre fade.
         const double land_height = std::clamp(height, 0.25, 1600.0);
