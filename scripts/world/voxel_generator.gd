@@ -153,7 +153,7 @@ func find_safe_spawn_position(_chunk_size_m: float = 32.0) -> Vector2:
             if index >= samples.size():
                 continue
             var coarse_height: float = samples[index]
-            if coarse_height < 3.0 or coarse_height > 180.0:
+            if coarse_height < 3.0 or coarse_height > 100.0:
                 continue
             var px: float = -half + float(x) * coarse_step
             var pz: float = -half + float(z) * coarse_step
@@ -194,7 +194,7 @@ func find_safe_spawn_position(_chunk_size_m: float = 32.0) -> Vector2:
 func _safe_spawn_candidate_score(world_x: float, world_z: float) -> float:
     var center: Vector3 = get_surface_sample(world_x, world_z)
     var center_slope: float = Vector2(center.y, center.z).length()
-    if center.x < 3.0 or center.x > 180.0 or center_slope > 0.22:
+    if center.x < 3.0 or center.x > 100.0 or center_slope > 0.22:
         return -INF
 
     var offsets: Array[Vector2] = [
