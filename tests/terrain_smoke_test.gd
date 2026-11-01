@@ -62,6 +62,19 @@ func _initialize() -> void:
         == GeneratorScript.SAND,
         "Gentle underwater terrain must use sand rather than grass.")
 
+    var underwater_min: float = INF
+    var underwater_max: float = -INF
+    var underwater_samples: int = 0
+    for x in range(-2400, 2401, 200):
+        for z in range(-2400, 2401, 200):
+            var depth: float = first.get_surface_height(float(x), float(z))
+            if depth < -2.0:
+                underwater_min = minf(underwater_min, depth)
+                underwater_max = maxf(underwater_max, depth)
+                underwater_samples += 1
+    assert(underwater_samples > 10 and underwater_max - underwater_min > 8.0,
+        "The seabed must contain noticeable hills, basins and depth variation.")
+
     print("Island terrain smoke test passed. center_height=%.2f spawn=%s" % [
         center_height, str(spawn_position)
     ])
