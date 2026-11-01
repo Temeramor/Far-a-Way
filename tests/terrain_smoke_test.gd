@@ -61,6 +61,11 @@ func _initialize() -> void:
             "The complete spawn footprint must remain dry and gentle.")
     assert(absf(spawn_position.x) <= 2500.0 and absf(spawn_position.y) <= 2500.0,
         "The selected spawn position must stay within map bounds.")
+    var spawn_chunk_x: float = fposmod(spawn_position.x + 2500.0, 32.0)
+    var spawn_chunk_z: float = fposmod(spawn_position.y + 2500.0, 32.0)
+    assert(minf(spawn_chunk_x, 32.0 - spawn_chunk_x) >= 2.0
+        and minf(spawn_chunk_z, 32.0 - spawn_chunk_z) >= 2.0,
+        "The spawn footprint must not straddle a terrain chunk border.")
 
     var surface_height: float = first.get_surface_height(0.0, 0.0)
     assert(first.get_terrain_density(0.0, surface_height - 1.0, 0.0) > 0.0,
@@ -81,6 +86,16 @@ func _initialize() -> void:
         for z in range(-2400, 2401, 200):
             var depth: float = first.get_surface_height(float(x), float(z))
             if depth < -2.0:
+                var underwater_sample: Vector3 = first.get_surface_sample(float(x), float(z))
+                var underwater_slope: float = Vector2(underwater_sample.y, underwater_sample.z).length()
+                var underwater_material: int = first.get_surface_material(
+                    depth, underwater_slope, float(x), float(z)
+                )
+                assert(underwater_material == GeneratorScript.SAND or underwater_material == GeneratorScript.ROCK,
+                    "Grass must never be used as an underwater terrain material.")
+                if underwater_slope < 0.5:
+                    assert(underwater_material == GeneratorScript.SAND,
+                        "Gentle underwater slopes must remain sandy.")
                 underwater_min = minf(underwater_min, depth)
                 underwater_max = maxf(underwater_max, depth)
                 underwater_samples += 1
