@@ -235,11 +235,18 @@ struct NoiseSet {
                                   sample_noise(hills, x * 1.9, z * 1.9) * 0.035;
         const double coast_distance = radial + coast_warp;
         const double land_mask = 1.0 - smoothstep(0.965, 1.035, coast_distance);
-        double ocean_depth = -3.0 - 72.0 * smoothstep(1.0, 2.25, coast_distance);
+        // Warp the underwater shelf independently from the shoreline. Broad and
+        // medium-scale noise breaks the old elliptical/ring-like seabed footprint.
+        const double underwater_warp =
+            static_cast<double>(sample_noise(seafloor_macro, x * 0.63, z * 0.63)) * 0.105 +
+            static_cast<double>(sample_noise(seafloor_hills, x * 1.55, z * 1.55)) * 0.052 +
+            static_cast<double>(sample_noise(seafloor_detail, x * 3.8, z * 3.8)) * 0.018;
+        const double underwater_distance = coast_distance + underwater_warp;
+        double ocean_depth = -3.0 - 72.0 * smoothstep(1.0, 2.25, underwater_distance);
         // The island's existing hills/ridges/mountain profile is retained, but fades
         // only at the actual shoreline. There is deliberately no spawn-centre fade.
         const double land_height = std::clamp(height, 0.25, 1600.0);
-        const double underwater_weight = smoothstep(0.995, 1.16, coast_distance);
+        const double underwater_weight = smoothstep(0.995, 1.16, underwater_distance);
         const double seafloor_variation =
             static_cast<double>(sample_noise(seafloor_macro, x, z)) * 16.0 +
             static_cast<double>(sample_noise(seafloor_hills, x, z)) * 11.0 +
@@ -249,8 +256,8 @@ struct NoiseSet {
         // Mountain ridges continue below the waterline as wide, softened escarpments.
         // The falloff reaches several hundred metres offshore rather than ending at the beach.
         const double mountain_weight = mountain_coast_weight(x, z);
-        const double cliff_falloff = smoothstep(0.99, 1.10, coast_distance) *
-            (1.0 - smoothstep(1.72, 2.38, coast_distance));
+        const double cliff_falloff = smoothstep(0.99, 1.10, underwater_distance) *
+            (1.0 - smoothstep(1.52, 2.28, underwater_distance));
         ocean_depth -= 118.0 * mountain_weight * cliff_falloff;
         ocean_depth = std::min(ocean_depth, -1.0);
 
@@ -361,9 +368,9 @@ struct NoiseSet {
         // Below sea level, grass never continues underwater: gentle seabed is sand,
         // while genuinely steep rock faces continue as rock.
         if (height_m < 0.0) {
-            const double mountain_weight = mountain_coast_weight(x, z);
-            return (rock_weight >= 0.5 || mountain_weight >= 0.22 || slope >= 0.72)
-                ? ROCK : SAND;
+            // Underwater rock is reserved for genuinely steep faces. Mountain
+            // proximity alone no longer paints broad, gentle seabed areas as rock.
+            return (slope >= 0.78 || rock_weight >= 0.5) ? ROCK : SAND;
         }
         if (shore >= 0.91 && shore <= 1.13 && slope < 0.58 && height_m <= 9.0) {
             return SAND;
