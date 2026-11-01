@@ -154,11 +154,12 @@ func find_highest_land_position() -> Vector2:
                 best_height = h
                 best_position = Vector2(-half + float(x) * coarse_step,
                     -half + float(z) * coarse_step)
+    var refine_center: Vector2 = best_position
     var refine_step: float = 5.0
     for z in range(-5, 6):
         for x in range(-5, 6):
-            var px: float = best_position.x + float(x) * refine_step
-            var pz: float = best_position.y + float(z) * refine_step
+            var px: float = refine_center.x + float(x) * refine_step
+            var pz: float = refine_center.y + float(z) * refine_step
             var h: float = get_surface_height(px, pz)
             if h > best_height:
                 best_height = h
