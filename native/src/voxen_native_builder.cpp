@@ -45,6 +45,7 @@ constexpr int AIR = 0;
 constexpr int GRASS = 1;
 constexpr int SOIL = 2;
 constexpr int ROCK = 3;
+constexpr int SAND = 4;
 
 struct NoiseSet {
     int64_t seed_value = 0;
@@ -118,6 +119,22 @@ struct NoiseSet {
             segment.phase = static_cast<double>(item.get("phase", 0.0));
             mountain_segments.push_back(segment);
         }
+    }
+
+    double coast_distance(double x, double z) const {
+        const double seed_phase = static_cast<double>(seed_value % 1000003) * 0.000173;
+        const double aspect = 1.0 + 3.0 * (0.5 + 0.5 * std::sin(seed_phase * 1.37));
+        const double angle = seed_phase * 0.71;
+        const double ca = std::cos(angle), sa = std::sin(angle);
+        const double rx = x * ca - z * sa;
+        const double rz = x * sa + z * ca;
+        constexpr double radius = 1128.38;
+        const double a = radius * std::sqrt(aspect);
+        const double b = radius / std::sqrt(aspect);
+        const double radial = std::sqrt((rx * rx) / (a * a) + (rz * rz) / (b * b));
+        const double warp = sample_noise(macro, x * 0.72, z * 0.72) * 0.075 +
+                            sample_noise(hills, x * 1.9, z * 1.9) * 0.035;
+        return radial + warp;
     }
 
     static float sample_noise(const fastnoiselite::FastNoiseLite &noise, double x, double z) {
@@ -296,6 +313,11 @@ struct NoiseSet {
     }
 
     int32_t surface_material(double height_m, double slope, double x, double z) const {
+        const double shore = coast_distance(x, z);
+        if (shore >= 0.91 && shore <= 1.13 && slope < 0.58 &&
+                height_m >= -4.0 && height_m <= 9.0) {
+            return SAND;
+        }
         return surface_rock_weight(slope, x, z) >= 0.5 ? ROCK : GRASS;
     }
 };
@@ -456,6 +478,7 @@ struct MeshBuild {
             case GRASS: return rgb8(54, 164, 42);
             case SOIL: return rgb8(128, 96, 68);
             case ROCK: return rgb8(119, 121, 115);
+            case SAND: return rgb8(224, 177, 105);
             default: return Color(1.0, 1.0, 1.0, 1.0);
         }
     }
@@ -692,8 +715,10 @@ struct MeshBuild {
                 const double weight = noise->surface_rock_weight(slope, world_x, world_z);
                 surface_rock_weights[static_cast<size_t>(z + 1) * (cells_x + 2) + x + 1] = weight;
                 if (x >= 0 && x < cells_x && z >= 0 && z < cells_z) {
+                    const double height_m = static_cast<double>(raw_heights[static_cast<size_t>(gz) * grid_width + gx] -
+                        VERTICAL_OFFSET_VOXELS) * VOXEL_SIZE;
                     surface_types[static_cast<size_t>(z) * cells_x + x] =
-                        static_cast<uint8_t>(weight >= 0.5 ? ROCK : GRASS);
+                        static_cast<uint8_t>(noise->surface_material(height_m, slope, world_x, world_z));
                 }
             }
         }
