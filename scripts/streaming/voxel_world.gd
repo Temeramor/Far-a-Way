@@ -463,7 +463,8 @@ func _try_finish_startup_loading() -> void:
         clampi(floori(local_x / chunk_size_m), 0, _chunks_per_axis - 1),
         clampi(floori(local_z / chunk_size_m), 0, _chunks_per_axis - 1)
     )
-    var spawn_chunk: VoxelTerrainChunk = _chunks.get(spawn_coord) as VoxelTerrainChunk
+    var spawn_chunk_key: Vector2i = _make_lod_key(0, spawn_coord.x, spawn_coord.y)
+    var spawn_chunk: VoxelTerrainChunk = _chunks.get(spawn_chunk_key) as VoxelTerrainChunk
     if spawn_chunk != null and spawn_chunk.mesh_ready and spawn_chunk.collision_active and spawn_chunk._render_active:
         _place_player_on_surface()
 
@@ -1324,13 +1325,17 @@ func _place_player_on_surface() -> void:
     if _player == null:
         _startup_load_pending = false
         return
+    var spawn_epoch: int = _generation_epoch
     var spawn_x: float = _spawn_position_xz.x
     var spawn_z: float = _spawn_position_xz.y
     var safe_surface_height: float = get_surface_height(spawn_x, spawn_z)
     _player.global_position = Vector3(spawn_x, safe_surface_height + 2.5, spawn_z)
     _player.velocity = Vector3.ZERO
     _startup_load_pending = false
-    _player.set_physics_process(true)
+    # Let the physics server register the new HeightMapShape3D before gravity resumes.
+    await get_tree().physics_frame
+    if is_instance_valid(_player) and spawn_epoch == _generation_epoch:
+        _player.set_physics_process(true)
 
 func _exit_tree() -> void:
     # Detached retired meshes and pooled chunk shells are outside the SceneTree; release them explicitly.
