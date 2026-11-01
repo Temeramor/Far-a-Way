@@ -60,8 +60,8 @@ func _create_mountain_ranges() -> void:
     var mountain_scale: float = world_size_m / REFERENCE_WORLD_SIZE_M
     var rng := RandomNumberGenerator.new()
     rng.seed = int(seed_value) + 17011
-    # Reduce chain density on smaller maps without changing the seeded chain-based algorithm.
-    var range_count: int = clampi(roundi(3.0 * sqrt(mountain_scale)), 2, 5)
+    # Mountain presence is seed-driven: some islands are low and hilly, others carry one to three ranges.
+    var range_count: int = rng.randi_range(0, 3)
     var narrow_offset: float = 600.0 * mountain_scale
     var wide_offset: float = 1050.0 * mountain_scale
     for _range_index in range(range_count):
