@@ -44,11 +44,32 @@ func _initialize() -> void:
     assert(sampled_max - sampled_min >= 12.0,
         "The island must retain meaningful terrain variation.")
 
-    var spawn_position: Vector2 = first.find_highest_land_position()
-    assert(first.get_surface_height(spawn_position.x, spawn_position.y) > 0.0,
-        "The selected spawn position must be on dry land.")
+    var spawn_position: Vector2 = first.find_safe_spawn_position(32.0)
+    assert(is_finite(spawn_position.x) and is_finite(spawn_position.y),
+        "A safe flat spawn position must be found before the world can start.")
+    var spawn_sample: Vector3 = first.get_surface_sample(spawn_position.x, spawn_position.y)
+    var spawn_slope: float = Vector2(spawn_sample.y, spawn_sample.z).length()
+    assert(spawn_sample.x > 3.0 and spawn_sample.x < 58.0,
+        "The selected spawn position must be low, dry land rather than a mountain shoulder.")
+    assert(not first._is_within_mountain_spawn_exclusion(spawn_position.x, spawn_position.y),
+        "The selected spawn position must be outside every generated mountain-range footprint.")
+    assert(spawn_slope <= 0.22,
+        "The selected spawn position must be on a gentle slope.")
+    for offset in [Vector2(3.0, 0.0), Vector2(-3.0, 0.0), Vector2(0.0, 3.0), Vector2(0.0, -3.0)]:
+        var nearby_sample: Vector3 = first.get_surface_sample(
+            spawn_position.x + offset.x, spawn_position.y + offset.y
+        )
+        assert(nearby_sample.x > 2.0 and Vector2(nearby_sample.y, nearby_sample.z).length() <= 0.28,
+            "The complete spawn footprint must remain dry and gentle.")
     assert(absf(spawn_position.x) <= 2500.0 and absf(spawn_position.y) <= 2500.0,
         "The selected spawn position must stay within map bounds.")
+    assert(spawn_position.length() >= 220.0,
+        "The selected spawn position must stay clear of the map's central mountain zone.")
+    var spawn_chunk_x: float = fposmod(spawn_position.x + 2500.0, 32.0)
+    var spawn_chunk_z: float = fposmod(spawn_position.y + 2500.0, 32.0)
+    assert(minf(spawn_chunk_x, 32.0 - spawn_chunk_x) >= 2.0
+        and minf(spawn_chunk_z, 32.0 - spawn_chunk_z) >= 2.0,
+        "The spawn footprint must not straddle a terrain chunk border.")
 
     var surface_height: float = first.get_surface_height(0.0, 0.0)
     assert(first.get_terrain_density(0.0, surface_height - 1.0, 0.0) > 0.0,
@@ -61,6 +82,29 @@ func _initialize() -> void:
     assert(first.get_surface_material(seabed_sample.x, seabed_slope, 2400.0, 2400.0)
         == GeneratorScript.SAND,
         "Gentle underwater terrain must use sand rather than grass.")
+
+    var underwater_min: float = INF
+    var underwater_max: float = -INF
+    var underwater_samples: int = 0
+    for x in range(-2400, 2401, 200):
+        for z in range(-2400, 2401, 200):
+            var depth: float = first.get_surface_height(float(x), float(z))
+            if depth < -2.0:
+                var underwater_sample: Vector3 = first.get_surface_sample(float(x), float(z))
+                var underwater_slope: float = Vector2(underwater_sample.y, underwater_sample.z).length()
+                var underwater_material: int = first.get_surface_material(
+                    depth, underwater_slope, float(x), float(z)
+                )
+                assert(underwater_material == GeneratorScript.SAND or underwater_material == GeneratorScript.ROCK,
+                    "Grass must never be used as an underwater terrain material.")
+                if underwater_slope < 0.5:
+                    assert(underwater_material == GeneratorScript.SAND,
+                        "Gentle underwater slopes must remain sandy.")
+                underwater_min = minf(underwater_min, depth)
+                underwater_max = maxf(underwater_max, depth)
+                underwater_samples += 1
+    assert(underwater_samples > 10 and underwater_max - underwater_min > 8.0,
+        "The seabed must contain noticeable hills, basins and depth variation.")
 
     print("Island terrain smoke test passed. center_height=%.2f spawn=%s" % [
         center_height, str(spawn_position)

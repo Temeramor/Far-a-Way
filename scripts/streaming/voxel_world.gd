@@ -70,6 +70,8 @@ var _chunks_per_axis: int
 var _retiring_chunks: Array[VoxelTerrainChunk] = []
 var _generation_epoch: int = 0
 var _startup_load_pending: bool = true
+var _spawn_validation_in_progress: bool = false
+var _spawn_validation_retry_cooldown: float = 0.0
 var _build_usec_by_lod: Array = [[], [], [], [], [], [], [], []]
 var _build_p95_cached_usec: Array[float] = [80000.0, 40000.0, 25000.0, 12000.0, 6000.0, 3000.0, 1500.0, 900.0]
 var _refresh_usec_samples: Array[int] = []
@@ -107,20 +109,26 @@ func _ready() -> void:
     lod_target_pixels = clampf(GameSettings.lod_target_pixels, 2.0, 4.0)
     _last_viewport_size = _current_viewport_pixel_size()
     _refresh_lod_boundaries()
+    _player = get_node_or_null(NodePath("../Player")) as CharacterBody3D
+    if _player != null:
+        _player.set_physics_process(false)
+        _player.velocity = Vector3.ZERO
     _generator = GeneratorScript.new(seed_value, world_size_m)
     _mountain_profile_cache = _generator.get_mountain_profile()
-    _spawn_position_xz = _generator.find_highest_land_position()
+    _spawn_position_xz = _generator.find_safe_spawn_position(chunk_size_m)
+    if not is_finite(_spawn_position_xz.x) or not is_finite(_spawn_position_xz.y):
+        push_error("Far a Way cannot start: no safe, flat, dry spawn area was found.")
+        set_process(false)
+        set_physics_process(false)
+        return
 
     var surface_shader := load("res://shaders/voxel_surface.gdshader") as Shader
     _voxel_material = ShaderMaterial.new()
     _voxel_material.shader = surface_shader
     _apply_seed_to_material()
 
-    _player = get_node_or_null(NodePath("../Player")) as CharacterBody3D
     if _player != null:
         # Do not let gravity move the player before the spawn chunk's collider exists.
-        _player.set_physics_process(false)
-        _player.velocity = Vector3.ZERO
         _player.global_position = Vector3(_spawn_position_xz.x, get_surface_height(_spawn_position_xz.x, _spawn_position_xz.y) + 8.0, _spawn_position_xz.y)
         _startup_load_pending = true
 
@@ -128,6 +136,7 @@ func _ready() -> void:
         call_deferred("_prepare_world_for_epoch", _generation_epoch)
 
 func _process(delta: float) -> void:
+    _spawn_validation_retry_cooldown = maxf(0.0, _spawn_validation_retry_cooldown - delta)
     _last_frame_delta_ms = delta * 1000.0
     if _last_frame_delta_ms >= 33.0:
         _adaptive_apply_limit = 1
@@ -204,6 +213,12 @@ func regenerate_with_random_seed() -> void:
 func regenerate_with_seed(new_seed: int) -> void:
     # Existing worker tasks cannot be cancelled safely; their epoch makes their results stale.
     _world_started = false
+    _startup_load_pending = true
+    _spawn_validation_in_progress = false
+    _spawn_validation_retry_cooldown = 0.0
+    if _player != null:
+        _player.set_physics_process(false)
+        _player.velocity = Vector3.ZERO
     _generation_epoch += 1
     seed_value = new_seed
     _queued.clear()
@@ -225,7 +240,13 @@ func regenerate_with_seed(new_seed: int) -> void:
 
     _generator = GeneratorScript.new(seed_value, world_size_m)
     _mountain_profile_cache = _generator.get_mountain_profile()
-    _spawn_position_xz = _generator.find_highest_land_position()
+    _spawn_position_xz = _generator.find_safe_spawn_position(chunk_size_m)
+    if not is_finite(_spawn_position_xz.x) or not is_finite(_spawn_position_xz.y):
+        push_error("Far a Way cannot regenerate: no safe, flat, dry spawn area was found for this seed.")
+        _startup_load_pending = true
+        _spawn_validation_in_progress = false
+        return
+    _spawn_validation_in_progress = false
     _apply_seed_to_material()
     terrain_seed_changed.emit(seed_value)
     if _player != null:
@@ -455,17 +476,17 @@ func surface_sample_at_world(world_x: float, world_z: float) -> Vector3:
     return _generator.get_surface_sample(world_x, world_z)
 
 func _try_finish_startup_loading() -> void:
-    if not _startup_load_pending or _player == null or not is_world_coverage_ready():
+    if not _startup_load_pending or _spawn_validation_in_progress or _spawn_validation_retry_cooldown > 0.0 or _player == null or not is_world_coverage_ready():
         return
-    var local_x: float = _player.global_position.x - _world_min_x
-    var local_z: float = _player.global_position.z - _world_min_z
-    var spawn_coord := Vector2i(
-        clampi(floori(local_x / chunk_size_m), 0, _chunks_per_axis - 1),
-        clampi(floori(local_z / chunk_size_m), 0, _chunks_per_axis - 1)
-    )
-    var spawn_chunk: VoxelTerrainChunk = _chunks.get(spawn_coord) as VoxelTerrainChunk
-    if spawn_chunk != null and spawn_chunk.mesh_ready and spawn_chunk.collision_active and spawn_chunk._render_active:
-        _place_player_on_surface()
+    var spawn_x: float = _spawn_position_xz.x
+    var spawn_z: float = _spawn_position_xz.y
+    var expected_height: float = get_surface_height(spawn_x, spawn_z)
+    var spawn_position := Vector3(spawn_x, expected_height + 8.0, spawn_z)
+    # The full player footprint must be covered by active LOD0 collision chunks.
+    # Rendering visibility is irrelevant: physics coverage is the startup requirement.
+    if not can_move_to_position(spawn_position, 0.8):
+        return
+    _place_player_on_surface()
 
 func _chunk_has_collision_resource(coord: Vector2i) -> bool:
     var chunk: VoxelTerrainChunk = _chunks.get(coord) as VoxelTerrainChunk
@@ -482,7 +503,7 @@ func can_move_to_position(world_position: Vector3, safety_margin_m: float = 0.6)
             var tile := Vector2i(floori(local_x / chunk_size_m), floori(local_z / chunk_size_m))
             var key := _make_lod_key(0, tile.x, tile.y)
             var chunk: VoxelTerrainChunk = _chunks.get(key) as VoxelTerrainChunk
-            if chunk == null or not chunk.collision_active:
+            if chunk == null or not chunk.mesh_ready or not chunk.collision_enabled or not chunk.collision_active:
                 return false
     return true
 
@@ -1321,16 +1342,68 @@ func _retire_stale_resources() -> void:
             return
 
 func _place_player_on_surface() -> void:
-    if _player == null:
-        _startup_load_pending = false
+    if _player == null or _spawn_validation_in_progress:
         return
+    _spawn_validation_in_progress = true
+    var spawn_epoch: int = _generation_epoch
     var spawn_x: float = _spawn_position_xz.x
     var spawn_z: float = _spawn_position_xz.y
-    var safe_surface_height: float = get_surface_height(spawn_x, spawn_z)
-    _player.global_position = Vector3(spawn_x, safe_surface_height + 2.5, spawn_z)
+    var expected_height: float = get_surface_height(spawn_x, spawn_z)
+    _player.set_physics_process(false)
     _player.velocity = Vector3.ZERO
-    _startup_load_pending = false
-    _player.set_physics_process(true)
+    _player.global_position = Vector3(spawn_x, expected_height + 12.0, spawn_z)
+
+    # Wait for PhysicsServer to register all HeightMapShape3D resources before probing.
+    await get_tree().physics_frame
+    await get_tree().physics_frame
+    if not is_instance_valid(_player) or spawn_epoch != _generation_epoch:
+        _spawn_validation_in_progress = false
+        return
+
+    # Probe the centre and the complete capsule footprint. A single centre hit
+    # can hide a missing edge/corner in a newly-created HeightMapShape3D.
+    var probe_offsets: Array[Vector2] = [
+        Vector2.ZERO,
+        Vector2(0.28, 0.0), Vector2(-0.28, 0.0),
+        Vector2(0.0, 0.28), Vector2(0.0, -0.28),
+        Vector2(0.20, 0.20), Vector2(-0.20, 0.20),
+        Vector2(0.20, -0.20), Vector2(-0.20, -0.20)
+    ]
+    var center_hit: Dictionary = {}
+    var probes_valid: bool = true
+    var space_state: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+    for offset in probe_offsets:
+        var probe_x: float = spawn_x + offset.x
+        var probe_z: float = spawn_z + offset.y
+        var probe_height: float = get_surface_height(probe_x, probe_z)
+        var ray_query := PhysicsRayQueryParameters3D.create(
+            Vector3(probe_x, probe_height + 12.0, probe_z),
+            Vector3(probe_x, probe_height - 12.0, probe_z),
+            1
+        )
+        ray_query.exclude = [_player.get_rid()]
+        var hit: Dictionary = space_state.intersect_ray(ray_query)
+        if hit.is_empty() or absf(float(hit["position"].y) - probe_height) > 0.65:
+            probes_valid = false
+            break
+        if offset == Vector2.ZERO:
+            center_hit = hit
+
+    if not probes_valid or center_hit.is_empty():
+        push_warning("Startup blocked: terrain collision does not match the complete player footprint. Player physics remains disabled.")
+        _spawn_validation_retry_cooldown = 0.5
+        _spawn_validation_in_progress = false
+        return
+
+    # Start clearly above the voxel surface; gravity brings the capsule down
+    # onto the already-confirmed collider instead of placing it flush with the mesh.
+    _player.global_position = center_hit["position"] + Vector3(0.0, 0.0, 0.0)
+    _player.velocity = Vector3.ZERO
+    await get_tree().physics_frame
+    if is_instance_valid(_player) and spawn_epoch == _generation_epoch:
+        _startup_load_pending = false
+        _player.set_physics_process(true)
+    _spawn_validation_in_progress = false
 
 func _exit_tree() -> void:
     # Detached retired meshes and pooled chunk shells are outside the SceneTree; release them explicitly.

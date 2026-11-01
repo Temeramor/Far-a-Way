@@ -201,7 +201,9 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
             collision_shape.name = "VoxelCollisionShape"
             collision_shape.shape = height_shape
             var step_m: float = float(collision_data.get("step_m", 0.2))
-            collision_shape.scale = Vector3(step_m, step_m, step_m)
+            # Height samples are already in metres vertically; only X/Z need
+            # the 0.4 m spacing of the collision heightmap grid.
+            collision_shape.scale = Vector3(step_m, 1.0, step_m)
             collision_shape.position = Vector3(
                 float(int(collision_data["width"]) - 1) * step_m * 0.5,
                 0.0,
@@ -214,6 +216,7 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
             var should_collide: bool = bool(data.get("want_collision", false))
             body.collision_layer = 1 if should_collide else 0
             body.collision_mask = 1 if should_collide else 0
+            collision_shape.disabled = not should_collide
             body.add_child(collision_shape)
             add_child(body)
             collision_enabled = true

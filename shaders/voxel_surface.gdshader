@@ -50,6 +50,25 @@ float value_noise(vec2 p) {
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
+vec3 underwater_algae_voxels(vec3 rock_color, vec2 pixel_cell, vec2 pixel_world) {
+    // A low-frequency field creates irregular colonies; an elongated field breaks them
+    // into short Enteromorpha-like strands. The final mask is quantised per voxel cell.
+    float colony_noise = value_noise(pixel_world * 0.052 + vec2(seed_low * 0.0002, 13.7));
+    float strand_noise = value_noise(vec2(pixel_world.x * 0.031, pixel_world.y * 0.145)
+        + vec2(29.4, seed_high * 0.0003));
+    float colony = smoothstep(0.48, 0.78, colony_noise * 0.70 + strand_noise * 0.30);
+    float cell_pick = hash21(pixel_cell + vec2(41.7, 19.3));
+    float clustered_cells = step(0.86 - colony * 0.30, cell_pick) * colony;
+    float isolated_cells = step(0.994, hash21(pixel_cell + vec2(83.1, 57.6)));
+    float algae_mask = max(clustered_cells, isolated_cells);
+
+    float species = hash21(pixel_cell + vec2(7.3, 93.1));
+    vec3 ulva_green = palette_color(vec3(0.15, 0.32, 0.10));
+    vec3 enteromorpha_green = palette_color(vec3(0.27, 0.44, 0.13));
+    vec3 algae_color = mix(ulva_green, enteromorpha_green, species);
+    return mix(rock_color * 0.58, algae_color, algae_mask);
+}
+
 
 // Continuous palette transitions prevent harsh colour steps
 // from collecting into large, patch-like regions across the visible terrain.
@@ -398,11 +417,11 @@ void fragment() {
                 ALBEDO = voxel_lod_grass_color(world_position.xz, lod_voxel_size) * 0.95;
                 ROUGHNESS = 0.95;
             } else {
+                vec2 algae_cell = floor(rock_world / lod_voxel_size);
+                vec2 algae_world = (algae_cell + vec2(0.5)) * lod_voxel_size;
                 ALBEDO = voxel_lod_rock_color(rock_world, lod_voxel_size);
-                if (world_position.y < 0.0) {
-                    float algae = value_noise(floor(rock_world / lod_voxel_size) * 0.11);
-                    ALBEDO = mix(ALBEDO * 0.58, palette_color(vec3(0.19, 0.29, 0.13)),
-                        smoothstep(0.58, 0.76, algae) * 0.38);
+                if (world_position.y < -0.2) {
+                    ALBEDO = underwater_algae_voxels(ALBEDO, algae_cell, algae_world);
                 }
                 ROUGHNESS = 1.0;
             }
@@ -413,7 +432,12 @@ void fragment() {
             ALBEDO = voxel_lod_soil_color(world_position.xz, lod_voxel_size);
             ROUGHNESS = 0.91;
         } else {
+            vec2 algae_cell = floor(rock_world / lod_voxel_size);
+            vec2 algae_world = (algae_cell + vec2(0.5)) * lod_voxel_size;
             ALBEDO = voxel_lod_rock_color(rock_world, lod_voxel_size);
+            if (world_position.y < -0.2) {
+                ALBEDO = underwater_algae_voxels(ALBEDO, algae_cell, algae_world);
+            }
             ROUGHNESS = 1.0;
         }
     } else {
@@ -435,10 +459,8 @@ void fragment() {
                 ROUGHNESS = 0.95;
             } else {
                 ALBEDO = distance_aware_rock_pixel(pixel_cell, pixel_world, rock_crack_weight, lod_voxel_size);
-                if (world_position.y < 0.0) {
-                    float algae = value_noise(floor(pixel_world / lod_voxel_size) * 0.11);
-                    ALBEDO = mix(ALBEDO * 0.58, palette_color(vec3(0.19, 0.29, 0.13)),
-                        smoothstep(0.58, 0.76, algae) * 0.38);
+                if (world_position.y < -0.2) {
+                    ALBEDO = underwater_algae_voxels(ALBEDO, pixel_cell, pixel_world);
                 }
                 ROUGHNESS = 0.84;
             }
@@ -458,6 +480,9 @@ void fragment() {
             vec2 pixel_cell = floor(rock_world / lod_voxel_size);
             vec2 pixel_world = (pixel_cell + vec2(0.5)) * lod_voxel_size;
             ALBEDO = distance_aware_rock_pixel(pixel_cell, pixel_world, rock_crack_weight, lod_voxel_size);
+            if (world_position.y < -0.2) {
+                ALBEDO = underwater_algae_voxels(ALBEDO, pixel_cell, pixel_world);
+            }
             ROUGHNESS = 0.84;
         }
     }
