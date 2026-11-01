@@ -109,6 +109,10 @@ func _ready() -> void:
     lod_target_pixels = clampf(GameSettings.lod_target_pixels, 2.0, 4.0)
     _last_viewport_size = _current_viewport_pixel_size()
     _refresh_lod_boundaries()
+    _player = get_node_or_null(NodePath("../Player")) as CharacterBody3D
+    if _player != null:
+        _player.set_physics_process(false)
+        _player.velocity = Vector3.ZERO
     _generator = GeneratorScript.new(seed_value, world_size_m)
     _mountain_profile_cache = _generator.get_mountain_profile()
     _spawn_position_xz = _generator.find_safe_spawn_position(chunk_size_m)
@@ -123,11 +127,8 @@ func _ready() -> void:
     _voxel_material.shader = surface_shader
     _apply_seed_to_material()
 
-    _player = get_node_or_null(NodePath("../Player")) as CharacterBody3D
     if _player != null:
         # Do not let gravity move the player before the spawn chunk's collider exists.
-        _player.set_physics_process(false)
-        _player.velocity = Vector3.ZERO
         _player.global_position = Vector3(_spawn_position_xz.x, get_surface_height(_spawn_position_xz.x, _spawn_position_xz.y) + 8.0, _spawn_position_xz.y)
         _startup_load_pending = true
 
