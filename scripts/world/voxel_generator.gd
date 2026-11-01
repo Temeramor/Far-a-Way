@@ -159,6 +159,10 @@ func find_safe_spawn_position(_chunk_size_m: float = 32.0) -> Vector2:
             var pz: float = -half + float(z) * coarse_step
             if absf(px) > half - 8.0 or absf(pz) > half - 8.0:
                 continue
+            var chunk_local_x: float = fposmod(px + half, maxf(_chunk_size_m, 1.0))
+            var chunk_local_z: float = fposmod(pz + half, maxf(_chunk_size_m, 1.0))
+            if minf(chunk_local_x, _chunk_size_m - chunk_local_x) < 2.0 or minf(chunk_local_z, _chunk_size_m - chunk_local_z) < 2.0:
+                continue
             var score: float = _safe_spawn_candidate_score(px, pz)
             if score > best_score:
                 best_score = score
@@ -175,6 +179,10 @@ func find_safe_spawn_position(_chunk_size_m: float = 32.0) -> Vector2:
             var px: float = coarse_best.x + float(x) * 2.0
             var pz: float = coarse_best.y + float(z) * 2.0
             if absf(px) > half - 8.0 or absf(pz) > half - 8.0:
+                continue
+            var chunk_local_x: float = fposmod(px + half, maxf(_chunk_size_m, 1.0))
+            var chunk_local_z: float = fposmod(pz + half, maxf(_chunk_size_m, 1.0))
+            if minf(chunk_local_x, _chunk_size_m - chunk_local_x) < 2.0 or minf(chunk_local_z, _chunk_size_m - chunk_local_z) < 2.0:
                 continue
             var score: float = _safe_spawn_candidate_score(px, pz)
             if score > best_score:
