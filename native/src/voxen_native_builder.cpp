@@ -1221,9 +1221,12 @@ struct MeshBuild {
                 for (int32_t cx = 0; cx < collision_width; ++cx) {
                     const double global_x = static_cast<double>(start_voxel_x + cx * collision_step_voxels);
                     const int32_t height_voxels = cached_height_voxels(global_x, global_z);
+                    // HeightMapShape3D stores local-space metres. The chunk origin is
+                    // offset by -VERTICAL_OFFSET_M, so retain the complete local height
+                    // and scale only the horizontal sample spacing on the CollisionShape3D.
                     collision_heights.set(
                         static_cast<int64_t>(cz) * collision_width + cx,
-                        static_cast<float>(height_voxels) * 0.5f);
+                        static_cast<float>(height_voxels) * static_cast<float>(VOXEL_SIZE));
                 }
             }
             Dictionary collision_data;
