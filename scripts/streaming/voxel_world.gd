@@ -225,12 +225,15 @@ func regenerate_with_seed(new_seed: int) -> void:
 
     _generator = GeneratorScript.new(seed_value, world_size_m)
     _mountain_profile_cache = _generator.get_mountain_profile()
+    _spawn_position_xz = _generator.find_highest_land_position()
     _apply_seed_to_material()
     terrain_seed_changed.emit(seed_value)
     if _player != null:
         _player.set_physics_process(false)
         _player.velocity = Vector3.ZERO
-        _player.global_position = Vector3(0.0, get_surface_height(0.0, 0.0) + 8.0, 0.0)
+        var spawn_x: float = _spawn_position_xz.x
+        var spawn_z: float = _spawn_position_xz.y
+        _player.global_position = Vector3(spawn_x, get_surface_height(spawn_x, spawn_z) + 8.0, spawn_z)
         _startup_load_pending = true
     _last_player_position = Vector2(INF, INF)
     _last_player_height = INF
