@@ -75,6 +75,8 @@ func _try_add_flower(
         return
     var world_x: float = origin_x + local_x
     var world_z: float = origin_z + local_z
+    if host._is_sand(world_x, world_z):
+        return
     var surface: Vector4 = host._surface_info(world_x, world_z)
     var surface_slope: float = Vector2(surface.y, surface.z).length()
     if surface.w > 0.17 or surface_slope > 0.82:
@@ -112,7 +114,9 @@ func scatter_grass(
         var local_z: float = rng.randf_range(0.8, maxf(0.9, depth_m - 0.8))
         var world_x: float = origin_x + local_x
         var world_z: float = origin_z + local_z
-        var surface: Vector4 = host._surface_info(world_x, world_z)
+        if host._is_sand(world_x, world_z):
+        return
+    var surface: Vector4 = host._surface_info(world_x, world_z)
         var surface_slope: float = Vector2(surface.y, surface.z).length()
         if surface.w > 0.24 or surface_slope > 0.94:
             continue
