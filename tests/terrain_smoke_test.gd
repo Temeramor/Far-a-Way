@@ -49,8 +49,10 @@ func _initialize() -> void:
         "A safe flat spawn position must be found before the world can start.")
     var spawn_sample: Vector3 = first.get_surface_sample(spawn_position.x, spawn_position.y)
     var spawn_slope: float = Vector2(spawn_sample.y, spawn_sample.z).length()
-    assert(spawn_sample.x > 3.0 and spawn_sample.x < 100.0,
-        "The selected spawn position must be dry land, away from high mountain peaks.")
+    assert(spawn_sample.x > 3.0 and spawn_sample.x < 58.0,
+        "The selected spawn position must be low, dry land rather than a mountain shoulder.")
+    assert(not first._is_within_mountain_spawn_exclusion(spawn_position.x, spawn_position.y),
+        "The selected spawn position must be outside every generated mountain-range footprint.")
     assert(spawn_slope <= 0.22,
         "The selected spawn position must be on a gentle slope.")
     for offset in [Vector2(3.0, 0.0), Vector2(-3.0, 0.0), Vector2(0.0, 3.0), Vector2(0.0, -3.0)]:
