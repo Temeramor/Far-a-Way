@@ -314,11 +314,14 @@ struct NoiseSet {
 
     int32_t surface_material(double height_m, double slope, double x, double z) const {
         const double shore = coast_distance(x, z);
-        if (shore >= 0.91 && shore <= 1.13 && slope < 0.58 &&
-                height_m >= -4.0 && height_m <= 9.0) {
+        const double rock_weight = surface_rock_weight(slope, x, z);
+        // Below sea level, grass never continues underwater: gentle seabed is sand,
+        // while genuinely steep rock faces continue as rock.
+        if (height_m < 0.0) return rock_weight >= 0.5 ? ROCK : SAND;
+        if (shore >= 0.91 && shore <= 1.13 && slope < 0.58 && height_m <= 9.0) {
             return SAND;
         }
-        return surface_rock_weight(slope, x, z) >= 0.5 ? ROCK : GRASS;
+        return rock_weight >= 0.5 ? ROCK : GRASS;
     }
 };
 
