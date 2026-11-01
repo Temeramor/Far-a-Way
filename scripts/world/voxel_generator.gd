@@ -192,9 +192,13 @@ func find_safe_spawn_position(_chunk_size_m: float = 32.0) -> Vector2:
 
 
 func _safe_spawn_candidate_score(world_x: float, world_z: float) -> float:
+    # A broad mountain foothill can be nearly flat and sit below 100 m.
+    # Exclude the generated mountain-range footprint explicitly, not by slope/height alone.
+    if _is_within_mountain_spawn_exclusion(world_x, world_z):
+        return -INF
     var center: Vector3 = get_surface_sample(world_x, world_z)
     var center_slope: float = Vector2(center.y, center.z).length()
-    if center.x < 3.0 or center.x > 100.0 or center_slope > 0.22:
+    if center.x < 3.0 or center.x > 58.0 or center_slope > 0.16:
         return -INF
 
     var offsets: Array[Vector2] = [
@@ -219,7 +223,23 @@ func _safe_spawn_candidate_score(world_x: float, world_z: float) -> float:
     if height_spread > 1.5:
         return -INF
     # Prefer broad, nearly level ground; elevation is only a small tie-breaker.
-    return -max_slope * 20.0 - height_spread * 4.0 + minf(center.x, 60.0) * 0.015
+    return -max_slope * 24.0 - height_spread * 5.0 - center.x * 0.025
+
+
+func _is_within_mountain_spawn_exclusion(world_x: float, world_z: float) -> bool:
+    var point := Vector2(world_x, world_z)
+    for i in range(_mountain_starts.size()):
+        var start: Vector2 = _mountain_starts[i]
+        var delta: Vector2 = _mountain_deltas[i]
+        var length_squared: float = maxf(_mountain_lengths_squared[i], 0.001)
+        var along: float = clampf((point - start).dot(delta) / length_squared, 0.0, 1.0)
+        var closest: Vector2 = start + delta * along
+        # Match the broad foothill mask used by the native height sampler, with
+        # an extra buffer so the player is not placed on the mountain shoulder.
+        var exclusion_radius: float = _mountain_widths[i] * 1.85 + 40.0
+        if point.distance_squared_to(closest) <= exclusion_radius * exclusion_radius:
+            return true
+    return false
 
 
 func get_surface_rock_weight(gradient: float, x: float, z: float) -> float:
