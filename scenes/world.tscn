@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/world_controller.gd" id="1_world"]
 [ext_resource type="Script" path="res://scripts/world/terrain_generator.gd" id="2_terrain"]
