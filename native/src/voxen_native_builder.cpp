@@ -1017,7 +1017,7 @@ struct MeshBuild {
                     const int32_t cache_x = cache_dx / cache_step_voxels;
                     const int32_t cache_z = cache_dz / cache_step_voxels;
                     if (cache_x >= 0 && cache_x < cache_width && cache_z >= 0 && cache_z < cache_depth) {
-                        height_m = height_cache[static_cast<size_t>(cache_z) * cache_width + cache_x] * VOXEL_SIZE;
+                        height_m = height_cache[static_cast<size_t>(cache_z) * cache_width + cache_x] * VOXEL_SIZE - VERTICAL_OFFSET_M;
                     } else {
                         height_m = noise->surface_height(world_x, world_z);
                     }
