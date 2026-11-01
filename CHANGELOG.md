@@ -70,3 +70,8 @@
 - Exclude the complete generated mountain-range footprint, including broad foothills, from spawn candidates; prefer low, level clearings.
 - Store HeightMapShape3D height samples directly in local metres and scale only the horizontal grid spacing, avoiding ambiguous vertical shape scaling.
 - Keep startup gated on confirmed collision and validate the spawn footprint against the terrain heightmap.
+
+
+### Startup spawn override fix
+- Removed the legacy WorldController placement at world origin; it had overwritten VoxEn's verified safe spawn after loading.
+- Keep spawn candidates at least 220 m from the central map area and raise the final player placement 3.5 m above the confirmed collision surface.
