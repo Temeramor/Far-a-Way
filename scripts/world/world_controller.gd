@@ -170,9 +170,9 @@ func _on_generation_progress(_seed_value: int, progress: float, message: String)
 
 
 func _on_generation_finished(_seed_value: int) -> void:
-    # The CharacterBody origin is at the capsule feet; camera is at eye level.
-    var ground_height: float = terrain.height_at_world(0.0, 0.0)
-    player.global_position = Vector3(0.0, ground_height + 0.12, 0.0)
+    # VoxelWorld has already selected a safe non-central spawn, verified the
+    # LOD0 collision across the capsule footprint, and placed the player above it.
+    # Never overwrite that position with the legacy (0, 0) terrain origin.
     player.velocity = Vector3.ZERO
     player.reset_camera()
 
