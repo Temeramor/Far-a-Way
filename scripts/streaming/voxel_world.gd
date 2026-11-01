@@ -1360,20 +1360,42 @@ func _place_player_on_surface() -> void:
         _spawn_validation_in_progress = false
         return
 
-    var ray_query := PhysicsRayQueryParameters3D.create(
-        Vector3(spawn_x, expected_height + 12.0, spawn_z),
-        Vector3(spawn_x, expected_height - 12.0, spawn_z),
-        1
-    )
-    ray_query.exclude = [_player.get_rid()]
-    var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(ray_query)
-    if hit.is_empty() or absf(float(hit["position"].y) - expected_height) > 1.0:
-        push_warning("Startup blocked: the selected spawn point has no matching terrain collider. Player physics remains disabled.")
+    # Probe the centre and the complete capsule footprint. A single centre hit
+    # can hide a missing edge/corner in a newly-created HeightMapShape3D.
+    var probe_offsets: Array[Vector2] = [
+        Vector2.ZERO,
+        Vector2(0.28, 0.0), Vector2(-0.28, 0.0),
+        Vector2(0.0, 0.28), Vector2(0.0, -0.28),
+        Vector2(0.20, 0.20), Vector2(-0.20, 0.20),
+        Vector2(0.20, -0.20), Vector2(-0.20, -0.20)
+    ]
+    var center_hit: Dictionary = {}
+    var probes_valid: bool = true
+    var space_state: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+    for offset in probe_offsets:
+        var probe_x: float = spawn_x + offset.x
+        var probe_z: float = spawn_z + offset.y
+        var probe_height: float = get_surface_height(probe_x, probe_z)
+        var ray_query := PhysicsRayQueryParameters3D.create(
+            Vector3(probe_x, probe_height + 12.0, probe_z),
+            Vector3(probe_x, probe_height - 12.0, probe_z),
+            1
+        )
+        ray_query.exclude = [_player.get_rid()]
+        var hit: Dictionary = space_state.intersect_ray(ray_query)
+        if hit.is_empty() or absf(float(hit["position"].y) - probe_height) > 0.65:
+            probes_valid = false
+            break
+        if offset == Vector2.ZERO:
+            center_hit = hit
+
+    if not probes_valid or center_hit.is_empty():
+        push_warning("Startup blocked: terrain collision does not match the complete player footprint. Player physics remains disabled.")
         _spawn_validation_retry_cooldown = 0.5
         _spawn_validation_in_progress = false
         return
 
-    _player.global_position = hit["position"] + Vector3(0.0, 2.5, 0.0)
+    _player.global_position = center_hit["position"] + Vector3(0.0, 2.5, 0.0)
     _player.velocity = Vector3.ZERO
     await get_tree().physics_frame
     if is_instance_valid(_player) and spawn_epoch == _generation_epoch:
