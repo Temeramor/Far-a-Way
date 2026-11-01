@@ -5,6 +5,7 @@ class_name VoxelTerrainGenerator
 ## Chunk meshing is streamed; no world-sized height array or per-voxel Node allocation is used.
 
 const VOXEL_SIZE: float = 0.2
+const VERTICAL_OFFSET_VOXELS: int = 512
 const AIR: int = 0
 const GRASS: int = 1
 const SOIL: int = 2
