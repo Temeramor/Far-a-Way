@@ -64,3 +64,9 @@
 - Добавлено ориентирование камней и их коллизий по нормали поверхности.
 - Добавлена раздельная организация модулей стриминга, меширования, отрисовки и генерации декора.
 - Добавлены smoke-проверки экранного LOD и хранения данных в кэше.
+
+
+### Spawn and collision follow-up
+- Exclude the complete generated mountain-range footprint, including broad foothills, from spawn candidates; prefer low, level clearings.
+- Store HeightMapShape3D height samples directly in local metres and scale only the horizontal grid spacing, avoiding ambiguous vertical shape scaling.
+- Keep startup gated on confirmed collision and validate the spawn footprint against the terrain heightmap.
