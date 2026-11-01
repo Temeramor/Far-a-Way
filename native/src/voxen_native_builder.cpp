@@ -1166,7 +1166,7 @@ struct MeshBuild {
                     const int32_t height_voxels = cached_height_voxels(global_x, global_z);
                     collision_heights.set(
                         static_cast<int64_t>(cz) * collision_width + cx,
-                        static_cast<float>(height_voxels - VERTICAL_OFFSET_VOXELS) * 0.5f);
+                        static_cast<float>(height_voxels) * 0.5f);
                 }
             }
             Dictionary collision_data;
