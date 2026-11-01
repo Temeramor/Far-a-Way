@@ -99,6 +99,10 @@ func build_plant_data(job_data: Dictionary) -> void:
     }
 
 
+func _is_sand(world_x: float, world_z: float) -> bool:
+    return _generator != null and _generator.is_sand_surface(world_x, world_z)
+
+
 func _surface_info(world_x: float, world_z: float) -> Vector4:
     # Packed as (height, gradient_x, gradient_z, rock_weight) to avoid a Dictionary
     # allocation for every vegetation/rock placement probe.
