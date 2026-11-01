@@ -44,9 +44,21 @@ func _initialize() -> void:
     assert(sampled_max - sampled_min >= 12.0,
         "The island must retain meaningful terrain variation.")
 
-    var spawn_position: Vector2 = first.find_highest_land_position()
-    assert(first.get_surface_height(spawn_position.x, spawn_position.y) > 0.0,
-        "The selected spawn position must be on dry land.")
+    var spawn_position: Vector2 = first.find_safe_spawn_position(32.0)
+    assert(is_finite(spawn_position.x) and is_finite(spawn_position.y),
+        "A safe flat spawn position must be found before the world can start.")
+    var spawn_sample: Vector3 = first.get_surface_sample(spawn_position.x, spawn_position.y)
+    var spawn_slope: float = Vector2(spawn_sample.y, spawn_sample.z).length()
+    assert(spawn_sample.x > 3.0 and spawn_sample.x < 180.0,
+        "The selected spawn position must be dry land, away from high mountain peaks.")
+    assert(spawn_slope <= 0.22,
+        "The selected spawn position must be on a gentle slope.")
+    for offset in [Vector2(3.0, 0.0), Vector2(-3.0, 0.0), Vector2(0.0, 3.0), Vector2(0.0, -3.0)]:
+        var nearby_sample: Vector3 = first.get_surface_sample(
+            spawn_position.x + offset.x, spawn_position.y + offset.y
+        )
+        assert(nearby_sample.x > 2.0 and Vector2(nearby_sample.y, nearby_sample.z).length() <= 0.28,
+            "The complete spawn footprint must remain dry and gentle.")
     assert(absf(spawn_position.x) <= 2500.0 and absf(spawn_position.y) <= 2500.0,
         "The selected spawn position must stay within map bounds.")
 
