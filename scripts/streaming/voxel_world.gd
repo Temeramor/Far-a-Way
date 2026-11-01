@@ -1397,7 +1397,7 @@ func _place_player_on_surface() -> void:
 
     # Start clearly above the voxel surface; gravity brings the capsule down
     # onto the already-confirmed collider instead of placing it flush with the mesh.
-    _player.global_position = center_hit["position"] + Vector3(0.0, 3.5, 0.0)
+    _player.global_position = center_hit["position"] + Vector3(0.0, 0.0, 0.0)
     _player.velocity = Vector3.ZERO
     await get_tree().physics_frame
     if is_instance_valid(_player) and spawn_epoch == _generation_epoch:
