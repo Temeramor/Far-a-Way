@@ -1194,6 +1194,7 @@ void VoxEnNativeBuilder::_bind_methods() {
     ClassDB::bind_method(D_METHOD("share_terrain_sampler", "source"), &VoxEnNativeBuilder::share_terrain_sampler);
     ClassDB::bind_method(D_METHOD("get_surface_height", "x", "z"), &VoxEnNativeBuilder::get_surface_height);
     ClassDB::bind_method(D_METHOD("get_surface_rock_weight", "slope", "x", "z"), &VoxEnNativeBuilder::get_surface_rock_weight);
+    ClassDB::bind_method(D_METHOD("get_surface_material", "height_m", "slope", "x", "z"), &VoxEnNativeBuilder::get_surface_material);
     ClassDB::bind_method(D_METHOD("get_surface_sample", "x", "z", "step_m"), &VoxEnNativeBuilder::get_surface_sample);
     ClassDB::bind_method(D_METHOD("sample_height_grid", "origin_x", "origin_z", "columns", "rows", "step_m"), &VoxEnNativeBuilder::sample_height_grid);
     ClassDB::bind_method(D_METHOD("set_result", "value"), &VoxEnNativeBuilder::set_result);
@@ -1249,6 +1250,12 @@ double VoxEnNativeBuilder::get_surface_rock_weight(double slope, double x, doubl
     if (!terrain_sampler_data) return 0.0;
     const auto sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
     return sampler->surface_rock_weight(slope, x, z);
+}
+
+int32_t VoxEnNativeBuilder::get_surface_material(double height_m, double slope, double x, double z) const {
+    if (!terrain_sampler_data) return GRASS;
+    const auto sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
+    return sampler->surface_material(height_m, slope, x, z);
 }
 
 Vector3 VoxEnNativeBuilder::get_surface_sample(double x, double z, double step_m) const {
