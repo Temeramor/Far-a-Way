@@ -115,8 +115,8 @@ func scatter_grass(
         var world_x: float = origin_x + local_x
         var world_z: float = origin_z + local_z
         if host._is_sand(world_x, world_z):
-        return
-    var surface: Vector4 = host._surface_info(world_x, world_z)
+            continue
+        var surface: Vector4 = host._surface_info(world_x, world_z)
         var surface_slope: float = Vector2(surface.y, surface.z).length()
         if surface.w > 0.24 or surface_slope > 0.94:
             continue
