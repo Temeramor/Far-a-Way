@@ -202,7 +202,7 @@ func get_voxel_material(voxel: Vector3i, world_min_x: float, world_min_z: float,
     var surface_sample: Vector3 = get_surface_sample(world_x, world_z)
     var surface_slope: float = Vector2(surface_sample.y, surface_sample.z).length()
     var top_material: int = get_surface_material(
-        float(surface_y) * VOXEL_SIZE, surface_slope, world_x, world_z
+        float(surface_y - VERTICAL_OFFSET_VOXELS) * VOXEL_SIZE, surface_slope, world_x, world_z
     )
     if internal_y == surface_y - 1:
         return top_material
