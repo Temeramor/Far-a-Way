@@ -63,6 +63,8 @@ func _initialize() -> void:
             "The complete spawn footprint must remain dry and gentle.")
     assert(absf(spawn_position.x) <= 2500.0 and absf(spawn_position.y) <= 2500.0,
         "The selected spawn position must stay within map bounds.")
+    assert(spawn_position.length() >= 220.0,
+        "The selected spawn position must stay clear of the map's central mountain zone.")
     var spawn_chunk_x: float = fposmod(spawn_position.x + 2500.0, 32.0)
     var spawn_chunk_z: float = fposmod(spawn_position.y + 2500.0, 32.0)
     assert(minf(spawn_chunk_x, 32.0 - spawn_chunk_x) >= 2.0
