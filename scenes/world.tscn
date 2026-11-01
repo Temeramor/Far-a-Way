@@ -13,7 +13,7 @@ script = ExtResource("1_world")
 
 [node name="VoxelWorld" type="Node3D" parent="."]
 script = ExtResource("7_voxen_world")
-world_size_m = 2000.0
+world_size_m = 5000.0
 chunk_size_m = 32.0
 seed_value = 1337
 render_distance_m = 1536.0
