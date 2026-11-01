@@ -71,6 +71,7 @@ var _retiring_chunks: Array[VoxelTerrainChunk] = []
 var _generation_epoch: int = 0
 var _startup_load_pending: bool = true
 var _spawn_validation_in_progress: bool = false
+var _spawn_validation_retry_cooldown: float = 0.0
 var _build_usec_by_lod: Array = [[], [], [], [], [], [], [], []]
 var _build_p95_cached_usec: Array[float] = [80000.0, 40000.0, 25000.0, 12000.0, 6000.0, 3000.0, 1500.0, 900.0]
 var _refresh_usec_samples: Array[int] = []
@@ -134,6 +135,7 @@ func _ready() -> void:
         call_deferred("_prepare_world_for_epoch", _generation_epoch)
 
 func _process(delta: float) -> void:
+    _spawn_validation_retry_cooldown = maxf(0.0, _spawn_validation_retry_cooldown - delta)
     _last_frame_delta_ms = delta * 1000.0
     if _last_frame_delta_ms >= 33.0:
         _adaptive_apply_limit = 1
@@ -210,6 +212,12 @@ func regenerate_with_random_seed() -> void:
 func regenerate_with_seed(new_seed: int) -> void:
     # Existing worker tasks cannot be cancelled safely; their epoch makes their results stale.
     _world_started = false
+    _startup_load_pending = true
+    _spawn_validation_in_progress = false
+    _spawn_validation_retry_cooldown = 0.0
+    if _player != null:
+        _player.set_physics_process(false)
+        _player.velocity = Vector3.ZERO
     _generation_epoch += 1
     seed_value = new_seed
     _queued.clear()
@@ -467,7 +475,7 @@ func surface_sample_at_world(world_x: float, world_z: float) -> Vector3:
     return _generator.get_surface_sample(world_x, world_z)
 
 func _try_finish_startup_loading() -> void:
-    if not _startup_load_pending or _spawn_validation_in_progress or _player == null or not is_world_coverage_ready():
+    if not _startup_load_pending or _spawn_validation_in_progress or _spawn_validation_retry_cooldown > 0.0 or _player == null or not is_world_coverage_ready():
         return
     var spawn_x: float = _spawn_position_xz.x
     var spawn_z: float = _spawn_position_xz.y
@@ -1360,6 +1368,7 @@ func _place_player_on_surface() -> void:
     var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(ray_query)
     if hit.is_empty() or absf(float(hit["position"].y) - expected_height) > 1.0:
         push_warning("Startup blocked: the selected spawn point has no matching terrain collider. Player physics remains disabled.")
+        _spawn_validation_retry_cooldown = 0.5
         _spawn_validation_in_progress = false
         return
 
