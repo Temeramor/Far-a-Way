@@ -9,6 +9,7 @@ const AIR: int = 0
 const GRASS: int = 1
 const SOIL: int = 2
 const ROCK: int = 3
+const SAND: int = 4
 const MIN_TERRAIN_HEIGHT: float = -80.0
 const MAX_TERRAIN_HEIGHT: float = 1600.0
 const HEIGHT_SAMPLE_STEP_M: float = 0.5
@@ -174,8 +175,15 @@ func get_surface_rock_weight(gradient: float, x: float, z: float) -> float:
 
 
 func get_surface_material(height_m: float, slope: float, x: float, z: float) -> int:
-    # Categorical helper for vertical faces; top faces use the continuous weight directly.
-    return ROCK if get_surface_rock_weight(slope, x, z) >= 0.5 else GRASS
+    if _native_sampler == null:
+        return GRASS
+    return int(_native_sampler.call("get_surface_material", height_m, slope, x, z))
+
+
+func is_sand_surface(x: float, z: float) -> bool:
+    var sample: Vector3 = get_surface_sample(x, z)
+    var slope: float = Vector2(sample.y, sample.z).length()
+    return get_surface_material(sample.x, slope, x, z) == SAND
 
 
 func get_terrain_density(world_x: float, world_y: float, world_z: float) -> float:
