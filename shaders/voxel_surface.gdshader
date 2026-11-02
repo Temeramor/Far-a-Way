@@ -10,7 +10,6 @@ render_mode diffuse_burley, cull_back, specular_schlick_ggx;
 
 uniform bool debug_lod_colors = false;
 uniform vec4 skirt_visibility = vec4(1.0);
-uniform float lod_cell_size = 0.2;
 uniform float side_fill : hint_range(0.0, 1.0) = 0.30;
 uniform float side_wrap : hint_range(0.0, 1.0) = 0.50;
 uniform int lod_index = 0;
