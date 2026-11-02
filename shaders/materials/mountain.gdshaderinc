@@ -196,11 +196,4 @@ vec3 distance_aware_rock_pixel(
 }
 
 
-vec3 distance_aware_rock_pixel(
-        vec2 pixel_cell, vec2 pixel_world, float crack_weight, float cell_size) {
-    if (crack_weight <= 0.001) {
-        return voxel_lod_rock_color(pixel_world, cell_size);
-    }
-    return rock_pixel(pixel_cell, pixel_world, crack_weight);
-}
 
