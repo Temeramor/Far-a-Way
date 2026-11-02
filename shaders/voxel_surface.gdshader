@@ -255,8 +255,6 @@ vec3 mountain_ramp_rock(float q) {
 
 // Pixel coordinates are locked to world space. This function generates colour only:
 // no height-gradient lighting, cavity shading, baked streak shadows or material reflections.
-// Pixel coordinates are locked to world space. This function generates colour only:
- // no height-gradient lighting, cavity shading, baked streak shadows or material reflections.
 vec3 mountain_rock_color(vec2 world_xy, float meters_per_pixel) {
     float pixel_scale = max(meters_per_pixel, 0.1);
     ivec2 pixel = ivec2(floor(world_xy / pixel_scale));
