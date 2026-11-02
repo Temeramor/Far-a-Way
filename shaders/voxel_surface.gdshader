@@ -1,6 +1,8 @@
 shader_type spatial;
 render_mode diffuse_burley, cull_back, specular_schlick_ggx;
 
+#include "res://shaders/mountain_common.gdshaderinc"
+
 uniform float seed_low = 240518.0;
 uniform float seed_high = 0.0;
 uniform bool debug_lod_colors = false;
@@ -255,32 +257,20 @@ vec3 mountain_ramp_rock(float q) {
 
 // Pixel coordinates are locked to world space. This function generates colour only:
 // no height-gradient lighting, cavity shading, baked streak shadows or material reflections.
+vec3 srgb_to_lin(vec3 c) {
+    return mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, step(c, vec3(0.04045)));
+}
+
+// The new mountain generator is sampled in world metres and stays locked to the
+// same triplanar projection used by the voxel terrain. LOD samples are snapped
+// to their voxel-cell centre so distant detail remains stable.
 vec3 mountain_rock_color(vec2 world_xy, float meters_per_pixel) {
-    float pixel_scale = max(meters_per_pixel, 0.1);
-    ivec2 pixel = ivec2(floor(world_xy / pixel_scale));
-    int seed = int(seed_low) + int(seed_high) * 65536;
-    int s = seed * 131 + 7;
-
-    // One sample is sufficient for the colour pattern; neighbouring samples were only
-    // used to synthesize fake lighting and cavity darkening.
-    vec2 pattern = rock_sample(vec2(pixel), s);
-    float value = 0.5 + (pattern.x - 0.4) * 0.75;
-    value = (value - 0.5) * mountain_contrast + 0.5;
-
-    int bayer_index = (pixel.y & 3) * 4 + (pixel.x & 3);
-    float bayer = (ROCK_BAYER[bayer_index] + 0.5) / 16.0;
-    float quantized = value * (mountain_levels - 1.0)
-        + (bayer - 0.5) * mountain_dither;
-    float q = clamp(floor(quantized + 0.5), 0.0, mountain_levels - 1.0)
-        / (mountain_levels - 1.0);
-
-    vec3 color = mountain_ramp_rock(q);
-    float hue_shift = (pattern.y - 0.5) * 16.0;
-    color.r += hue_shift;
-    color.b -= hue_shift;
-
-    // Palette constants are authored in sRGB, while ALBEDO expects linear values.
-    return pow(clamp(color, vec3(0.0), vec3(255.0)) / 255.0, vec3(2.2));
+    float pixel_scale = max(meters_per_pixel, PX);
+    vec2 sample_world = (floor(world_xy / pixel_scale) + vec2(0.5)) * pixel_scale;
+    vec2 sample_px = sample_world / PX;
+    Surf surface = mountain(sample_px, 0.0, false);
+    vec3 srgb = quantize(surface.color, ivec2(floor(sample_px)));
+    return srgb_to_lin(srgb);
 }
 
 // Hybrid triplanar projection: blend the horizontal XZ plane with a wall plane
