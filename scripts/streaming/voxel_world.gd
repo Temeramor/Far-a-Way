@@ -367,7 +367,6 @@ func _apply_seed_to_material() -> void:
     var safe_seed: int = abs(seed_value % 2147483647)
     _voxel_material.set_shader_parameter("seed_low", float(safe_seed % 65536))
     _voxel_material.set_shader_parameter("seed_high", float(int(floor(float(safe_seed) / 65536.0))))
-    _voxel_material.set_shader_parameter("terrain_seed", safe_seed % 99999)
     _voxel_material.set_shader_parameter("debug_lod_colors", _debug_lod_colors)
 
 
