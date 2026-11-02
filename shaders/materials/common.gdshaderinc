@@ -1,3 +1,5 @@
+// Shared voxel scale used by the terrain LOD and material modules.
+uniform float lod_cell_size = 0.2;
 uniform float seed_low = 240518.0;
 uniform float seed_high = 0.0;
 
