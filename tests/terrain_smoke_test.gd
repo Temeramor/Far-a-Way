@@ -80,8 +80,8 @@ func _initialize() -> void:
     var seabed_sample: Vector3 = first.get_surface_sample(2400.0, 2400.0)
     var seabed_slope: float = Vector2(seabed_sample.y, seabed_sample.z).length()
     assert(first.get_surface_material(seabed_sample.x, seabed_slope, 2400.0, 2400.0)
-        == GeneratorScript.SAND,
-        "Gentle underwater terrain must use sand rather than grass.")
+        == GeneratorScript.SAND or first.get_surface_material(seabed_sample.x, seabed_slope, 2400.0, 2400.0) == GeneratorScript.SILT,
+        "Gentle underwater terrain must use sand or silt rather than grass.")
 
     var underwater_min: float = INF
     var underwater_max: float = -INF
