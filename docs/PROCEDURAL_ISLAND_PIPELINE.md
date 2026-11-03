@@ -4,11 +4,11 @@ This branch replaces the previous generic island/ocean noise blend with a seed-d
 
 ## World contract
 
-- World footprint: **10,520 × 10,520 m**.
+- World footprint: **10,660 × 10,660 m**.
 - Target exposed island area: **approximately 4 km²**.
 - Island nominal equivalent radius: **1,128.38 m**.
 - Island aspect ratio varies by seed while preserving nominal ellipse area.
-- Maximum semi-axis is approximately **2,257 m**; the 10.52 km square leaves about **3 km of ocean** between the largest island outline and the nearest map edge.
+- Maximum semi-axis is approximately **2,257 m**; the 10.66 km square leaves at least **3 km of ocean** between the largest island outline and the nearest map edge.
 - Sea level: **Y = 0 m**.
 - Base voxel pitch: **0.20 m**.
 - Terrain is sampled continuously in native C++ and meshed in streamed chunks; no world-sized heightmap is allocated.
