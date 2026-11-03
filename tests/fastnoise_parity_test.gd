@@ -33,16 +33,16 @@ func _initialize() -> void:
             quit(1)
             return
 
-    var grid := generator.get_surface_height_grid(-100.0, -100.0, 5, 5, 50.0)
+    var grid: PackedFloat32Array = generator.get_surface_height_grid(-100.0, -100.0, 5, 5, 50.0)
     if grid.size() != 25:
         push_error("Native geology sampler returned an invalid sample grid.")
         quit(1)
         return
     for z in range(5):
         for x in range(5):
-            var expected := generator.get_surface_height(-100.0 + float(x) * 50.0,
+            var expected: float = generator.get_surface_height(-100.0 + float(x) * 50.0,
                 -100.0 + float(z) * 50.0)
-            var actual := grid[z * 5 + x]
+            var actual: float = grid[z * 5 + x]
             if absf(actual - expected) > 0.0001:
                 push_error("Native point and batch geology samplers disagree.")
                 quit(1)
