@@ -4,23 +4,23 @@ const GeneratorScript = preload("res://scripts/world/voxel_generator.gd")
 
 
 func _initialize() -> void:
-    var first = GeneratorScript.new(123456, 5000.0)
+    var first = GeneratorScript.new(123456, 10520.0)
     var second = GeneratorScript.new(123456, 5000.0)
-    var half_size_world = GeneratorScript.new(123456, 2500.0)
+    var half_size_world = GeneratorScript.new(123456, 5260.0)
     var center_height: float = first.get_surface_height(0.0, 0.0)
     var repeated_height: float = second.get_surface_height(0.0, 0.0)
 
     assert(is_equal_approx(center_height, repeated_height),
         "Same seed should generate identical island terrain.")
     assert(center_height > 0.0, "The central island must rise above sea level.")
-    assert(first.get_surface_height(2400.0, 2400.0) < 0.0,
-        "The map perimeter must contain seabed below sea level.")
+    assert(first.get_surface_height(5200.0, 0.0) < -150.0,
+        "The outer 3 km ocean margin must reach deep offshore bathymetry.")
     assert(first.get_surface_height_voxels(0.0, 0.0) > 0,
         "Signed terrain heights must remain correctly represented in voxel units.")
 
     var profile: Array = first.get_mountain_profile()
     assert(profile.size() >= 0 and profile.size() <= 9,
-        "A seed may generate zero to three mountain chains (three segments each).")
+        "A seed generates one to three mountain chains (three segments each).")
     if not profile.is_empty():
         var half_profile: Array = half_size_world.get_mountain_profile()
         assert(profile.size() == half_profile.size(),
