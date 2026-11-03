@@ -65,7 +65,7 @@ The 20 cm base voxel pitch is preserved. Existing chunk streaming, worker schedu
 
 ## Planned volumetric migration
 
-The next major geometry step is to replace the height-column mesher with a chunked density-field mesher:
+A signed-distance approximation API is now exposed by the generator. It corrects vertical height difference by the local surface gradient, but the current chunk mesher does not consume it yet. The next major geometry step is to replace the height-column mesher with a chunked density-field mesher:
 
 - Define a signed density field where positive values are solid and negative values are air.
 - Start with the current land/seafloor surface as the base isosurface.
