@@ -147,6 +147,16 @@ vec3 seabed_pixel(vec2 pixel_cell, vec2 pixel_world, bool is_silt) {
     return mix(carbonate_sand, coral, patch * 0.82);
 }
 
+float procedural_caustics(vec2 p) {
+    float t = TIME * 0.42;
+    vec2 q = p * 0.018;
+    float a = abs(sin(q.x * 1.7 + sin(q.y * 1.3 + t) * 1.2));
+    float b = abs(sin(q.y * 1.9 + sin(q.x * 1.1 - t * 0.8) * 1.1));
+    float c = abs(sin((q.x + q.y) * 1.1 + t * 0.4));
+    float lattice = 1.0 - min(abs(a - b), abs(b - c));
+    return pow(clamp(lattice, 0.0, 1.0), 7.0);
+}
+
 float rock_sm(float t) {
     t = clamp(t, 0.0, 1.0);
     return t * t * (3.0 - 2.0 * t);
@@ -512,6 +522,14 @@ void fragment() {
             }
             ROUGHNESS = 0.84;
         }
+    }
+
+    // Animated code-generated caustics brighten only shallow underwater surfaces.
+    // Their intensity decays with depth, so deep seabed keeps its muted sediment tones.
+    if (!debug_lod_colors && world_position.y < -0.2) {
+        float shallow_depth_weight = 1.0 - smoothstep(3.0, 38.0, -world_position.y);
+        float caustic = procedural_caustics(world_position.xz) * shallow_depth_weight * 0.24;
+        ALBEDO = ALBEDO * (1.0 + caustic) + vec3(0.018, 0.038, 0.043) * caustic;
     }
 
     if (!debug_lod_colors) {
