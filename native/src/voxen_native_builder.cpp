@@ -131,6 +131,8 @@ struct NoiseSet {
     }
 
     double coast_distance(double x, double z) const {
+        // Dimensionless signed coastline metric. The ellipse has constant nominal
+        // area (4 km²); seed changes aspect, rotation and multi-scale shoreline detail.
         const double seed_phase = static_cast<double>(seed_value % 1000003) * 0.000173;
         const double aspect = 1.0 + 3.0 * (0.5 + 0.5 * std::sin(seed_phase * 1.37));
         const double angle = seed_phase * 0.71;
@@ -141,9 +143,10 @@ struct NoiseSet {
         const double a = radius * std::sqrt(aspect);
         const double b = radius / std::sqrt(aspect);
         const double radial = std::sqrt((rx * rx) / (a * a) + (rz * rz) / (b * b));
-        const double warp = sample_noise(macro, x * 0.72, z * 0.72) * 0.075 +
-                            sample_noise(hills, x * 1.9, z * 1.9) * 0.035;
-        return radial + warp;
+        const double broad = sample_noise(macro, x * 0.72, z * 0.72) * 0.020;
+        const double coves = sample_noise(hills, x * 1.9, z * 1.9) * 0.013;
+        const double inlets = sample_noise(detail, x * 4.6, z * 4.6) * 0.0045;
+        return radial + broad + coves + inlets;
     }
 
     double mountain_coast_weight(double x, double z) const {
@@ -176,18 +179,27 @@ struct NoiseSet {
     }
 
     double surface_height(double x, double z) const {
+        constexpr double PI = 3.14159265358979323846;
+        constexpr double ISLAND_EQUIVALENT_RADIUS_M = 1128.38;
+        const double world_scale = std::clamp(world_size_m / 10520.0, 0.65, 1.5);
+        const double coast = coast_distance(x, z);
+        const double signed_coast_m = (coast - 1.0) * ISLAND_EQUIVALENT_RADIUS_M;
         const double macro_value = sample_noise(macro, x, z);
         const double hills_value = sample_noise(hills, x, z);
         const double detail_value = sample_noise(detail, x, z);
-        const double ridge_detail = (sample_noise(ridges, x, z) + 1.0) * 0.5;
+        const double ridge_value = (sample_noise(ridges, x, z) + 1.0) * 0.5;
         const double micro_value = sample_noise(micro_ridge, x, z);
 
-        double height = 26.0 + macro_value * 17.0 + hills_value * 10.0;
-        height += std::max(hills_value - 0.12, 0.0) * 18.0;
-        height += detail_value * 3.8;
+        // LAND: broad tectonic uplift, rolling foothills and a broken ridgeline field.
+        double land_height = 31.0 + macro_value * 22.0 + hills_value * 17.0;
+        land_height += std::max(hills_value - 0.08, 0.0) * 24.0;
+        land_height += detail_value * 5.5;
+        land_height += std::pow(std::max(ridge_value - 0.60, 0.0), 1.65) *
+            (34.0 + 48.0 * world_scale);
+        land_height -= std::pow(std::max(0.31 - ridge_value, 0.0), 1.4) * 22.0;
 
-        const double world_scale = world_size_m / REFERENCE_WORLD_SIZE_M;
-        height += std::pow(std::max(ridge_detail - 0.58, 0.0), 1.7) * (12.0 + 38.0 * world_scale);
+        // Mountain chains are seed-generated splines. Their broad shoulders merge into
+        // foothills; ridged noise breaks the crests into individual peaks and saddles.
         double mountain_height = 0.0;
         for (const MountainSegment &segment : mountain_segments) {
             const double along = std::clamp(
@@ -195,74 +207,117 @@ struct NoiseSet {
                     segment.length_squared, 0.0, 1.0);
             const double closest_x = segment.ax + segment.dx * along;
             const double closest_z = segment.az + segment.dz * along;
-            const double offset_x = x - closest_x;
-            const double offset_z = z - closest_z;
-            const double distance_squared = offset_x * offset_x + offset_z * offset_z;
-            const double broad_radius = segment.width * 1.72;
-            if (distance_squared >= broad_radius * broad_radius) continue;
-            const double distance = std::sqrt(distance_squared);
-            const double flank_warp = (detail_value * 0.60 + micro_value * 0.40) * segment.width * 0.11;
+            const double ox = x - closest_x;
+            const double oz = z - closest_z;
+            const double distance = std::sqrt(ox * ox + oz * oz);
+            const double flank_warp = (detail_value * 0.55 + micro_value * 0.45) *
+                segment.width * 0.13;
             const double shaped_distance = std::max(0.0, distance + flank_warp);
-            const double broad_mask = std::clamp(1.0 - shaped_distance / broad_radius, 0.0, 1.0);
-            const double cliff_mask = std::clamp(1.0 - shaped_distance / segment.width, 0.0, 1.0);
-            const double crest_profile = 0.72 + 0.28 * std::abs(std::sin(along * 3.14159265358979323846 * 2.1 + segment.phase));
-            const double rough_profile = 0.72 + 0.28 * ridge_detail;
-            const double foothills = std::pow(broad_mask, 1.36) * (segment.height * 0.36 + 75.0 * world_scale);
-            const double crest = std::pow(cliff_mask, 0.82) * segment.height * crest_profile * rough_profile;
-            mountain_height = std::max(mountain_height, std::max(foothills, crest));
+            const double foothill_radius = segment.width * 2.15;
+            if (shaped_distance >= foothill_radius) continue;
+            const double broad_mask = std::clamp(1.0 - shaped_distance / foothill_radius, 0.0, 1.0);
+            const double crest_mask = std::clamp(1.0 - shaped_distance / segment.width, 0.0, 1.0);
+            const double peak_train = 0.58 + 0.42 *
+                std::abs(std::sin(along * PI * 2.65 + segment.phase)) *
+                (0.68 + 0.32 * ridge_value);
+            const double shoulder = std::pow(broad_mask, 1.45) *
+                (segment.height * 0.20 + 45.0 * world_scale);
+            const double crest = std::pow(crest_mask, 0.76) *
+                segment.height * peak_train * (0.76 + 0.24 * ridge_value);
+            mountain_height = std::max(mountain_height, std::max(shoulder, crest));
         }
-
-        height += mountain_height;
+        land_height += mountain_height;
         if (mountain_height > 1.0) {
-            const double mountain_mask = std::clamp(mountain_height / 900.0, 0.0, 1.0);
-            height += mountain_mask * (micro_value * 42.0 + detail_value * 28.0);
+            const double mountain_mask = std::clamp(mountain_height / 850.0, 0.0, 1.0);
+            land_height += mountain_mask * (micro_value * 34.0 + detail_value * 24.0);
         }
-        // One irregular central island with approximately 4 km² of land. Its aspect
-        // ratio and orientation are seed-derived, while multi-scale noise perturbs
-        // the coastline without creating a circular or smoothed spawn platform.
-        const double seed_phase = static_cast<double>(seed_value % 1000003) * 0.000173;
-        const double aspect = 1.0 + 3.0 * (0.5 + 0.5 * std::sin(seed_phase * 1.37));
-        const double angle = seed_phase * 0.71;
-        const double ca = std::cos(angle), sa = std::sin(angle);
-        const double rx = x * ca - z * sa;
-        const double rz = x * sa + z * ca;
-        constexpr double equivalent_radius = 1128.38; // sqrt(4,000,000 / pi)
-        const double axis_a = equivalent_radius * std::sqrt(aspect);
-        const double axis_b = equivalent_radius / std::sqrt(aspect);
-        const double radial = std::sqrt((rx * rx) / (axis_a * axis_a) +
-                                        (rz * rz) / (axis_b * axis_b));
-        const double coast_warp = sample_noise(macro, x * 0.72, z * 0.72) * 0.075 +
-                                  sample_noise(hills, x * 1.9, z * 1.9) * 0.035;
-        const double coast_distance = radial + coast_warp;
-        const double land_mask = 1.0 - smoothstep(0.965, 1.035, coast_distance);
-        // Warp the underwater shelf independently from the shoreline. Broad and
-        // medium-scale noise breaks the old elliptical/ring-like seabed footprint.
-        const double underwater_warp =
-            static_cast<double>(sample_noise(seafloor_macro, x * 0.63, z * 0.63)) * 0.105 +
-            static_cast<double>(sample_noise(seafloor_hills, x * 1.55, z * 1.55)) * 0.052 +
-            static_cast<double>(sample_noise(seafloor_detail, x * 3.8, z * 3.8)) * 0.018;
-        const double underwater_distance = coast_distance + underwater_warp;
-        double ocean_depth = -3.0 - 72.0 * smoothstep(1.0, 2.25, underwater_distance);
-        // The island's existing hills/ridges/mountain profile is retained, but fades
-        // only at the actual shoreline. There is deliberately no spawn-centre fade.
-        const double land_height = std::clamp(height, 0.25, 1600.0);
-        const double underwater_weight = smoothstep(0.995, 1.16, underwater_distance);
-        const double seafloor_variation =
-            static_cast<double>(sample_noise(seafloor_macro, x, z)) * 16.0 +
-            static_cast<double>(sample_noise(seafloor_hills, x, z)) * 11.0 +
-            static_cast<double>(sample_noise(seafloor_detail, x, z)) * 3.5;
-        ocean_depth += seafloor_variation * underwater_weight;
 
-        // Mountain ridges continue below the waterline as wide, softened escarpments.
-        // The falloff reaches several hundred metres offshore rather than ending at the beach.
+        // A discontinuous coastal shelf creates beaches in sheltered coves while
+        // preserving steep rocky headlands. It is a geometric height transition,
+        // not a painted shoreline texture.
+        const double coastal_lowland = 1.0 - smoothstep(24.0, 190.0, -signed_coast_m);
+        const double cove_bias = smoothstep(-0.42, 0.42, macro_value * 0.62 + hills_value * 0.38);
+        const double beach_platform = 3.2 + std::abs(hills_value) * 4.5 +
+            std::max(0.0, detail_value) * 1.8;
+        land_height = land_height * (1.0 - coastal_lowland * cove_bias * 0.52) +
+            beach_platform * coastal_lowland * cove_bias * 0.52;
+        land_height = std::clamp(land_height, 0.35, 1450.0);
+
+        // SEA FLOOR: a continuous bathymetric profile. A shallow shelf transitions
+        // into a continental slope and then a gently undulating abyssal plain.
+        const double offshore = std::max(0.0, signed_coast_m);
+        const double shelf_depth = -2.5 - 17.0 * smoothstep(0.0, 360.0, offshore);
+        const double slope_depth = -19.5 - 125.0 * smoothstep(240.0, 1750.0, offshore);
+        const double abyss_depth = -144.5 - 88.0 * smoothstep(1450.0, 3300.0, offshore);
+        double ocean_depth = shelf_depth +
+            (slope_depth - shelf_depth) * smoothstep(180.0, 650.0, offshore);
+        ocean_depth += (abyss_depth - ocean_depth) * smoothstep(1150.0, 2700.0, offshore);
+
+        // The island's submerged volcanic/tectonic roots continue offshore as
+        // softened escarpments instead of stopping abruptly at the waterline.
         const double mountain_weight = mountain_coast_weight(x, z);
-        const double cliff_falloff = smoothstep(0.99, 1.10, underwater_distance) *
-            (1.0 - smoothstep(1.52, 2.28, underwater_distance));
-        ocean_depth -= 118.0 * mountain_weight * cliff_falloff;
-        ocean_depth = std::min(ocean_depth, -1.0);
+        const double root_falloff = std::exp(-offshore / 1250.0) *
+            (1.0 - smoothstep(1900.0, 2900.0, offshore));
+        ocean_depth -= 92.0 * mountain_weight * root_falloff;
 
-        height = land_height * land_mask + ocean_depth * (1.0 - land_mask);
-        return std::clamp(height, -220.0, 1600.0);
+        // Submarine canyons radiate from the island margin. They are broad, branching-
+        // looking troughs with a warped centreline, not repeated concentric rings.
+        const double seed_phase = static_cast<double>(seed_value % 1000003) * 0.000173;
+        for (int canyon = 0; canyon < 3; ++canyon) {
+            const double angle = seed_phase * 0.83 + static_cast<double>(canyon) * (2.0 * PI / 3.0);
+            const double ca = std::cos(angle), sa = std::sin(angle);
+            const double lateral = std::abs(-x * sa + z * ca);
+            const double centreline_warp = sample_noise(seafloor_hills, x * 0.0018, z * 0.0018) * 42.0;
+            const double width = 48.0 + 24.0 * (0.5 + 0.5 * sample_noise(seafloor_detail, x * 0.003, z * 0.003));
+            const double trench = std::exp(-std::pow((lateral + centreline_warp) / width, 2.0));
+            const double canyon_extent = smoothstep(80.0, 420.0, offshore) *
+                (1.0 - smoothstep(2050.0, 3100.0, offshore));
+            ocean_depth -= 48.0 * trench * canyon_extent;
+        }
+
+        // Isolated seamounts make the offshore bathymetry non-uniform. Their locations,
+        // radii and heights are deterministic functions of the world seed.
+        const auto hash01 = [this](double n) {
+            const double value = std::sin(static_cast<double>(seed_value) * 0.0000137 + n * 127.1) * 43758.5453123;
+            return value - std::floor(value);
+        };
+        for (int mound = 0; mound < 3; ++mound) {
+            const double angle = hash01(11.0 + mound * 7.0) * 2.0 * PI;
+            const double radius = 2750.0 + hash01(19.0 + mound * 9.0) * 1550.0;
+            const double cx = std::cos(angle) * radius;
+            const double cz = std::sin(angle) * radius;
+            const double mound_radius = 280.0 + hash01(31.0 + mound * 5.0) * 310.0;
+            const double mound_height = 65.0 + hash01(43.0 + mound * 3.0) * 105.0;
+            const double dx = x - cx, dz = z - cz;
+            const double distance = std::sqrt(dx * dx + dz * dz);
+            const double cone = std::pow(std::max(0.0, 1.0 - distance / mound_radius), 1.65);
+            ocean_depth += mound_height * cone * smoothstep(300.0, 850.0, offshore);
+        }
+
+        // Sediment ripples dominate shallow sand; deep-ocean variation is deliberately
+        // low amplitude. This prevents the seabed from reading as generic Perlin noise.
+        const double shallow_mask = 1.0 - smoothstep(80.0, 520.0, offshore);
+        const double slope_mask = smoothstep(180.0, 650.0, offshore) *
+            (1.0 - smoothstep(1250.0, 2400.0, offshore));
+        const double abyss_mask = smoothstep(1500.0, 2800.0, offshore);
+        const double shallow_detail =
+            sample_noise(seafloor_hills, x * 0.021, z * 0.021) * 3.2 +
+            sample_noise(seafloor_detail, x * 0.085, z * 0.085) * 0.65;
+        const double slope_detail =
+            sample_noise(seafloor_macro, x * 0.003, z * 0.003) * 15.0 +
+            sample_noise(seafloor_hills, x * 0.012, z * 0.012) * 7.0;
+        const double abyss_detail =
+            sample_noise(seafloor_macro, x * 0.0012, z * 0.0012) * 5.0 +
+            sample_noise(seafloor_detail, x * 0.009, z * 0.009) * 1.2;
+        ocean_depth += shallow_detail * shallow_mask +
+            slope_detail * slope_mask + abyss_detail * abyss_mask;
+        ocean_depth = std::clamp(ocean_depth, -220.0, -1.0);
+
+        // Blend land and sea in a narrow world-space shoreline band. The same continuous
+        // field is sampled by all chunks, so the coast is watertight across LOD boundaries.
+        const double land_mask = 1.0 - smoothstep(-12.0, 12.0, signed_coast_m);
+        const double height = land_height * land_mask + ocean_depth * (1.0 - land_mask);
+        return std::clamp(height, -220.0, 1450.0);
     }
 
     double cached_grid_height(int32_t grid_x, int32_t grid_z) const {
