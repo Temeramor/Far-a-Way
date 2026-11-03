@@ -183,7 +183,7 @@ struct NoiseSet {
     double surface_height(double x, double z) const {
         constexpr double PI = 3.14159265358979323846;
         constexpr double ISLAND_EQUIVALENT_RADIUS_M = 1128.38;
-        const double world_scale = std::clamp(world_size_m / 10520.0, 0.65, 1.5);
+        const double world_scale = std::clamp(world_size_m / 10660.0, 0.65, 1.5);
         const double coast = coast_distance(x, z);
         const double signed_coast_m = (coast - 1.0) * ISLAND_EQUIVALENT_RADIUS_M;
         const double macro_value = sample_noise(macro, x, z);
