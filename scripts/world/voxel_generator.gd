@@ -1,7 +1,7 @@
 extends RefCounted
 class_name VoxelTerrainGenerator
 
-## Seeded terrain profile sampled as 20 cm voxel columns.
+## Seeded unified island + bathymetry profile sampled on a 20 cm voxel lattice.\n## The native sampler exposes a continuous signed shoreline profile; meshing remains streamed.
 ## Chunk meshing is streamed; no world-sized height array or per-voxel Node allocation is used.
 
 const VOXEL_SIZE: float = 0.2
@@ -17,7 +17,7 @@ const HEIGHT_SAMPLE_STEP_M: float = 0.5
 const REFERENCE_WORLD_SIZE_M: float = 10000.0
 
 var seed_value: int = 1337
-var world_size_m: float = 2000.0
+var world_size_m: float = 10520.0
 var _native_sampler: Object
 var _mountain_starts: Array[Vector2] = []
 var _mountain_deltas: Array[Vector2] = []
@@ -58,32 +58,30 @@ func _create_mountain_ranges() -> void:
     _mountain_widths.clear()
     _mountain_heights.clear()
     _mountain_phases.clear()
-    var mountain_scale: float = world_size_m / REFERENCE_WORLD_SIZE_M
+
+    # Mountain geometry is scaled from the 4 km² island, not from the full ocean map.
+    # One to three chains ensure every generated island has a meaningful geological spine.
+    var island_scale: float = clampf(world_size_m / 10520.0, 0.65, 1.5)
     var rng := RandomNumberGenerator.new()
     rng.seed = int(seed_value) + 17011
-    # Mountain presence is seed-driven: some islands are low and hilly, others carry one to three ranges.
-    var range_count: int = rng.randi_range(0, 3)
-    var narrow_offset: float = 600.0 * mountain_scale
-    var wide_offset: float = 1050.0 * mountain_scale
-    for _range_index in range(range_count):
-        var angle: float = rng.randf_range(0.0, PI)
+    var range_count: int = rng.randi_range(1, 3)
+    for range_index in range(range_count):
+        var angle: float = rng.randf_range(0.0, TAU)
         var direction := Vector2(cos(angle), sin(angle))
         var side := Vector2(-direction.y, direction.x)
         var center := Vector2(
-            rng.randf_range(-world_size_m * 0.20, world_size_m * 0.20),
-            rng.randf_range(-world_size_m * 0.20, world_size_m * 0.20)
-        )
-        var half_length: float = world_size_m * rng.randf_range(0.23, 0.34)
+            rng.randf_range(-210.0, 210.0),
+            rng.randf_range(-210.0, 210.0)
+        ) * island_scale
+        var half_length: float = rng.randf_range(330.0, 760.0) * island_scale
         var points: Array[Vector2] = [
-            center - direction * half_length + side * rng.randf_range(-narrow_offset, narrow_offset),
-            center - direction * half_length * 0.34 + side * rng.randf_range(-wide_offset, wide_offset),
-            center + direction * half_length * 0.30 + side * rng.randf_range(-wide_offset, wide_offset),
-            center + direction * half_length + side * rng.randf_range(-narrow_offset, narrow_offset)
+            center - direction * half_length + side * rng.randf_range(-150.0, 150.0) * island_scale,
+            center - direction * half_length * 0.34 + side * rng.randf_range(-300.0, 300.0) * island_scale,
+            center + direction * half_length * 0.30 + side * rng.randf_range(-300.0, 300.0) * island_scale,
+            center + direction * half_length + side * rng.randf_range(-150.0, 150.0) * island_scale
         ]
-        # Scale mountain height, width and lateral irregularity together with map size.
-        # This keeps the range profile coherent on the smaller 2 km landscape.
-        var range_height: float = rng.randf_range(850.0, 1320.0) * mountain_scale
-        var range_width: float = rng.randf_range(540.0, 930.0) * mountain_scale
+        var range_height: float = rng.randf_range(360.0, 880.0) * island_scale
+        var range_width: float = rng.randf_range(190.0, 370.0) * island_scale
         var phase: float = rng.randf_range(0.0, TAU)
         for segment_index in range(points.size() - 1):
             var a: Vector2 = points[segment_index]
@@ -93,18 +91,9 @@ func _create_mountain_ranges() -> void:
             _mountain_deltas.append(delta)
             _mountain_lengths_squared.append(maxf(delta.length_squared(), 0.001))
             _mountain_widths.append(range_width * rng.randf_range(0.88, 1.12))
-            _mountain_heights.append(range_height * rng.randf_range(0.94, 1.06))
+            _mountain_heights.append(range_height * rng.randf_range(0.88, 1.12))
             _mountain_phases.append(phase + float(segment_index) * 1.7)
-
-
-func get_mountain_profile() -> Array[Dictionary]:
-    var profile: Array[Dictionary] = []
-    for i in range(_mountain_starts.size()):
-        profile.append({
-            "start": _mountain_starts[i], "delta": _mountain_deltas[i],
-            "length_squared": _mountain_lengths_squared[i], "width": _mountain_widths[i],
-            "height": _mountain_heights[i], "phase": _mountain_phases[i]
-        })
+)
     return profile
 
 
