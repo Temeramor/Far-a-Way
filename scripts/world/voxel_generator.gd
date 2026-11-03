@@ -257,8 +257,17 @@ func is_sand_surface(x: float, z: float) -> bool:
     return get_surface_material(sample.x, slope, x, z) == SAND
 
 
+func get_signed_distance(world_x: float, world_y: float, world_z: float) -> float:
+    # Signed-distance approximation for the current continuous height surface.
+    # Positive = solid, negative = air. The gradient correction approximates Euclidean
+    # distance to a sloped heightfield and gives a stable base field for future cave SDFs.
+    var sample: Vector3 = get_surface_sample(world_x, world_z)
+    var gradient := Vector2(sample.y, sample.z)
+    return (sample.x - world_y) / sqrt(1.0 + gradient.length_squared())
+
+
 func get_terrain_density(world_x: float, world_y: float, world_z: float) -> float:
-    return get_surface_height(world_x, world_z) - world_y
+    return get_signed_distance(world_x, world_y, world_z)
 
 
 func get_voxel_material(voxel: Vector3i, world_min_x: float, world_min_z: float, world_size_voxels: int) -> int:
