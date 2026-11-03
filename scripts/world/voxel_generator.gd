@@ -1,7 +1,8 @@
 extends RefCounted
 class_name VoxelTerrainGenerator
 
-## Seeded unified island + bathymetry profile sampled on a 20 cm voxel lattice.\n## The native sampler exposes a continuous signed shoreline profile; meshing remains streamed.
+## Seeded unified island + bathymetry profile sampled on a 20 cm voxel lattice.
+## The native sampler exposes a continuous signed shoreline profile; meshing remains streamed.
 ## Chunk meshing is streamed; no world-sized height array or per-voxel Node allocation is used.
 
 const VOXEL_SIZE: float = 0.2
@@ -30,7 +31,7 @@ var _mountain_phases: Array[float] = []
 
 
 func _init(
-        p_seed: int = 1337, p_world_size_m: float = 2000.0,
+        p_seed: int = 1337, p_world_size_m: float = 10520.0,
         p_native_sampler: Object = null) -> void:
     seed_value = p_seed
     world_size_m = maxf(256.0, p_world_size_m)
