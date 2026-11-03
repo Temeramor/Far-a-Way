@@ -149,7 +149,7 @@ vec3 seabed_pixel(vec2 pixel_cell, vec2 pixel_world, bool is_silt) {
 
 float procedural_caustics(vec2 p) {
     float t = TIME * 0.42;
-    vec2 q = p * 0.018;
+    vec2 q = p * 0.22;
     float a = abs(sin(q.x * 1.7 + sin(q.y * 1.3 + t) * 1.2));
     float b = abs(sin(q.y * 1.9 + sin(q.x * 1.1 - t * 0.8) * 1.1));
     float c = abs(sin((q.x + q.y) * 1.1 + t * 0.4));
@@ -528,7 +528,8 @@ void fragment() {
     // Their intensity decays with depth, so deep seabed keeps its muted sediment tones.
     if (!debug_lod_colors && world_position.y < -0.2) {
         float shallow_depth_weight = 1.0 - smoothstep(3.0, 38.0, -world_position.y);
-        float caustic = procedural_caustics(world_position.xz) * shallow_depth_weight * 0.24;
+        float caustic_lod_weight = 1.0 - smoothstep(0.8, 3.2, lod_cell_size);
+        float caustic = procedural_caustics(world_position.xz) * shallow_depth_weight * caustic_lod_weight * 0.24;
         ALBEDO = ALBEDO * (1.0 + caustic) + vec3(0.018, 0.038, 0.043) * caustic;
     }
 
