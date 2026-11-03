@@ -20,7 +20,7 @@ const HEIGHT_SAMPLE_STEP_M: float = 0.5
 const REFERENCE_WORLD_SIZE_M: float = 10000.0
 
 var seed_value: int = 1337
-var world_size_m: float = 10520.0
+var world_size_m: float = 10660.0
 var _native_sampler: Object
 var _mountain_starts: Array[Vector2] = []
 var _mountain_deltas: Array[Vector2] = []
@@ -31,7 +31,7 @@ var _mountain_phases: Array[float] = []
 
 
 func _init(
-        p_seed: int = 1337, p_world_size_m: float = 10520.0,
+        p_seed: int = 1337, p_world_size_m: float = 10660.0,
         p_native_sampler: Object = null) -> void:
     seed_value = p_seed
     world_size_m = maxf(256.0, p_world_size_m)
@@ -64,7 +64,7 @@ func _create_mountain_ranges() -> void:
 
     # Mountain geometry is scaled from the 4 km² island, not from the full ocean map.
     # One to three chains ensure every generated island has a meaningful geological spine.
-    var island_scale: float = clampf(world_size_m / 10520.0, 0.65, 1.5)
+    var island_scale: float = clampf(world_size_m / 10660.0, 0.65, 1.5)
     var rng := RandomNumberGenerator.new()
     rng.seed = int(seed_value) + 17011
     var range_count: int = rng.randi_range(1, 3)
