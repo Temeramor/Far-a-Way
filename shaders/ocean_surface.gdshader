@@ -53,7 +53,7 @@ void fragment() {
     float wave_x = ocean_wave(p + vec2(0.8, 0.0)) - ocean_wave(p - vec2(0.8, 0.0));
     float wave_z = ocean_wave(p + vec2(0.0, 0.8)) - ocean_wave(p - vec2(0.0, 0.8));
     vec3 wave_normal = normalize(vec3(-wave_x, 1.6, -wave_z));
-    NORMAL = wave_normal;
+    NORMAL = normalize((VIEW_MATRIX * vec4(wave_normal, 0.0)).xyz);
 
     vec3 water_color = mix(shallow_water_color, deep_water_color, depth_blend);
     water_color *= 0.94 + color_drift;
