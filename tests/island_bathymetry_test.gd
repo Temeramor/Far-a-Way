@@ -4,8 +4,8 @@ const GeneratorScript = preload("res://scripts/world/voxel_generator.gd")
 
 func _initialize() -> void:
     var seed_value := 842771
-    var generator = GeneratorScript.new(seed_value, 10520.0)
-    var repeated = GeneratorScript.new(seed_value, 10520.0)
+    var generator = GeneratorScript.new(seed_value, 10660.0)
+    var repeated = GeneratorScript.new(seed_value, 10660.0)
 
     assert(is_equal_approx(generator.get_surface_height(0.0, 0.0),
         repeated.get_surface_height(0.0, 0.0)),
@@ -16,7 +16,7 @@ func _initialize() -> void:
     var land_samples := 0
     var sample_step := 100.0
     var half_world := 5260.0
-    var count := int(floor(10520.0 / sample_step)) + 1
+    var count := int(floor(10660.0 / sample_step)) + 1
     for z in range(count):
         for x in range(count):
             var wx := -half_world + float(x) * sample_step
