@@ -6,6 +6,9 @@ uniform float wave_speed : hint_range(0.0, 3.0) = 1.0;
 uniform float water_opacity : hint_range(0.35, 0.98) = 0.82;
 uniform vec3 shallow_water_color : source_color = vec3(0.035, 0.38, 0.39);
 uniform vec3 deep_water_color : source_color = vec3(0.008, 0.075, 0.16);
+uniform float island_aspect = 2.5;
+uniform float island_rotation = 0.0;
+uniform float island_radius = 1128.38;
 
 varying vec3 world_position;
 
@@ -26,6 +29,16 @@ float value_noise(vec2 p) {
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
+float shoreline_distance(vec2 p) {
+    float c = cos(island_rotation);
+    float s = sin(island_rotation);
+    vec2 rotated = vec2(p.x * c - p.y * s, p.x * s + p.y * c);
+    float axis_a = island_radius * sqrt(island_aspect);
+    float axis_b = island_radius / sqrt(island_aspect);
+    float radial = length(vec2(rotated.x / axis_a, rotated.y / axis_b));
+    return (radial - 1.0) * island_radius;
+}
+
 float ocean_wave(vec2 p) {
     float t = TIME * wave_speed;
     float swell_a = sin(dot(p, normalize(vec2(0.83, 0.34))) * 0.008 + t * 0.72);
@@ -42,10 +55,10 @@ void vertex() {
 
 void fragment() {
     vec2 p = world_position.xz;
-    float distance_from_origin = length(p);
-    // A broad, non-repeating shallow-water tint around the island transitions to
-    // deep ocean blue. The actual bathymetry remains in the voxel terrain below.
-    float depth_blend = smoothstep(1150.0, 4200.0, distance_from_origin);
+    float offshore_distance = max(0.0, shoreline_distance(p));
+    // Match the seed-derived island ellipse so shallow turquoise water hugs the actual
+    // shoreline rather than a fixed circular ring around the world origin.
+    float depth_blend = smoothstep(120.0, 3000.0, offshore_distance);
     float broad_variation = value_noise(p * 0.0017 + vec2(TIME * 0.006, 8.3));
     float fine_variation = value_noise(p * 0.018 + vec2(21.7, TIME * 0.014));
     float color_drift = (broad_variation - 0.5) * 0.12 + (fine_variation - 0.5) * 0.035;
