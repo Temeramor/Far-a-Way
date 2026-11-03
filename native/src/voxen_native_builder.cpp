@@ -45,7 +45,9 @@ constexpr int AIR = 0;
 constexpr int GRASS = 1;
 constexpr int SOIL = 2;
 constexpr int ROCK = 3;
-constexpr int SAND = 4;\nconstexpr int SILT = 5;\nconstexpr int REEF = 6;
+constexpr int SAND = 4;
+constexpr int SILT = 5;
+constexpr int REEF = 6;
 
 struct NoiseSet {
     int64_t seed_value = 0;
@@ -604,7 +606,9 @@ struct MeshBuild {
             case GRASS: return rgb8(54, 164, 42);
             case SOIL: return rgb8(128, 96, 68);
             case ROCK: return rgb8(119, 121, 115);
-            case SAND: return rgb8(224, 177, 105);\n            case SILT: return rgb8(55, 78, 116);\n            case REEF: return rgb8(112, 82, 150);
+            case SAND: return rgb8(224, 177, 105);
+            case SILT: return rgb8(55, 78, 116);
+            case REEF: return rgb8(112, 82, 150);
             default: return Color(1.0, 1.0, 1.0, 1.0);
         }
     }
