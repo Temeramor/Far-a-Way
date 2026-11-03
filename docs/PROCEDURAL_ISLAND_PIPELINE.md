@@ -55,7 +55,7 @@ All terrain color patterns are shader functions and palette values; no albedo/no
 | Silt | Quiet deeper seabed flats |
 | Reef | Broken shallow-water coral/carbonate patches |
 
-The voxel shader uses world-space coordinates, per-voxel quantization and procedural noise. The new silt and reef classes are encoded in vertex color and shaded by code. The ocean surface itself uses an animated procedural wave shader with directional swell, procedural color drift and Fresnel response.
+The voxel shader uses world-space coordinates, per-voxel quantization and procedural noise. The new silt and reef classes are encoded in vertex color and shaded by code. The ocean surface itself uses an animated procedural wave shader with directional swell, procedural color drift and Fresnel response. Shallow underwater voxel surfaces receive animated code-generated caustic light patterns that fade with depth and LOD.
 
 ## Voxel scale, LOD and current limitation
 
