@@ -27,7 +27,7 @@ func _initialize() -> void:
     assert(estimated_area_m2 >= 3400000.0 and estimated_area_m2 <= 4600000.0,
         "The procedural island should remain close to the requested 4 km² area; got %.0f m²." % estimated_area_m2)
 
-    # The square map is 10.52 km wide. With the maximum island semi-axis (~2.26 km),
+    # The square map is 10.66 km wide. With the maximum island semi-axis (~2.26 km),
     # this leaves approximately 3 km of water to the nearest map edge.
     for edge_sample in [
         Vector2(5300.0, 0.0), Vector2(-5300.0, 0.0),
