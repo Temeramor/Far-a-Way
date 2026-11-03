@@ -15,7 +15,7 @@ func _initialize() -> void:
     # allocating a world-sized heightmap or visiting every 20 cm voxel.
     var land_samples := 0
     var sample_step := 100.0
-    var half_world := 5260.0
+    var half_world := 5330.0
     var count := int(floor(10660.0 / sample_step)) + 1
     for z in range(count):
         for x in range(count):
