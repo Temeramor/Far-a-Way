@@ -267,8 +267,8 @@ struct NoiseSet {
             const double angle = seed_phase * 0.83 + static_cast<double>(canyon) * (2.0 * PI / 3.0);
             const double ca = std::cos(angle), sa = std::sin(angle);
             const double lateral = std::abs(-x * sa + z * ca);
-            const double centreline_warp = sample_noise(seafloor_hills, x * 0.0018, z * 0.0018) * 42.0;
-            const double width = 48.0 + 24.0 * (0.5 + 0.5 * sample_noise(seafloor_detail, x * 0.003, z * 0.003));
+            const double centreline_warp = sample_noise(seafloor_hills, x * 0.65, z * 0.65) * 42.0;
+            const double width = 48.0 + 24.0 * (0.5 + 0.5 * sample_noise(seafloor_detail, x * 0.8, z * 0.8));
             const double trench = std::exp(-std::pow((lateral + centreline_warp) / width, 2.0));
             const double canyon_extent = smoothstep(80.0, 420.0, offshore) *
                 (1.0 - smoothstep(2050.0, 3100.0, offshore));
@@ -301,14 +301,14 @@ struct NoiseSet {
             (1.0 - smoothstep(1250.0, 2400.0, offshore));
         const double abyss_mask = smoothstep(1500.0, 2800.0, offshore);
         const double shallow_detail =
-            sample_noise(seafloor_hills, x * 0.021, z * 0.021) * 3.2 +
-            sample_noise(seafloor_detail, x * 0.085, z * 0.085) * 0.65;
+            sample_noise(seafloor_hills, x, z) * 3.2 +
+            sample_noise(seafloor_detail, x * 2.0, z * 2.0) * 0.65;
         const double slope_detail =
-            sample_noise(seafloor_macro, x * 0.003, z * 0.003) * 15.0 +
-            sample_noise(seafloor_hills, x * 0.012, z * 0.012) * 7.0;
+            sample_noise(seafloor_macro, x, z) * 15.0 +
+            sample_noise(seafloor_hills, x, z) * 7.0;
         const double abyss_detail =
-            sample_noise(seafloor_macro, x * 0.0012, z * 0.0012) * 5.0 +
-            sample_noise(seafloor_detail, x * 0.009, z * 0.009) * 1.2;
+            sample_noise(seafloor_macro, x, z) * 5.0 +
+            sample_noise(seafloor_detail, x * 0.7, z * 0.7) * 1.2;
         ocean_depth += shallow_detail * shallow_mask +
             slope_detail * slope_mask + abyss_detail * abyss_mask;
         ocean_depth = std::clamp(ocean_depth, -220.0, -1.0);
@@ -420,8 +420,8 @@ struct NoiseSet {
     int32_t surface_material(double height_m, double slope, double x, double z) const {
         const double shore = coast_distance(x, z);
         const double rock_weight = surface_rock_weight(slope, x, z);
-        const double seabed_noise = sample_noise(seafloor_hills, x * 0.018, z * 0.018);
-        const double seabed_detail = sample_noise(seafloor_detail, x * 0.052, z * 0.052);
+        const double seabed_noise = sample_noise(seafloor_hills, x, z);
+        const double seabed_detail = sample_noise(seafloor_detail, x, z);
 
         if (height_m < 0.0) {
             const double depth = -height_m;
