@@ -45,7 +45,7 @@ constexpr int AIR = 0;
 constexpr int GRASS = 1;
 constexpr int SOIL = 2;
 constexpr int ROCK = 3;
-constexpr int SAND = 4;
+constexpr int SAND = 4;\nconstexpr int SILT = 5;\nconstexpr int REEF = 6;
 
 struct NoiseSet {
     int64_t seed_value = 0;
@@ -420,14 +420,28 @@ struct NoiseSet {
     int32_t surface_material(double height_m, double slope, double x, double z) const {
         const double shore = coast_distance(x, z);
         const double rock_weight = surface_rock_weight(slope, x, z);
-        // Below sea level, grass never continues underwater: gentle seabed is sand,
-        // while genuinely steep rock faces continue as rock.
+        const double seabed_noise = sample_noise(seafloor_hills, x * 0.018, z * 0.018);
+        const double seabed_detail = sample_noise(seafloor_detail, x * 0.052, z * 0.052);
+
         if (height_m < 0.0) {
-            // Underwater rock is reserved for genuinely steep faces. Mountain
-            // proximity alone no longer paints broad, gentle seabed areas as rock.
-            return (slope >= 0.78 || rock_weight >= 0.5) ? ROCK : SAND;
+            const double depth = -height_m;
+            // Steep bathymetric walls expose bedrock; moderate slopes carry coarse debris.
+            if (slope >= 0.72 || rock_weight >= 0.62) return ROCK;
+            if (slope >= 0.36) return ROCK;
+            // Reef colonies occupy only the sunlit shallow shelf, in broken patches.
+            const double reef_zone = smoothstep(2.5, 8.0, depth) *
+                (1.0 - smoothstep(24.0, 38.0, depth)) *
+                (1.0 - smoothstep(0.28, 0.48, slope));
+            const double reef_patch = smoothstep(-0.12, 0.34,
+                seabed_noise * 0.72 + seabed_detail * 0.28);
+            if (reef_zone * reef_patch > 0.28 && shore < 1.22) return REEF;
+            // Fine silts settle on quiet, deeper flats; shallow flats remain sandy.
+            if (depth > 82.0 && slope < 0.12) return SILT;
+            return SAND;
         }
-        if (shore >= 0.91 && shore <= 1.13 && slope < 0.58 && height_m <= 9.0) {
+
+        // Beach material is selected from the actual shoreline field, not just elevation.
+        if (shore >= 0.965 && shore <= 1.055 && slope < 0.62 && height_m <= 11.0) {
             return SAND;
         }
         return rock_weight >= 0.5 ? ROCK : GRASS;
@@ -590,7 +604,7 @@ struct MeshBuild {
             case GRASS: return rgb8(54, 164, 42);
             case SOIL: return rgb8(128, 96, 68);
             case ROCK: return rgb8(119, 121, 115);
-            case SAND: return rgb8(224, 177, 105);
+            case SAND: return rgb8(224, 177, 105);\n            case SILT: return rgb8(55, 78, 116);\n            case REEF: return rgb8(112, 82, 150);
             default: return Color(1.0, 1.0, 1.0, 1.0);
         }
     }
