@@ -96,7 +96,16 @@ func _create_mountain_ranges() -> void:
             _mountain_widths.append(range_width * rng.randf_range(0.88, 1.12))
             _mountain_heights.append(range_height * rng.randf_range(0.88, 1.12))
             _mountain_phases.append(phase + float(segment_index) * 1.7)
-)
+
+
+func get_mountain_profile() -> Array[Dictionary]:
+    var profile: Array[Dictionary] = []
+    for i in range(_mountain_starts.size()):
+        profile.append({
+            "start": _mountain_starts[i], "delta": _mountain_deltas[i],
+            "length_squared": _mountain_lengths_squared[i], "width": _mountain_widths[i],
+            "height": _mountain_heights[i], "phase": _mountain_phases[i]
+        })
     return profile
 
 
