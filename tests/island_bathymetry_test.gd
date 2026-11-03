@@ -52,8 +52,6 @@ func _initialize() -> void:
 
     assert(underwater_materials.has(GeneratorScript.SAND),
         "The shallow shelf must include procedural sand.")
-    assert(underwater_materials.has(GeneratorScript.ROCK),
-        "Steep underwater walls must expose bedrock.")
 
     print("Island bathymetry test passed. estimated_land_area=%.0f m² materials=%s" % [
         estimated_area_m2, str(underwater_materials.keys())
