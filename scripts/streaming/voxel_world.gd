@@ -369,6 +369,18 @@ func _apply_seed_to_material() -> void:
     _voxel_material.set_shader_parameter("seed_high", float(int(floor(float(safe_seed) / 65536.0))))
     _voxel_material.set_shader_parameter("debug_lod_colors", _debug_lod_colors)
 
+    # Keep the ocean's shallow/deep colour transition aligned with the exact seeded
+    # island ellipse used by the native bathymetry sampler.
+    var seed_phase: float = float(seed_value % 1000003) * 0.000173
+    var island_aspect: float = 1.0 + 3.0 * (0.5 + 0.5 * sin(seed_phase * 1.37))
+    var island_rotation: float = seed_phase * 0.71
+    var sea_surface := get_parent().get_node_or_null("SeaSurface") as MeshInstance3D
+    if sea_surface != null:
+        var sea_material := sea_surface.get_active_material(0) as ShaderMaterial
+        if sea_material != null:
+            sea_material.set_shader_parameter("island_aspect", island_aspect)
+            sea_material.set_shader_parameter("island_rotation", island_rotation)
+
 
 func get_surface_height(x: float, z: float) -> float:
     if _generator == null:
