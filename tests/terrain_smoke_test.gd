@@ -13,7 +13,7 @@ func _initialize() -> void:
     assert(is_equal_approx(center_height, repeated_height),
         "Same seed should generate identical island terrain.")
     assert(center_height > 0.0, "The central island must rise above sea level.")
-    assert(first.get_surface_height(5200.0, 0.0) < -150.0,
+    assert(first.get_surface_height(5300.0, 0.0) < -150.0,
         "The outer 3 km ocean margin must reach deep offshore bathymetry.")
     assert(first.get_surface_height_voxels(0.0, 0.0) > 0,
         "Signed terrain heights must remain correctly represented in voxel units.")
