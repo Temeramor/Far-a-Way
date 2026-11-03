@@ -39,10 +39,10 @@ func _initialize() -> void:
     var underwater_materials := {}
     for z in range(-3000, 3001, 100):
         for x in range(-3000, 3001, 100):
-            var sample := generator.get_surface_sample(float(x), float(z))
+            var sample: Vector3 = generator.get_surface_sample(float(x), float(z))
             if sample.x < -1.0:
-                var slope := Vector2(sample.y, sample.z).length()
-                var material_id := generator.get_surface_material(sample.x, slope, float(x), float(z))
+                var slope: float = Vector2(sample.y, sample.z).length()
+                var material_id: int = generator.get_surface_material(sample.x, slope, float(x), float(z))
                 underwater_materials[material_id] = true
                 assert(material_id == GeneratorScript.SAND
                     or material_id == GeneratorScript.ROCK
