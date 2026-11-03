@@ -7,16 +7,22 @@
 [ext_resource type="Script" path="res://scripts/sky/Sky.gd" id="6_sky"]
 [ext_resource type="Script" path="res://scripts/streaming/voxel_world.gd" id="7_voxen_world"]
 [ext_resource type="Script" path="res://scripts/rendering/voxel_surface_scatter.gd" id="8_rock_scatter"]
+[ext_resource type="Shader" path="res://shaders/ocean_surface.gdshader" id="9_ocean_shader"]
 
-[sub_resource type="StandardMaterial3D" id="SeaMaterial"]
-transparency = 1
-albedo_color = Color(0.08, 0.32, 0.42, 0.46)
-roughness = 0.32
-metallic = 0.0
+[sub_resource type="ShaderMaterial" id="SeaMaterial"]
+render_priority = 0
+shader = ExtResource("9_ocean_shader")
+shader_parameter/wave_amplitude = 0.55
+shader_parameter/wave_speed = 1.0
+shader_parameter/water_opacity = 0.82
+shader_parameter/shallow_water_color = Color(0.035, 0.38, 0.39, 1)
+shader_parameter/deep_water_color = Color(0.008, 0.075, 0.16, 1)
 
 [sub_resource type="PlaneMesh" id="SeaPlane"]
 material = SubResource("SeaMaterial")
 size = Vector2(10520, 10520)
+subdivide_width = 192
+subdivide_depth = 192
 
 [node name="World" type="Node3D"]
 script = ExtResource("1_world")
