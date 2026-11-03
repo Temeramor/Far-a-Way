@@ -30,8 +30,8 @@ func _initialize() -> void:
     # The square map is 10.52 km wide. With the maximum island semi-axis (~2.26 km),
     # this leaves approximately 3 km of water to the nearest map edge.
     for edge_sample in [
-        Vector2(5200.0, 0.0), Vector2(-5200.0, 0.0),
-        Vector2(0.0, 5200.0), Vector2(0.0, -5200.0)
+        Vector2(5300.0, 0.0), Vector2(-5300.0, 0.0),
+        Vector2(0.0, 5300.0), Vector2(0.0, -5300.0)
     ]:
         assert(generator.get_surface_height(edge_sample.x, edge_sample.y) < -120.0,
             "The outer ocean ring should be deep water, not a shallow noisy continuation.")
