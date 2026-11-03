@@ -427,7 +427,7 @@ struct NoiseSet {
             const double depth = -height_m;
             // Steep bathymetric walls expose bedrock; moderate slopes carry coarse debris.
             if (slope >= 0.72 || rock_weight >= 0.62) return ROCK;
-            if (slope >= 0.36) return ROCK;
+            if (slope >= 0.52) return ROCK;
             // Reef colonies occupy only the sunlit shallow shelf, in broken patches.
             const double reef_zone = smoothstep(2.5, 8.0, depth) *
                 (1.0 - smoothstep(24.0, 38.0, depth)) *
