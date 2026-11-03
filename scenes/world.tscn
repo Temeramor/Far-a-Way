@@ -20,7 +20,7 @@ shader_parameter/deep_water_color = Color(0.008, 0.075, 0.16, 1)
 
 [sub_resource type="PlaneMesh" id="SeaPlane"]
 material = SubResource("SeaMaterial")
-size = Vector2(10520, 10520)
+size = Vector2(10660, 10660)
 subdivide_width = 192
 subdivide_depth = 192
 
@@ -29,7 +29,7 @@ script = ExtResource("1_world")
 
 [node name="VoxelWorld" type="Node3D" parent="."]
 script = ExtResource("7_voxen_world")
-world_size_m = 10520.0
+world_size_m = 10660.0
 chunk_size_m = 32.0
 seed_value = 1337
 render_distance_m = 1536.0
