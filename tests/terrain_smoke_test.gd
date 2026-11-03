@@ -4,7 +4,7 @@ const GeneratorScript = preload("res://scripts/world/voxel_generator.gd")
 
 
 func _initialize() -> void:
-    var first = GeneratorScript.new(123456, 10520.0)
+    var first = GeneratorScript.new(123456, 10660.0)
     var second = GeneratorScript.new(123456, 5000.0)
     var half_size_world = GeneratorScript.new(123456, 5260.0)
     var center_height: float = first.get_surface_height(0.0, 0.0)
