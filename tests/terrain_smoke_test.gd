@@ -95,10 +95,10 @@ func _initialize() -> void:
                 var underwater_material: int = first.get_surface_material(
                     depth, underwater_slope, float(x), float(z)
                 )
-                assert(underwater_material == GeneratorScript.SAND or underwater_material == GeneratorScript.ROCK,
+                assert(underwater_material == GeneratorScript.SAND or underwater_material == GeneratorScript.ROCK\n                    or underwater_material == GeneratorScript.SILT or underwater_material == GeneratorScript.REEF,
                     "Grass must never be used as an underwater terrain material.")
                 if underwater_slope < 0.5:
-                    assert(underwater_material == GeneratorScript.SAND,
+                    assert(underwater_material == GeneratorScript.SAND or underwater_material == GeneratorScript.REEF or underwater_material == GeneratorScript.SILT,
                         "Gentle underwater slopes must remain sandy.")
                 underwater_min = minf(underwater_min, depth)
                 underwater_max = maxf(underwater_max, depth)
