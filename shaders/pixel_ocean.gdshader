@@ -86,7 +86,7 @@ void fragment() {
     vec3 scene_view = scene_h.xyz / max(scene_h.w, 0.00001);
     float water_view_z = (VIEW_MATRIX * vec4(water_world_position, 1.0)).z;
     float thickness = max(water_view_z - scene_view.z, 0.0);
-    vec2 snapped_uv = floor(SCREEN_UV / (SCREEN_PIXEL_SIZE * 2.0)) * (SCREEN_PIXEL_SIZE * 2.0);
+    vec2 snapped_uv = floor(SCREEN_UV / ((1.0 / VIEWPORT_SIZE) * 2.0)) * (SCREEN_PIXEL_SIZE * 2.0);
     vec2 refracted_uv = clamp(snapped_uv + view_n.xy * refraction_strength, vec2(0.001), vec2(0.999));
     vec3 transmitted = texture(scene_color, refracted_uv).rgb;
     float depth_mix = 1.0 - exp(-thickness * 0.045);
