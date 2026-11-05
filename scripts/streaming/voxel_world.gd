@@ -113,14 +113,19 @@ func _ready() -> void:
     if _player != null:
         _player.set_physics_process(false)
         _player.velocity = Vector3.ZERO
-    _generator = GeneratorScript.new(seed_value, world_size_m)
-    _mountain_profile_cache = _generator.get_mountain_profile()
-    _spawn_position_xz = _generator.find_safe_spawn_position(chunk_size_m)
-    if not is_finite(_spawn_position_xz.x) or not is_finite(_spawn_position_xz.y):
-        push_error("Far a Way cannot start: no safe, flat, dry spawn area was found.")
-        set_process(false)
-        set_physics_process(false)
-        return
+    # The normal game scene starts with auto_start_on_ready=false. Defer the
+    # expensive PG-Island field + erosion pass until WorldController has shown
+    # the loading screen and supplied the player's actual seed. This also avoids
+    # generating the default seed and immediately throwing it away.
+    if auto_start_on_ready:
+        _generator = GeneratorScript.new(seed_value, world_size_m)
+        _mountain_profile_cache = _generator.get_mountain_profile()
+        _spawn_position_xz = _generator.find_safe_spawn_position(chunk_size_m)
+        if not is_finite(_spawn_position_xz.x) or not is_finite(_spawn_position_xz.y):
+            push_error("Far a Way cannot start: no safe, flat, dry spawn area was found.")
+            set_process(false)
+            set_physics_process(false)
+            return
 
     var surface_shader := load("res://shaders/voxel_surface.gdshader") as Shader
     _voxel_material = ShaderMaterial.new()
@@ -128,8 +133,11 @@ func _ready() -> void:
     _apply_seed_to_material()
 
     if _player != null:
-        # Do not let gravity move the player before the spawn chunk's collider exists.
-        _player.global_position = Vector3(_spawn_position_xz.x, get_surface_height(_spawn_position_xz.x, _spawn_position_xz.y) + 8.0, _spawn_position_xz.y)
+        _player.set_physics_process(false)
+        _player.velocity = Vector3.ZERO
+        if _generator != null:
+            # Do not let gravity move the player before the spawn chunk's collider exists.
+            _player.global_position = Vector3(_spawn_position_xz.x, get_surface_height(_spawn_position_xz.x, _spawn_position_xz.y) + 8.0, _spawn_position_xz.y)
         _startup_load_pending = true
 
     if auto_start_on_ready:
