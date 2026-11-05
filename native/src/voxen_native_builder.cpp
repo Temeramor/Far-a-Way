@@ -50,6 +50,28 @@ constexpr int SAND = 4;
 struct NoiseSet {
     int64_t seed_value = 0;
     double world_size_m = 2000.0;
+    int field_resolution = 0;
+    std::vector<float> height_field_values;
+    std::vector<float> coast_field_values;
+
+    double sample_field(const std::vector<float> &field, double x, double z) const {
+        if (field_resolution < 2 || field.size() != static_cast<size_t>(field_resolution * field_resolution)) return 0.0;
+        const double max_coord = static_cast<double>(field_resolution - 1);
+        const double gx = std::clamp((x / world_size_m + 0.5) * max_coord, 0.0, max_coord);
+        const double gz = std::clamp((z / world_size_m + 0.5) * max_coord, 0.0, max_coord);
+        const int x0 = static_cast<int>(std::floor(gx));
+        const int z0 = static_cast<int>(std::floor(gz));
+        const int x1 = std::min(x0 + 1, field_resolution - 1);
+        const int z1 = std::min(z0 + 1, field_resolution - 1);
+        const double tx = gx - x0;
+        const double tz = gz - z0;
+        const auto at = [&](int ix, int iz) -> double {
+            return field[static_cast<size_t>(iz) * field_resolution + ix];
+        };
+        const double a = at(x0, z0) * (1.0 - tx) + at(x1, z0) * tx;
+        const double b = at(x0, z1) * (1.0 - tx) + at(x1, z1) * tx;
+        return a * (1.0 - tz) + b * tz;
+    }
     fastnoiselite::FastNoiseLite macro;
     fastnoiselite::FastNoiseLite hills;
     fastnoiselite::FastNoiseLite detail;
@@ -111,6 +133,23 @@ struct NoiseSet {
         seafloor_macro.SetFrequency(0.0010f * frequency_scale);
         seafloor_hills.SetFrequency(0.0042f * frequency_scale);
         seafloor_detail.SetFrequency(0.012f * frequency_scale);
+        field_resolution = static_cast<int>(job_data.get("field_resolution", 0));
+        const PackedFloat32Array heights = job_data.get("height_field", PackedFloat32Array());
+        const PackedFloat32Array coast = job_data.get("coast_field", PackedFloat32Array());
+        height_field_values.clear();
+        coast_field_values.clear();
+        if (field_resolution >= 2 &&
+                heights.size() == field_resolution * field_resolution &&
+                coast.size() == field_resolution * field_resolution) {
+            height_field_values.reserve(static_cast<size_t>(heights.size()));
+            coast_field_values.reserve(static_cast<size_t>(coast.size()));
+            for (int64_t i = 0; i < heights.size(); ++i) {
+                height_field_values.push_back(heights[i]);
+                coast_field_values.push_back(coast[i]);
+            }
+        } else {
+            field_resolution = 0;
+        }
         mountain_segments.clear();
         const Array profile = job_data.get("mountain_profile", Array());
         for (int64_t i = 0; i < profile.size(); ++i) {
@@ -131,6 +170,7 @@ struct NoiseSet {
     }
 
     double coast_distance(double x, double z) const {
+        if (!coast_field_values.empty()) return sample_field(coast_field_values, x, z);
         const double seed_phase = static_cast<double>(seed_value % 1000003) * 0.000173;
         const double aspect = 1.0 + 3.0 * (0.5 + 0.5 * std::sin(seed_phase * 1.37));
         const double angle = seed_phase * 0.71;
@@ -176,6 +216,7 @@ struct NoiseSet {
     }
 
     double surface_height(double x, double z) const {
+        if (!height_field_values.empty()) return sample_field(height_field_values, x, z);
         const double macro_value = sample_noise(macro, x, z);
         const double hills_value = sample_noise(hills, x, z);
         const double detail_value = sample_noise(detail, x, z);
@@ -372,10 +413,17 @@ struct NoiseSet {
             // proximity alone no longer paints broad, gentle seabed areas as rock.
             return (slope >= 0.78 || rock_weight >= 0.5) ? ROCK : SAND;
         }
-        if (shore >= 0.91 && shore <= 1.13 && slope < 0.58 && height_m <= 9.0) {
+        // The imported signed coast field is measured in metres. Keep a soft
+        // beach on low, nearly level terrain; coastal rises stay grassy and cliffs
+        // become rock, matching Far a Way's existing shoreline palette.
+        if (shore <= 110.0 && slope < 0.075 && height_m <= 34.0) {
             return SAND;
         }
-        return rock_weight >= 0.5 ? ROCK : GRASS;
+        if (shore <= 125.0 && slope < 0.23 && height_m <= 55.0) {
+            return GRASS;
+        }
+        if (slope >= 0.42 || height_m >= 150.0 || rock_weight >= 0.5) return ROCK;
+        return GRASS;
     }
 };
 
