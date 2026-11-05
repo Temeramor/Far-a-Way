@@ -15,6 +15,7 @@ const MIN_TERRAIN_HEIGHT: float = -220.0
 const MAX_TERRAIN_HEIGHT: float = 1600.0
 const HEIGHT_SAMPLE_STEP_M: float = 0.5
 const REFERENCE_WORLD_SIZE_M: float = 10000.0
+const IslandGeneratorScript = preload("res://scripts/island_generator.gd")
 
 var seed_value: int = 1337
 var world_size_m: float = 2000.0
@@ -35,16 +36,25 @@ func _init(
     if p_native_sampler != null:
         _native_sampler = p_native_sampler
         return
-    _create_mountain_ranges()
+    if not is_equal_approx(world_size_m, REFERENCE_WORLD_SIZE_M):
+        push_warning("PG-Island height fields are authored for a 10 km world; Far a Way will use the matching 10 km landscape bounds.")
     _native_sampler = ClassDB.instantiate("VoxEnNativeBuilder")
     if _native_sampler == null:
         push_error("VoxelTerrainGenerator requires VoxEnNativeBuilder as its native terrain sampler.")
         return
+    # The same deterministic PG-Island CPU pipeline produces the signed coast
+    # field and eroded height/bathymetry field. VoxEn then samples those fields
+    # for voxel meshing, collision, spawn checks and surface materials.
+    var island_generator := IslandGeneratorScript.new()
+    var generated: Dictionary = island_generator.generate(seed_value)
     _native_sampler.call("configure_terrain_sampler", {
         "seed": seed_value,
-        "terrain_world_size_m": world_size_m,
-        "mountain_profile": get_mountain_profile()
+        "terrain_world_size_m": REFERENCE_WORLD_SIZE_M,
+        "field_resolution": 1024,
+        "height_field": generated["height_values"],
+        "coast_field": generated["coast_values"]
     })
+    generated.clear()
 
 
 func get_native_sampler() -> Object:
