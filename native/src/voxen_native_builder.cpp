@@ -260,7 +260,16 @@ struct NoiseSet {
         return surface_height(x, z);
     }
 
+    static double cubic_interpolate_derivative(
+            double p0, double p1, double p2, double p3, double t) {
+        return 0.5 * ((p2 - p0) + 2.0 * t * (2.0 * p0 - 5.0 * p1 +
+            4.0 * p2 - p3) + 3.0 * t * t * (3.0 * (p1 - p2) + p3 - p0));
+    }
+
     Vector3 surface_sample(double x, double z, double step_m) const {
+        // Use the same world-anchored 4x4 reconstruction for height and slope.
+        // Bilinear interpolation was visibly flattening shore transitions and
+        // producing derivative discontinuities when callers crossed sample cells.
         const double safe_step = std::max(step_m, 0.0001);
         const double grid_x_float = x / safe_step;
         const double grid_z_float = z / safe_step;
@@ -275,15 +284,48 @@ struct NoiseSet {
             return surface_height(static_cast<double>(sx) * safe_step,
                 static_cast<double>(sz) * safe_step);
         };
-        const double h00 = sample(grid_x, grid_z);
-        const double h10 = sample(grid_x + 1, grid_z);
-        const double h01 = sample(grid_x, grid_z + 1);
-        const double h11 = sample(grid_x + 1, grid_z + 1);
-        const double top = h00 + (h10 - h00) * tx;
-        const double bottom = h01 + (h11 - h01) * tx;
-        const double height = top + (bottom - top) * tz;
-        const double slope_x = ((h10 - h00) * (1.0 - tz) + (h11 - h01) * tz) / safe_step;
-        const double slope_z = ((h01 - h00) * (1.0 - tx) + (h11 - h10) * tx) / safe_step;
+
+        double rows[4] = {};
+        double row_dx[4] = {};
+        double local_min = std::numeric_limits<double>::infinity();
+        double local_max = -std::numeric_limits<double>::infinity();
+        for (int32_t row = -1; row <= 2; ++row) {
+            double p[4] = {};
+            for (int32_t column = -1; column <= 2; ++column) {
+                p[column + 1] = sample(grid_x + column, grid_z + row);
+                local_min = std::min(local_min, p[column + 1]);
+                local_max = std::max(local_max, p[column + 1]);
+            }
+            rows[row + 1] = cubic_interpolate(p[0], p[1], p[2], p[3], tx);
+            row_dx[row + 1] = cubic_interpolate_derivative(
+                p[0], p[1], p[2], p[3], tx) / safe_step;
+        }
+
+        // Clamp the reconstructed height to its 4x4 support to prevent cubic
+        // overshoot around cliffs, beach ridges and abrupt material transitions.
+        const double height = std::clamp(
+            cubic_interpolate(rows[0], rows[1], rows[2], rows[3], tz),
+            local_min, local_max);
+        double slope_x = cubic_interpolate(row_dx[0], row_dx[1], row_dx[2],
+            row_dx[3], tz);
+        double slope_z = cubic_interpolate_derivative(
+            rows[0], rows[1], rows[2], rows[3], tz) / safe_step;
+
+        // Keep normals stable at sharp transitions without flattening the height.
+        double max_dx = 0.0;
+        double max_dz = 0.0;
+        for (int32_t row = 0; row < 4; ++row) {
+            const double a = sample(grid_x, grid_z + row - 1);
+            const double b = sample(grid_x + 1, grid_z + row - 1);
+            max_dx = std::max(max_dx, std::abs(b - a) / safe_step);
+        }
+        for (int32_t column = 0; column < 4; ++column) {
+            const double a = sample(grid_x + column - 1, grid_z);
+            const double b = sample(grid_x + column - 1, grid_z + 1);
+            max_dz = std::max(max_dz, std::abs(b - a) / safe_step);
+        }
+        slope_x = std::clamp(slope_x, -max_dx * 2.0, max_dx * 2.0);
+        slope_z = std::clamp(slope_z, -max_dz * 2.0, max_dz * 2.0);
         return Vector3(height, slope_x, slope_z);
     }
 
