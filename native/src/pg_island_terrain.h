@@ -33,7 +33,9 @@ public:
     std::vector<float> coast;
     std::vector<float> height;
     std::vector<float> drainage;
-    fastnoiselite::FastNoiseLite warp_x, warp_z, coast_large, coast_small;
+    fastnoiselite::FastNoiseLite warp_x, warp_z, coast_large, coast_small, coast_detail;
+    double coast_ca=1.0, coast_sa=0.0, coast_aspect=1.0, coast_radius_scale=1.0;
+    double coast_radius=std::sqrt(4000000.0/3.141592653589793), coast_threshold=0.0;
     fastnoiselite::FastNoiseLite broad, hills, detail, mountain, structure, fine, mountain_warp_x, mountain_warp_z;
 
     struct Massif { double x,z,angle,long_r,short_r,peak,freq,phase,warp; };
@@ -68,6 +70,7 @@ public:
         warp_z=noise(static_cast<int32_t>(seed+211),0.00115f,3);
         coast_large=noise(static_cast<int32_t>(seed+307),0.0038f,4);
         coast_small=noise(static_cast<int32_t>(seed+401),0.0125f,2);
+        coast_detail=noise(static_cast<int32_t>(seed+419),0.027f,2);
         broad=noise(static_cast<int32_t>(seed+503),0.00135f,5);
         hills=noise(static_cast<int32_t>(seed+607),0.0052f,4);
         detail=noise(static_cast<int32_t>(seed+709),0.023f,3);
@@ -82,25 +85,24 @@ public:
         auto random01=[&]() { state^=state>>12; state^=state<<25; state^=state>>27;
             return static_cast<double>((state*2685821657736338717ULL)>>11)*(1.0/9007199254740992.0); };
         const double rotation=random01()*6.283185307179586;
-        const double aspect=0.76+random01()*0.52, radius=std::sqrt(4000000.0/3.141592653589793);
-        const double radius_scale=0.93+random01()*0.15, ca=std::cos(rotation),sa=std::sin(rotation);
+        coast_aspect=0.76+random01()*0.52;
+        coast_radius_scale=0.93+random01()*0.15;
+        coast_ca=std::cos(rotation); coast_sa=std::sin(rotation);
         for(int y=0;y<RES;++y) {
             const double z=(static_cast<double>(y)/(RES-1)-0.5)*world_size;
             for(int x=0;x<RES;++x) {
                 const double wx=(static_cast<double>(x)/(RES-1)-0.5)*world_size;
-                const double px=wx+sample(warp_x,wx,z)*185.0, pz=z+sample(warp_z,wx,z)*185.0;
-                const double rx=px*ca-pz*sa, rz=px*sa+pz*ca;
-                const double coast_noise=sample(coast_large,wx,z)*76.0+sample(coast_small,wx,z)*23.0;
-                coast[x+y*RES]=static_cast<float>(radius*radius_scale-std::hypot(rx/aspect,rz*aspect)+coast_noise);
+                coast[x+y*RES]=evaluate_coast(wx,z);
             }
         }
         // Calibrate to the same approximate 4 km² sampled land area as PG-Island.
+        // Coastline calibration uses the complete field, including the added fine coastal octave.
         std::vector<float> sorted=coast;
         const double pixel_area=world_size*world_size/((RES-1.0)*(RES-1.0));
         const size_t target=std::clamp(static_cast<size_t>(std::llround(4000000.0/pixel_area)),size_t(1),sorted.size()-1);
         std::nth_element(sorted.begin(),sorted.begin()+static_cast<std::ptrdiff_t>(sorted.size()-target-1),sorted.end());
-        const float threshold=sorted[sorted.size()-target-1];
-        for(float &v:coast) v-=threshold;
+        coast_threshold=sorted[sorted.size()-target-1];
+        for(float &v:coast) v-=static_cast<float>(coast_threshold);
 
         // Mountain systems are generated as one loose tectonic chain rather than
         // unrelated peaks scattered over the island. Their foothill aprons overlap,
@@ -208,10 +210,23 @@ public:
     }
 
     float sample_height(double x,double z) const { return sample_field(height,x,z); }
-    float sample_coast(double x,double z) const { return sample_field(coast,x,z); }
+    // Evaluate the same calibrated coastline field at arbitrary world coordinates.
+    // This removes the 3.9 m raster/interpolation quantization from shoreline queries
+    // while keeping the erosion simulation on its deterministic 2048² source grid.
+    float sample_coast(double x,double z) const { return evaluate_coast(x,z); }
     float sample_drainage(double x,double z) const { return sample_field(drainage,x,z); }
 
 private:
+    float evaluate_coast(double wx,double wz) const {
+        const double px=wx+sample(warp_x,wx,wz)*185.0;
+        const double pz=wz+sample(warp_z,wx,wz)*185.0;
+        const double rx=px*coast_ca-pz*coast_sa;
+        const double rz=px*coast_sa+pz*coast_ca;
+        const double coast_noise=sample(coast_large,wx,wz)*76.0+
+            sample(coast_small,wx,wz)*23.0+sample(coast_detail,wx,wz)*7.5;
+        return static_cast<float>(coast_radius*coast_radius_scale-
+            std::hypot(rx/coast_aspect,rz*coast_aspect)+coast_noise-coast_threshold);
+    }
     float sample_field(const std::vector<float>& field,double x,double z) const {
         if(field.empty()) return 0.0f;
         const double gx=(x/world_size+0.5)*(RES-1), gz=(z/world_size+0.5)*(RES-1);
@@ -299,8 +314,10 @@ private:
     }
     void thermal_coarse(std::vector<float>& h,const std::vector<float>& c,double cell) {
         std::vector<float> delta(h.size(),0);const double talus=std::max(cell*0.075,2.8);
+        const std::array<std::pair<int,double>,4> edges={{{1,1.0},{HYDRO_RES,1.0},{HYDRO_RES+1,1.41421356237},{HYDRO_RES-1,1.41421356237}}};
         for(int y=1;y<HYDRO_RES-1;++y)for(int x=1;x<HYDRO_RES-1;++x){int i=x+y*HYDRO_RES;if(c[i]<=0)continue;
-            for(int j:{i+1,i+HYDRO_RES})if(c[j]>0){double diff=h[i]-h[j];if(std::abs(diff)>talus){float t=static_cast<float>(std::min((std::abs(diff)-talus)*0.12,0.75));delta[i]+=diff>0?-t:t;delta[j]+=diff>0?t:-t;}}
+            for(const auto &edge:edges){int j=i+edge.first;if(c[j]<=0)continue;double limit=talus*edge.second,diff=h[i]-h[j];
+                if(std::abs(diff)>limit){double rate=edge.second>1.1?0.06:0.12;float t=static_cast<float>(std::min((std::abs(diff)-limit)*rate,0.75));delta[i]+=diff>0?-t:t;delta[j]+=diff>0?t:-t;}}
         }
         for(size_t i=0;i<h.size();++i)if(c[i]>0)h[i]=std::max(0.35f,h[i]+delta[i]);
     }
@@ -414,9 +431,14 @@ private:
 
     void thermal_relaxation() {
         const double talus=world_size/(RES-1)*THERMAL_TALUS_SLOPE;
+        // Process each undirected edge once. Diagonals use their true sqrt(2) run
+        // and a lower transfer rate, removing the strong X/Z preference of the old
+        // right/down-only relaxation without changing total transported material.
+        const std::array<std::pair<int,double>,4> edges={{{1,1.0},{RES,1.0},{RES+1,1.41421356237},{RES-1,1.41421356237}}};
         for(int it=0;it<8;++it){std::vector<float> delta(height.size(),0);
             for(int y=1;y<RES-1;++y)for(int x=1;x<RES-1;++x){int i=x+y*RES;if(height[i]<=0||coast[i]<=0)continue;
-                for(int j:{i+1,i+RES})if(coast[j]>0){double diff=height[i]-height[j];if(std::abs(diff)>talus){float t=static_cast<float>(std::min((std::abs(diff)-talus)*0.22,1.5));delta[i]+=diff>0?-t:t;delta[j]+=diff>0?t:-t;}}
+                for(const auto &edge:edges){int j=i+edge.first;if(coast[j]<=0)continue;double limit=talus*edge.second,diff=height[i]-height[j];
+                    if(std::abs(diff)>limit){double rate=edge.second>1.1?0.11:0.22;float t=static_cast<float>(std::min((std::abs(diff)-limit)*rate,1.5));delta[i]+=diff>0?-t:t;delta[j]+=diff>0?t:-t;}}
             }
             for(size_t i=0;i<height.size();++i)if(height[i]>0)height[i]=std::max(0.35f,height[i]+delta[i]);
         }
