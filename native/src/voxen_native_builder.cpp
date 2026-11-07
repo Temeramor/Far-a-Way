@@ -205,7 +205,7 @@ struct NoiseSet {
         const double inland_detail = smoothstep(2.0, 24.0, coast_sdf);
         const double shore_band = inland_detail * (1.0 - smoothstep(42.0, 105.0, coast_sdf));
         const double meso = sample_noise(meso_detail, x, z) *
-            (0.10 + 0.16 * slope_proxy) * (0.35 + 0.65 * inland_detail);
+            (0.10 + 0.16 * slope_proxy) * inland_detail;
         const double shore_relief = sample_noise(meso_detail, x + 173.0, z - 281.0) *
             (0.10 + 0.16 * slope_proxy) * shore_band;
         // ~1.6 m period and well below one voxel (0.2 m) of height: kept only as faint grain.
