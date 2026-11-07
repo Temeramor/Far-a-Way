@@ -19,6 +19,8 @@ const REFERENCE_WORLD_SIZE_M: float = 10000.0
 var seed_value: int = 1337
 var world_size_m: float = 2000.0
 var _native_sampler: Object
+var _terrain_prepared: bool = false
+var _prepared_spawn_position: Vector2 = Vector2(INF, INF)
 var _mountain_starts: Array[Vector2] = []
 var _mountain_deltas: Array[Vector2] = []
 var _mountain_lengths_squared: Array[float] = []
@@ -40,11 +42,28 @@ func _init(
     if _native_sampler == null:
         push_error("VoxelTerrainGenerator requires VoxEnNativeBuilder as its native terrain sampler.")
         return
+    # The expensive 2048² terrain build is deliberately deferred to
+    # prepare_native_terrain(), which VoxelWorld runs on WorkerThreadPool.
+
+
+func prepare_native_terrain(spawn_chunk_size_m: float = 32.0) -> void:
+    if _native_sampler == null or _terrain_prepared:
+        return
     _native_sampler.call("configure_terrain_sampler", {
         "seed": seed_value,
         "terrain_world_size_m": world_size_m,
         "mountain_profile": get_mountain_profile()
     })
+    _terrain_prepared = true
+    _prepared_spawn_position = find_safe_spawn_position(spawn_chunk_size_m)
+
+
+func is_terrain_prepared() -> bool:
+    return _terrain_prepared
+
+
+func get_prepared_spawn_position() -> Vector2:
+    return _prepared_spawn_position
 
 
 func get_native_sampler() -> Object:
