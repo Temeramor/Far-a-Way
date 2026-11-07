@@ -52,6 +52,7 @@ struct NoiseSet {
     voxen::PgIslandTerrain pg_island;
     fastnoiselite::FastNoiseLite micro_erosion;
     fastnoiselite::FastNoiseLite fine_grain;
+    fastnoiselite::FastNoiseLite meso_detail;
     int64_t seed_value = 0;
     double world_size_m = 2000.0;
     fastnoiselite::FastNoiseLite macro;
@@ -139,6 +140,10 @@ struct NoiseSet {
         micro_erosion.SetFrequency(0.16f);
         fine_grain = make_noise(static_cast<int32_t>(seed_value + 2909), 2, 0.48f);
         fine_grain.SetFrequency(0.62f);
+        // A world-anchored 2.5-4 m detail band restores meso-scale variation
+        // between the 3.9 m macro-height samples without increasing map resolution.
+        meso_detail = make_noise(static_cast<int32_t>(seed_value + 2917), 3, 0.48f, true);
+        meso_detail.SetFrequency(0.28f * frequency_scale);
     }
 
     double coast_distance(double x, double z) const {
@@ -194,11 +199,20 @@ struct NoiseSet {
         // Amplitude must scale with wavelength: this noise has a ~6 m period, so 0.55..2.25 m (old values)
         // meant slopes of 45-70 degrees everywhere, i.e. the spikes. 0.08..0.38 m is natural micro-relief.
         const double gully = sample_noise(micro_erosion, x, z) * (0.08 + 0.30 * channel_mask);
+        // Add a restrained 2.5-4 m band so the 2048^2 macro grid does not read
+        // as a smoothly interpolated heightmap. Its amplitude follows terrain
+        // structure and fades out at the exact waterline to keep the coast stable.
+        const double inland_detail = smoothstep(2.0, 24.0, coast_sdf);
+        const double shore_band = inland_detail * (1.0 - smoothstep(42.0, 105.0, coast_sdf));
+        const double meso = sample_noise(meso_detail, x, z) *
+            (0.10 + 0.16 * slope_proxy) * (0.35 + 0.65 * inland_detail);
+        const double shore_relief = sample_noise(meso_detail, x + 173.0, z - 281.0) *
+            (0.10 + 0.16 * slope_proxy) * shore_band;
         // ~1.6 m period and well below one voxel (0.2 m) of height: kept only as faint grain.
         const double fine = sample_noise(fine_grain, x, z) * (0.03 + 0.05 * slope_proxy);
         const double drainage_cut = -channel_mask * (0.65 + 1.25 *
             std::max(0.0, static_cast<double>(sample_noise(transition, x * 0.42, z * 0.42))));
-        double height = macro_height + gully + fine + drainage_cut;
+        double height = macro_height + gully + meso + shore_relief + fine + drainage_cut;
 
         // Narrow, slope-aligned incisions connect to the simulated drainage network.
         // Their direction follows the macro-height gradient, keeping chunk borders exact.
