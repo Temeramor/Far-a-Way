@@ -53,13 +53,6 @@ struct NoiseSet {
     fastnoiselite::FastNoiseLite micro_erosion;
     fastnoiselite::FastNoiseLite fine_grain;
     fastnoiselite::FastNoiseLite meso_detail;
-    // Dedicated rock-face fields: long fractured ridges, broken strata and
-    // smaller angular crags. Kept separate from the soft grass/beach detail.
-    fastnoiselite::FastNoiseLite rock_warp_x;
-    fastnoiselite::FastNoiseLite rock_warp_z;
-    fastnoiselite::FastNoiseLite rock_crags;
-    fastnoiselite::FastNoiseLite rock_fractures;
-    fastnoiselite::FastNoiseLite rock_ledge;
     int64_t seed_value = 0;
     double world_size_m = 2000.0;
     fastnoiselite::FastNoiseLite macro;
@@ -152,19 +145,6 @@ struct NoiseSet {
         meso_detail = make_noise(static_cast<int32_t>(seed_value + 2917), 3, 0.48f, true);
         meso_detail.SetFrequency(0.28f * frequency_scale);
 
-        // Rock relief uses metre-scale wavelengths rather than sub-voxel grain.
-        // Domain warp breaks up parallel noise contours and remains world-anchored,
-        // so chunk borders and all LODs sample exactly the same formations.
-        rock_warp_x = make_noise(static_cast<int32_t>(seed_value + 2927), 3, 0.52f);
-        rock_warp_z = make_noise(static_cast<int32_t>(seed_value + 2933), 3, 0.52f);
-        rock_warp_x.SetFrequency(0.0024f * frequency_scale);
-        rock_warp_z.SetFrequency(0.0024f * frequency_scale);
-        rock_crags = make_noise(static_cast<int32_t>(seed_value + 2939), 5, 0.52f, true);
-        rock_crags.SetFrequency(0.012f * frequency_scale);
-        rock_fractures = make_noise(static_cast<int32_t>(seed_value + 2953), 3, 0.50f);
-        rock_fractures.SetFrequency(0.036f * frequency_scale);
-        rock_ledge = make_noise(static_cast<int32_t>(seed_value + 2957), 2, 0.48f, true);
-        rock_ledge.SetFrequency(0.082f * frequency_scale);
     }
 
     double coast_distance(double x, double z) const {
@@ -234,27 +214,7 @@ struct NoiseSet {
         const double drainage_cut = -channel_mask * (0.65 + 1.25 *
             std::max(0.0, static_cast<double>(sample_noise(transition, x * 0.42, z * 0.42))));
 
-        // Exposed rock is not smooth terrain with a rock-colored material.
-        // Add actual relief to mountain faces and high rocky coasts: warped
-        // ridges form broad ribs, fractures break their edges, and the short
-        // band adds chipped ledges. Low sandy/grass beaches stay on the old path.
-        const double warp_x = sample_noise(rock_warp_x, x, z) * 26.0;
-        const double warp_z = sample_noise(rock_warp_z, x, z) * 26.0;
-        const double rock_x = x + warp_x;
-        const double rock_z = z + warp_z;
-        const double crags = sample_noise(rock_crags, rock_x, rock_z);
-        const double fractures = sample_noise(rock_fractures, rock_x, rock_z);
-        const double ledges = sample_noise(rock_ledge, rock_x, rock_z);
-        const double mountain_exposure = smoothstep(42.0, 145.0, macro_height);
-        const double coast_edge_warp = sample_noise(rock_fractures, x * 0.42, z * 0.42) * 22.0;
-        const double coastal_cliff_exposure =
-            smoothstep(3.5, 8.5, macro_height) *
-            (1.0 - smoothstep(22.0 + coast_edge_warp, 112.0 + coast_edge_warp, coast_sdf));
-        const double rock_exposure = std::max(mountain_exposure, coastal_cliff_exposure);
-        const double rock_relief = ((crags - 0.5) * 10.0 +
-            fractures * 3.4 + ledges * 1.25) * rock_exposure;
-        double height = macro_height + gully + meso + shore_relief + fine +
-            drainage_cut + rock_relief;
+        double height = macro_height + gully + meso + shore_relief + fine + drainage_cut;
 
         // Narrow, slope-aligned incisions connect to the simulated drainage network.
         // Their direction follows the macro-height gradient, keeping chunk borders exact.
@@ -417,19 +377,7 @@ struct NoiseSet {
 
     int32_t surface_material(double height_m, double slope, double x, double z) const {
         const double shore = coast_distance(x, z);
-        double rock_weight = surface_rock_weight(slope, x, z);
-        // High mountain faces expose stone even where the local heightfield is
-        // a broad ridge rather than a near-vertical wall. Pattern the transition
-        // so the grass/rock boundary follows the fractured formations.
-        const double rock_pattern = 0.78 + 0.22 *
-            sample_noise(rock_crags, x + sample_noise(rock_warp_x, x, z) * 26.0,
-                z + sample_noise(rock_warp_z, x, z) * 26.0);
-        const double elevation_exposure = smoothstep(55.0, 175.0, height_m) * rock_pattern;
-        rock_weight = std::max(rock_weight, elevation_exposure);
-        const double coastal_cliff = smoothstep(3.5, 8.5, height_m) *
-            (1.0 - smoothstep(20.0, 105.0, shore)) *
-            smoothstep(0.22, 0.68, slope);
-        rock_weight = std::max(rock_weight, coastal_cliff);
+        const double rock_weight = surface_rock_weight(slope, x, z);
         // Below sea level, grass never continues underwater: gentle seabed is sand,
         // while genuinely steep rock faces continue as rock.
         if (height_m < 0.0) {
