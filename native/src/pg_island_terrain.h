@@ -381,7 +381,8 @@ private:
                     const double gz=(guide[i+RES]-guide[i-RES])/(2.0*world_step);
                     const double slope=std::hypot(gx,gz);
                     if(slope<0.012) continue;
-                    const double tx=-gz/std::max(slope,1e-4),tz=gx/std::max(slope,1e-4);
+                    // Gullies must follow the downhill gradient, not the contour tangent.
+                    const double tx=-gx/std::max(slope,1e-4),tz=-gz/std::max(slope,1e-4);
                     const double wx=(static_cast<double>(x)/(RES-1)-0.5)*world_size;
                     const int cell_x=static_cast<int>(std::floor(wx/cell_size));
                     const int cell_y=static_cast<int>(std::floor(wz/cell_size));
