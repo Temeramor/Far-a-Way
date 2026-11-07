@@ -289,12 +289,16 @@ struct NoiseSet {
         double row_dx[4] = {};
         double local_min = std::numeric_limits<double>::infinity();
         double local_max = -std::numeric_limits<double>::infinity();
+        double max_dx = 0.0;
         for (int32_t row = -1; row <= 2; ++row) {
             double p[4] = {};
             for (int32_t column = -1; column <= 2; ++column) {
                 p[column + 1] = sample(grid_x + column, grid_z + row);
                 local_min = std::min(local_min, p[column + 1]);
                 local_max = std::max(local_max, p[column + 1]);
+                if (column == 0 || column == 1 || column == 2) {
+                    max_dx = std::max(max_dx, std::abs(p[column + 2] - p[column + 1]) / safe_step);
+                }
             }
             rows[row + 1] = cubic_interpolate(p[0], p[1], p[2], p[3], tx);
             row_dx[row + 1] = cubic_interpolate_derivative(
@@ -312,17 +316,9 @@ struct NoiseSet {
             rows[0], rows[1], rows[2], rows[3], tz) / safe_step;
 
         // Keep normals stable at sharp transitions without flattening the height.
-        double max_dx = 0.0;
         double max_dz = 0.0;
-        for (int32_t row = 0; row < 4; ++row) {
-            const double a = sample(grid_x, grid_z + row - 1);
-            const double b = sample(grid_x + 1, grid_z + row - 1);
-            max_dx = std::max(max_dx, std::abs(b - a) / safe_step);
-        }
-        for (int32_t column = 0; column < 4; ++column) {
-            const double a = sample(grid_x + column - 1, grid_z);
-            const double b = sample(grid_x + column - 1, grid_z + 1);
-            max_dz = std::max(max_dz, std::abs(b - a) / safe_step);
+        for (int32_t row = 0; row < 3; ++row) {
+            max_dz = std::max(max_dz, std::abs(rows[row + 2] - rows[row + 1]) / safe_step);
         }
         slope_x = std::clamp(slope_x, -max_dx * 2.0, max_dx * 2.0);
         slope_z = std::clamp(slope_z, -max_dz * 2.0, max_dz * 2.0);
