@@ -234,10 +234,12 @@ struct NoiseSet {
 
         const double world_scale = world_size_m / REFERENCE_WORLD_SIZE_M;
         height += std::pow(std::max(ridge_detail - 0.58, 0.0), 1.7) * (12.0 + 38.0 * world_scale);
-        const double micro_mask = 0.30 + 0.70 * smoothstep(0.34, 0.88, ridge_detail);
+        // Keep broad plains nearly smooth for traversal/spawning. Fine relief is
+        // concentrated around strong ridges; its vertical amplitude remains below 0.4 m.
+        const double micro_mask = 0.08 + 0.92 * smoothstep(0.48, 0.82, ridge_detail);
         height += micro_mask * (
-            sample_noise(micro_detail, x, z) * 0.28 +
-            sample_noise(micro_grain, x, z) * 0.13
+            sample_noise(micro_detail, x, z) * 0.24 +
+            sample_noise(micro_grain, x, z) * 0.10
         );
         double mountain_height = 0.0;
         for (const MountainSegment &segment : mountain_segments) {
