@@ -274,6 +274,12 @@ struct NoiseSet {
         return surface_height(x, z);
     }
 
+    static double cubic_interpolate(
+            double p0, double p1, double p2, double p3, double t) {
+        return p1 + 0.5 * t * (p2 - p0 + t * (2.0 * p0 - 5.0 * p1 +
+            4.0 * p2 - p3 + t * (3.0 * (p1 - p2) + p3 - p0)));
+    }
+
     static double cubic_interpolate_derivative(
             double p0, double p1, double p2, double p3, double t) {
         return 0.5 * ((p2 - p0) + 2.0 * t * (2.0 * p0 - 5.0 * p1 +
