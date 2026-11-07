@@ -35,6 +35,8 @@ public:
     std::vector<float> height;
     std::vector<float> drainage;
     fastnoiselite::FastNoiseLite warp_x, warp_z, coast_large, coast_small, coast_detail;
+    // Additional horizontal domain warp keeps the shoreline from inheriting the 2048² height grid's straight-looking contour segments.
+    fastnoiselite::FastNoiseLite coast_warp_mid_x, coast_warp_mid_z, coast_warp_fine_x, coast_warp_fine_z;
     double coast_ca=1.0, coast_sa=0.0, coast_aspect=1.0, coast_radius_scale=1.0;
     double coast_radius=std::sqrt(4000000.0/3.141592653589793), coast_threshold=0.0;
     fastnoiselite::FastNoiseLite broad, hills, detail, mountain, structure, fine, mountain_warp_x, mountain_warp_z;
@@ -72,6 +74,10 @@ public:
         coast_large=noise(static_cast<int32_t>(seed+307),0.0038f,4);
         coast_small=noise(static_cast<int32_t>(seed+401),0.0125f,2);
         coast_detail=noise(static_cast<int32_t>(seed+419),0.027f,2);
+        coast_warp_mid_x=noise(static_cast<int32_t>(seed+431),0.0048f,3);
+        coast_warp_mid_z=noise(static_cast<int32_t>(seed+433),0.0048f,3);
+        coast_warp_fine_x=noise(static_cast<int32_t>(seed+437),0.011f,2);
+        coast_warp_fine_z=noise(static_cast<int32_t>(seed+439),0.011f,2);
         broad=noise(static_cast<int32_t>(seed+503),0.00135f,5);
         hills=noise(static_cast<int32_t>(seed+607),0.0052f,4);
         detail=noise(static_cast<int32_t>(seed+709),0.023f,3);
@@ -219,6 +225,13 @@ public:
 
 private:
     float evaluate_coast(double wx,double wz) const {
+        // Displace the coastline in X/Z, not in elevation. The two added bands
+        // break up long smooth arcs while remaining world-anchored and chunk-safe.
+        const double original_x=wx, original_z=wz;
+        wx += sample(coast_warp_mid_x,original_x,original_z)*24.0 +
+            sample(coast_warp_fine_x,original_x,original_z)*7.0;
+        wz += sample(coast_warp_mid_z,original_x,original_z)*24.0 +
+            sample(coast_warp_fine_z,original_x,original_z)*7.0;
         const double px=wx+sample(warp_x,wx,wz)*185.0;
         const double pz=wz+sample(warp_z,wx,wz)*185.0;
         const double rx=px*coast_ca-pz*coast_sa;
