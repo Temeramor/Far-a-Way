@@ -207,7 +207,8 @@ struct NoiseSet {
             const double gx = pg_island.sample_height(x + d, z) - pg_island.sample_height(x - d, z);
             const double gz = pg_island.sample_height(x, z + d) - pg_island.sample_height(x, z - d);
             const double length = std::max(std::hypot(gx, gz), 0.001);
-            const double tx = -gz / length, tz = gx / length;
+            // Align the incision with downhill runoff; the perpendicular tangent follows contours.
+            const double tx = -gx / length, tz = -gz / length;
             const double phase = (x * tx + z * tz) * 0.085 +
                 sample_noise(transition, x * 0.012, z * 0.012) * 2.0;
             const double incision = std::pow(0.5 + 0.5 * std::sin(phase), 12.0);
