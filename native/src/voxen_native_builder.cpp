@@ -1313,6 +1313,7 @@ struct MeshBuild {
     }
 
     Dictionary run(const Dictionary &job_data, int64_t build_started_usec) {
+        if (is_cancelled()) return Dictionary();
         coord = job_data.get("coord", Vector2i());
         const Dictionary request = job_data.get("request", Dictionary());
         lod = static_cast<int32_t>(request.get("lod", 0));
