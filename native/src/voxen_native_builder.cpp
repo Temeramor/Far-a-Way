@@ -412,19 +412,20 @@ struct NoiseSet {
     double surface_rock_weight(double slope, double x, double z) const {
         const double transition_noise = sample_noise(transition, x, z) * 0.12;
         const double normal_slope = 1.0 - 1.0 / std::sqrt(1.0 + slope * slope);
-        const double geometric_weight = smoothstep(0.30, 0.48, normal_slope + transition_noise);
-        // The old slope-only threshold left broad mountain faces grass-green even
-        // where the heightfield now contains exposed crags and fractured ledges.
-        const double elevation_exposure = smoothstep(55.0, 175.0, pg_island.sample_height(x, z));
-        const double rock_pattern = 0.78 + 0.22 *
-            sample_noise(rock_crags, x + sample_noise(rock_warp_x, x, z) * 26.0,
-                z + sample_noise(rock_warp_z, x, z) * 26.0);
-        return std::max(geometric_weight, elevation_exposure * rock_pattern);
+        return smoothstep(0.30, 0.48, normal_slope + transition_noise);
     }
 
     int32_t surface_material(double height_m, double slope, double x, double z) const {
         const double shore = coast_distance(x, z);
         double rock_weight = surface_rock_weight(slope, x, z);
+        // High mountain faces expose stone even where the local heightfield is
+        // a broad ridge rather than a near-vertical wall. Pattern the transition
+        // so the grass/rock boundary follows the fractured formations.
+        const double rock_pattern = 0.78 + 0.22 *
+            sample_noise(rock_crags, x + sample_noise(rock_warp_x, x, z) * 26.0,
+                z + sample_noise(rock_warp_z, x, z) * 26.0);
+        const double elevation_exposure = smoothstep(55.0, 175.0, height_m) * rock_pattern;
+        rock_weight = std::max(rock_weight, elevation_exposure);
         const double coastal_cliff = smoothstep(8.0, 18.0, height_m) *
             (1.0 - smoothstep(24.0, 120.0, shore)) *
             smoothstep(0.28, 0.82, slope);
