@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <numeric>
 #include <initializer_list>
+#include <utility>
 #include <vector>
 
 namespace voxen {
@@ -24,8 +25,8 @@ public:
     // octave's cell size. The raw per-cell gradient flips direction from cell to cell and, since
     // the stripe phase is (distance * direction), that becomes cell-sized noise (the "spikes").
     static constexpr double GULLY_GUIDE_BLUR = 0.30;
-    // Angle of repose for thermal_relaxation, as slope (rise/run). 0.34 flattened every hill into
-    // axis-aligned facets at the finer 2048 grid; 0.8 only touches genuinely steep rock faces.
+    // Angle of repose for thermal_relaxation, as slope (rise/run). 0.34 flattened broad hills;
+    // 0.8 keeps the operation focused on genuinely steep faces.
     static constexpr double THERMAL_TALUS_SLOPE = 0.80;
 
     int64_t seed = 0;
