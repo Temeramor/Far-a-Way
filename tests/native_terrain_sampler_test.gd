@@ -46,6 +46,21 @@ func _initialize() -> void:
         quit(1)
         return
 
+    var flow: Vector3 = generator.get_surface_flow(point_x, point_z)
+    var shared_flow: Vector3 = shared_generator.get_surface_flow(point_x, point_z)
+    if not is_finite(flow.x) or not is_finite(flow.y) or not is_finite(flow.z):
+        push_error("Native hydrology returned a non-finite flow sample.")
+        quit(1)
+        return
+    if flow.distance_to(shared_flow) > 0.0001:
+        push_error("World and decoration generators must share identical hydrology samples.")
+        quit(1)
+        return
+    if flow.y < 0.0:
+        push_error("Flow accumulation must be non-negative.")
+        quit(1)
+        return
+
     var rock_weight := generator.get_surface_rock_weight(Vector2(surface.y, surface.z).length(), point_x, point_z)
     var native_rock_weight := float(sampler.call(
         "get_surface_rock_weight", Vector2(surface.y, surface.z).length(), point_x, point_z

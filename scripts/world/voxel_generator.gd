@@ -13,7 +13,7 @@ const ROCK: int = 3
 const SAND: int = 4
 const MIN_TERRAIN_HEIGHT: float = -220.0
 const MAX_TERRAIN_HEIGHT: float = 1600.0
-const HEIGHT_SAMPLE_STEP_M: float = 0.5
+const HEIGHT_SAMPLE_STEP_M: float = 0.2
 const REFERENCE_WORLD_SIZE_M: float = 10000.0
 
 var seed_value: int = 1337
@@ -118,6 +118,18 @@ func get_surface_sample(x: float, z: float) -> Vector3:
     if _native_sampler == null:
         return Vector3(VOXEL_SIZE, 0.0, 0.0)
     return _native_sampler.call("get_surface_sample", x, z, HEIGHT_SAMPLE_STEP_M)
+
+
+## Returns (flow_x, upstream_cell_count, flow_z) from the seed-stable drainage field.
+## The vector is normalized; accumulation is intentionally kept as a scalar in Y.
+func get_surface_flow(x: float, z: float) -> Vector3:
+    if _native_sampler == null:
+        return Vector3.ZERO
+    return _native_sampler.call("get_surface_flow", x, z)
+
+
+func get_flow_accumulation(x: float, z: float) -> float:
+    return get_surface_flow(x, z).y
 
 
 func get_surface_height_grid(
