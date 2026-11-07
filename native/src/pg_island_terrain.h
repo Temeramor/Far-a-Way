@@ -242,7 +242,15 @@ private:
     void shallow_water_erosion() {
         const int n=HYDRO_RES*HYDRO_RES, stride=HYDRO_RES;
         std::vector<float> h(n), initial(n), coast_h(n), water(n,0), sediment(n,0), hard(n), rain(n);
-        std::vector<float> fl(n),fr(n),fu(n),fd(n), accum(n,0);
+        // Eight-way water transport avoids the four-direction bias that can
+        // otherwise imprint the simulation grid into long slopes and valleys.
+        std::array<std::vector<float>,8> flow;
+        for(auto &f:flow) f.assign(n,0.0f);
+        const std::array<int,8> dx={{-1,1,0,0,-1,1,-1,1}};
+        const std::array<int,8> dy={{0,0,-1,1,-1,-1,1,1}};
+        const std::array<int,8> opposite={{1,0,3,2,7,6,5,4}};
+        const std::array<double,8> distance={{1.0,1.0,1.0,1.0,1.41421356237,1.41421356237,1.41421356237,1.41421356237}};
+        std::vector<float> accum(n,0);
         std::vector<float> nw(n),ns(n),nh(n);
         for(int y=0;y<HYDRO_RES;++y)for(int x=0;x<HYDRO_RES;++x){
             int sx=static_cast<int>(std::llround(x*(RES-1.0)/(HYDRO_RES-1))),sy=static_cast<int>(std::llround(y*(RES-1.0)/(HYDRO_RES-1))),i=x+y*stride,si=sx+sy*RES;
@@ -252,30 +260,40 @@ private:
         constexpr int HYDRO_ITERATIONS=48;
         for(int iter=0;iter<HYDRO_ITERATIONS;++iter){
             for(int i=0;i<n;++i)if(coast_h[i]>0)water[i]+=0.26f*rain[i];
-            std::fill(fl.begin(),fl.end(),0);std::fill(fr.begin(),fr.end(),0);std::fill(fu.begin(),fu.end(),0);std::fill(fd.begin(),fd.end(),0);
+            for(auto &f:flow) std::fill(f.begin(),f.end(),0.0f);
             for(int y=1;y<HYDRO_RES-1;++y)for(int x=1;x<HYDRO_RES-1;++x){
                 int i=x+y*stride;if(coast_h[i]<=0)continue;
-                double surf=h[i]+water[i],raw[4]={std::max(surf-h[i-1]-water[i-1],0.0)*0.14,
-                    std::max(surf-h[i+1]-water[i+1],0.0)*0.14,std::max(surf-h[i-stride]-water[i-stride],0.0)*0.14,
-                    std::max(surf-h[i+stride]-water[i+stride],0.0)*0.14};
-                double total=raw[0]+raw[1]+raw[2]+raw[3],scale=std::min(1.0,water[i]*0.78/std::max(total,0.00001));
-                fl[i]=static_cast<float>(raw[0]*scale);fr[i]=static_cast<float>(raw[1]*scale);fu[i]=static_cast<float>(raw[2]*scale);fd[i]=static_cast<float>(raw[3]*scale);
+                double surf=h[i]+water[i],raw[8]={},total=0.0;
+                for(int k=0;k<8;++k){
+                    int j=(x+dx[k])+(y+dy[k])*stride;
+                    raw[k]=std::max(surf-h[j]-water[j],0.0)*0.14/distance[k];
+                    total+=raw[k];
+                }
+                double scale=std::min(1.0,water[i]*0.78/std::max(total,0.00001));
+                for(int k=0;k<8;++k) flow[k][i]=static_cast<float>(raw[k]*scale);
             }
             std::fill(nw.begin(),nw.end(),0.0f);
             std::fill(ns.begin(),ns.end(),0.0f);
             nh=h;
             for(int y=1;y<HYDRO_RES-1;++y)for(int x=1;x<HYDRO_RES-1;++x){
                 int i=x+y*stride;if(coast_h[i]<=0)continue;
-                int l=i-1,r=i+1,u=i-stride,d=i+stride;
-                double incoming=fr[l]+fl[r]+fd[u]+fu[d],out=fl[i]+fr[i]+fu[i]+fd[i];
+                double incoming=0.0,out=0.0,drop=0.0;
+                for(int k=0;k<8;++k){
+                    int j=(x+dx[k])+(y+dy[k])*stride;
+                    incoming+=flow[opposite[k]][j];
+                    out+=flow[k][i];
+                    drop=std::max(drop,std::abs(static_cast<double>(h[i])-h[j]));
+                }
                 nw[i]=static_cast<float>(std::max(water[i]+incoming-out,0.0)*0.988);
-                double drop=std::max({std::abs(h[i]-h[l]),std::abs(h[i]-h[r]),std::abs(h[i]-h[u]),std::abs(h[i]-h[d])});
                 double capacity=(incoming+out)*(0.25+drop/cell*8.0),carried=sediment[i];
                 if(incoming+out>0.008&&carried<capacity){double erode=std::min({(capacity-carried)*0.20*hard[i],0.42,std::max(h[i]-0.35,0.0)});nh[i]-=static_cast<float>(erode);carried+=erode;}
                 else if(carried>capacity){double dep=std::min(carried,(carried-capacity)*0.24);nh[i]+=static_cast<float>(dep);carried-=dep;}
                 double fraction=std::clamp(out/std::max(water[i]+incoming,0.02)*0.52,0.0,0.78),transport=carried*fraction;
                 ns[i]+=static_cast<float>(carried-transport);
-                if(out>1e-5){if(coast_h[l]>0)ns[l]+=static_cast<float>(transport*fl[i]/out);if(coast_h[r]>0)ns[r]+=static_cast<float>(transport*fr[i]/out);if(coast_h[u]>0)ns[u]+=static_cast<float>(transport*fu[i]/out);if(coast_h[d]>0)ns[d]+=static_cast<float>(transport*fd[i]/out);}
+                if(out>1e-5){
+                    for(int k=0;k<8;++k){int j=(x+dx[k])+(y+dy[k])*stride;
+                        if(coast_h[j]>0) ns[j]+=static_cast<float>(transport*flow[k][i]/out);}
+                }
                 accum[i]+=static_cast<float>(incoming+out);
             }
             h.swap(nh);water.swap(nw);sediment.swap(ns);
