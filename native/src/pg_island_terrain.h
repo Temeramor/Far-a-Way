@@ -20,6 +20,13 @@ class PgIslandTerrain {
 public:
     static constexpr int RES = 2048;
     static constexpr int HYDRO_RES = 256;
+    // Stripe-direction guide for slope_aligned_gullies: height blur radius as a fraction of the
+    // octave's cell size. The raw per-cell gradient flips direction from cell to cell and, since
+    // the stripe phase is (distance * direction), that becomes cell-sized noise (the "spikes").
+    static constexpr double GULLY_GUIDE_BLUR = 0.30;
+    // Angle of repose for thermal_relaxation, as slope (rise/run). 0.34 flattened every hill into
+    // axis-aligned facets at the finer 2048 grid; 0.8 only touches genuinely steep rock faces.
+    static constexpr double THERMAL_TALUS_SLOPE = 0.80;
 
     int64_t seed = 0;
     double world_size = 8000.0;
@@ -279,12 +286,29 @@ private:
             }
         }
     }
+    // Separable box blur (running sum) repeated `passes` times: close to a Gaussian.
+    static void blur_field(std::vector<float>& f,int radius,int passes) {
+        if(radius<1) return;
+        std::vector<float> tmp(f.size());
+        for(int p=0;p<passes;++p){
+            for(int y=0;y<RES;++y){ const int row=y*RES; double sum=0;
+                for(int k=-radius;k<=radius;++k) sum+=f[row+std::clamp(k,0,RES-1)];
+                for(int x=0;x<RES;++x){ tmp[row+x]=static_cast<float>(sum/(2*radius+1));
+                    sum+=f[row+std::min(x+radius+1,RES-1)]-f[row+std::max(x-radius,0)]; } }
+            for(int x=0;x<RES;++x){ double sum=0;
+                for(int k=-radius;k<=radius;++k) sum+=tmp[x+std::clamp(k,0,RES-1)*RES];
+                for(int y=0;y<RES;++y){ f[x+y*RES]=static_cast<float>(sum/(2*radius+1));
+                    sum+=tmp[x+std::min(y+radius+1,RES-1)*RES]-tmp[x+std::max(y-radius,0)*RES]; } }
+        }
+    }
     void slope_aligned_gullies() {
         const double world_step=world_size/(RES-1);
         for(int octave=0;octave<5;++octave) {
-            const std::vector<float> previous=height;
-            std::vector<float> next=previous;
             const double cell_size=620.0/std::pow(2.0,octave);
+            const std::vector<float> previous=height;
+            std::vector<float> guide=previous;
+            blur_field(guide,std::max(1,static_cast<int>(std::lround(cell_size*GULLY_GUIDE_BLUR/world_step))),3);
+            std::vector<float> next=previous;
             const double stripe_frequency=6.283185307179586/(cell_size*0.34);
             const double amplitude=8.0/std::pow(2.0,octave);
             for(int y=1;y<RES-1;++y) {
@@ -292,9 +316,13 @@ private:
                 for(int x=1;x<RES-1;++x) {
                     const int i=x+y*RES;
                     const double terrain=previous[i];
-                    if(terrain<38.0f||coast[i]<=0.0f) continue;
-                    const double gx=(previous[i+1]-previous[i-1])/(2.0*world_step);
-                    const double gz=(previous[i+RES]-previous[i-RES])/(2.0*world_step);
+                    if(coast[i]<=0.0f) continue;
+                    // Smooth onset instead of the old hard `terrain<38` cutoff, which left a
+                    // cliff of several metres along the 38 m contour.
+                    const double height_mask=smooth(30.0,64.0,terrain);
+                    if(height_mask<=0.0) continue;
+                    const double gx=(guide[i+1]-guide[i-1])/(2.0*world_step);
+                    const double gz=(guide[i+RES]-guide[i-RES])/(2.0*world_step);
                     const double slope=std::hypot(gx,gz);
                     if(slope<0.012) continue;
                     const double tx=-gz/std::max(slope,1e-4),tz=gx/std::max(slope,1e-4);
@@ -316,11 +344,11 @@ private:
                     }
                     if(ws<=1e-4) continue;
                     double vx=cs/ws,vy=sn/ws,len=std::hypot(vx,vy);
-                    if(len>0.5){double scale=std::min(2.0*len,1.0)/len;vx*=scale;}
+                    if(len>1e-6){vx*=std::min(2.0*len,1.0)/len;} // continuous: the old `len>0.5` branch doubled the amplitude at a threshold
                     const double fade=2.0*smooth(45.0,270.0,terrain)-1.0;
                     const double slope_mask=1.0-std::pow(1.0-smooth(0.018,0.20,slope),2.0);
                     const double inland=smooth(25.0,190.0,coast[i]);
-                    next[i]=static_cast<float>(std::max(0.35,terrain+(vx-fade)*amplitude*0.56*slope_mask*inland));
+                    next[i]=static_cast<float>(std::max(0.35,terrain+(vx-fade)*amplitude*0.56*slope_mask*inland*height_mask));
                 }
             }
             height.swap(next);
@@ -328,7 +356,7 @@ private:
     }
 
     void thermal_relaxation() {
-        const double talus=world_size/(RES-1)*0.34;
+        const double talus=world_size/(RES-1)*THERMAL_TALUS_SLOPE;
         for(int it=0;it<8;++it){std::vector<float> delta(height.size(),0);
             for(int y=1;y<RES-1;++y)for(int x=1;x<RES-1;++x){int i=x+y*RES;if(height[i]<=0||coast[i]<=0)continue;
                 for(int j:{i+1,i+RES})if(coast[j]>0){double diff=height[i]-height[j];if(std::abs(diff)>talus){float t=static_cast<float>(std::min((std::abs(diff)-talus)*0.22,1.5));delta[i]+=diff>0?-t:t;delta[j]+=diff>0?t:-t;}}

@@ -189,8 +189,11 @@ struct NoiseSet {
 
         // Coordinate-anchored meso/micro relief. It is deliberately separate
         // from the simulated macro erosion and fades with LOD via the mesh step.
-        const double gully = sample_noise(micro_erosion, x, z) * (0.55 + 1.7 * channel_mask);
-        const double fine = sample_noise(fine_grain, x, z) * (0.10 + 0.22 * slope_proxy);
+        // Amplitude must scale with wavelength: this noise has a ~6 m period, so 0.55..2.25 m (old values)
+        // meant slopes of 45-70 degrees everywhere, i.e. the spikes. 0.08..0.38 m is natural micro-relief.
+        const double gully = sample_noise(micro_erosion, x, z) * (0.08 + 0.30 * channel_mask);
+        // ~1.6 m period and well below one voxel (0.2 m) of height: kept only as faint grain.
+        const double fine = sample_noise(fine_grain, x, z) * (0.03 + 0.05 * slope_proxy);
         const double drainage_cut = -channel_mask * (0.65 + 1.25 *
             std::max(0.0, static_cast<double>(sample_noise(transition, x * 0.42, z * 0.42))));
         double height = macro_height + gully + fine + drainage_cut;
