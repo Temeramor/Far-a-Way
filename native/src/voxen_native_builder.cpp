@@ -17,7 +17,10 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <limits>
+#include <numeric>
+#include <queue>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -34,7 +37,9 @@ constexpr int32_t VERTICAL_OFFSET_VOXELS = 1536;
 constexpr double VERTICAL_OFFSET_M = VERTICAL_OFFSET_VOXELS * VOXEL_SIZE;
 constexpr double REFERENCE_WORLD_SIZE_M = 10000.0;
 constexpr int32_t BASE_MESH_STEP_VOXELS = 1;
-constexpr int HEIGHT_CACHE_STEP_VOXELS = 5;
+// Sample the source field at the active LOD spacing. LOD0 therefore receives
+// true 20 cm height samples instead of interpolating a 1 m cache.
+constexpr int HEIGHT_CACHE_STEP_VOXELS = 1;
 constexpr int LOD_SKIRT_DEPTH_VOXELS = 80;
 constexpr double SKIRT_ALPHA_LEFT = 0.80;
 constexpr double SKIRT_ALPHA_RIGHT = 0.84;
@@ -59,6 +64,22 @@ struct NoiseSet {
     fastnoiselite::FastNoiseLite seafloor_macro;
     fastnoiselite::FastNoiseLite seafloor_hills;
     fastnoiselite::FastNoiseLite seafloor_detail;
+    fastnoiselite::FastNoiseLite domain_warp_x;
+    fastnoiselite::FastNoiseLite domain_warp_z;
+    fastnoiselite::FastNoiseLite micro_detail;
+    fastnoiselite::FastNoiseLite micro_grain;
+    fastnoiselite::FastNoiseLite flow_gully;
+
+    struct HydrologySample {
+        double flow_x = 0.0;
+        double accumulation = 0.0;
+        double flow_z = 0.0;
+    };
+    int32_t hydrology_resolution = 0;
+    double hydrology_step_m = 1.0;
+    std::vector<float> hydrology_accumulation;
+    std::vector<float> hydrology_flow_x;
+    std::vector<float> hydrology_flow_z;
 
     struct MountainSegment {
         double ax = 0.0, az = 0.0, dx = 0.0, dz = 0.0;
@@ -96,7 +117,12 @@ struct NoiseSet {
               transition(make_noise(static_cast<int32_t>(seed + 1301), 2, 0.52f)),
               seafloor_macro(make_noise(static_cast<int32_t>(seed + 1601), 3, 0.54f)),
               seafloor_hills(make_noise(static_cast<int32_t>(seed + 1801), 4, 0.52f)),
-              seafloor_detail(make_noise(static_cast<int32_t>(seed + 2003), 3, 0.50f)) {}
+              seafloor_detail(make_noise(static_cast<int32_t>(seed + 2003), 3, 0.50f)),
+              domain_warp_x(make_noise(static_cast<int32_t>(seed + 2203), 3, 0.50f)),
+              domain_warp_z(make_noise(static_cast<int32_t>(seed + 2401), 3, 0.50f)),
+              micro_detail(make_noise(static_cast<int32_t>(seed + 2609), 3, 0.48f)),
+              micro_grain(make_noise(static_cast<int32_t>(seed + 2801), 2, 0.46f, true)),
+              flow_gully(make_noise(static_cast<int32_t>(seed + 3001), 4, 0.52f, true)) {}
 
     void configure_from_job(const Dictionary &job_data, double fallback_world_size_m) {
         world_size_m = static_cast<double>(job_data.get("terrain_world_size_m", fallback_world_size_m));
@@ -111,6 +137,13 @@ struct NoiseSet {
         seafloor_macro.SetFrequency(0.0010f * frequency_scale);
         seafloor_hills.SetFrequency(0.0042f * frequency_scale);
         seafloor_detail.SetFrequency(0.012f * frequency_scale);
+        domain_warp_x.SetFrequency(0.00115f * frequency_scale);
+        domain_warp_z.SetFrequency(0.00131f * frequency_scale);
+        // Fine relief is measured in metres and deliberately does not scale with
+        // world size: a 2 km island and a 5 km island retain the same local grain.
+        micro_detail.SetFrequency(0.34f);
+        micro_grain.SetFrequency(0.92f);
+        flow_gully.SetFrequency(1.0f);
         mountain_segments.clear();
         const Array profile = job_data.get("mountain_profile", Array());
         for (int64_t i = 0; i < profile.size(); ++i) {
@@ -128,15 +161,22 @@ struct NoiseSet {
             segment.phase = static_cast<double>(item.get("phase", 0.0));
             mountain_segments.push_back(segment);
         }
+        build_hydrology_field();
     }
 
+    // Coast shape is an independent field, not a side effect of elevation.
+    // Seeded domain warping deforms the ellipse while preserving its approximate area.
     double coast_distance(double x, double z) const {
         const double seed_phase = static_cast<double>(seed_value % 1000003) * 0.000173;
         const double aspect = 1.0 + 3.0 * (0.5 + 0.5 * std::sin(seed_phase * 1.37));
         const double angle = seed_phase * 0.71;
         const double ca = std::cos(angle), sa = std::sin(angle);
-        const double rx = x * ca - z * sa;
-        const double rz = x * sa + z * ca;
+        const double warp_x = sample_noise(domain_warp_x, x * 0.38, z * 0.38) * 72.0;
+        const double warp_z = sample_noise(domain_warp_z, x * 0.38, z * 0.38) * 72.0;
+        const double warped_x = x + warp_x;
+        const double warped_z = z + warp_z;
+        const double rx = warped_x * ca - warped_z * sa;
+        const double rz = warped_x * sa + warped_z * ca;
         constexpr double radius = 1128.38;
         const double a = radius * std::sqrt(aspect);
         const double b = radius / std::sqrt(aspect);
@@ -175,12 +215,18 @@ struct NoiseSet {
         return t * t * (3.0 - 2.0 * t);
     }
 
-    double surface_height(double x, double z) const {
-        const double macro_value = sample_noise(macro, x, z);
-        const double hills_value = sample_noise(hills, x, z);
-        const double detail_value = sample_noise(detail, x, z);
-        const double ridge_detail = (sample_noise(ridges, x, z) + 1.0) * 0.5;
-        const double micro_value = sample_noise(micro_ridge, x, z);
+    double base_surface_height(double x, double z) const {
+        // Low-frequency domain warp bends ridges and broad uplifts without injecting
+        // high-frequency noise into the coast/height mask.
+        const double warp_x = sample_noise(domain_warp_x, x * 0.58, z * 0.58) * 28.0;
+        const double warp_z = sample_noise(domain_warp_z, x * 0.58, z * 0.58) * 28.0;
+        const double sample_x = x + warp_x;
+        const double sample_z = z + warp_z;
+        const double macro_value = sample_noise(macro, sample_x, sample_z);
+        const double hills_value = sample_noise(hills, sample_x, sample_z);
+        const double detail_value = sample_noise(detail, sample_x, sample_z);
+        const double ridge_detail = (sample_noise(ridges, sample_x, sample_z) + 1.0) * 0.5;
+        const double micro_value = sample_noise(micro_ridge, sample_x, sample_z);
 
         double height = 26.0 + macro_value * 17.0 + hills_value * 10.0;
         height += std::max(hills_value - 0.12, 0.0) * 18.0;
@@ -188,6 +234,11 @@ struct NoiseSet {
 
         const double world_scale = world_size_m / REFERENCE_WORLD_SIZE_M;
         height += std::pow(std::max(ridge_detail - 0.58, 0.0), 1.7) * (12.0 + 38.0 * world_scale);
+        const double micro_mask = 0.30 + 0.70 * smoothstep(0.34, 0.88, ridge_detail);
+        height += micro_mask * (
+            sample_noise(micro_detail, x, z) * 0.28 +
+            sample_noise(micro_grain, x, z) * 0.13
+        );
         double mountain_height = 0.0;
         for (const MountainSegment &segment : mountain_segments) {
             const double along = std::clamp(
@@ -220,28 +271,15 @@ struct NoiseSet {
         // One irregular central island with approximately 4 km² of land. Its aspect
         // ratio and orientation are seed-derived, while multi-scale noise perturbs
         // the coastline without creating a circular or smoothed spawn platform.
-        const double seed_phase = static_cast<double>(seed_value % 1000003) * 0.000173;
-        const double aspect = 1.0 + 3.0 * (0.5 + 0.5 * std::sin(seed_phase * 1.37));
-        const double angle = seed_phase * 0.71;
-        const double ca = std::cos(angle), sa = std::sin(angle);
-        const double rx = x * ca - z * sa;
-        const double rz = x * sa + z * ca;
-        constexpr double equivalent_radius = 1128.38; // sqrt(4,000,000 / pi)
-        const double axis_a = equivalent_radius * std::sqrt(aspect);
-        const double axis_b = equivalent_radius / std::sqrt(aspect);
-        const double radial = std::sqrt((rx * rx) / (axis_a * axis_a) +
-                                        (rz * rz) / (axis_b * axis_b));
-        const double coast_warp = sample_noise(macro, x * 0.72, z * 0.72) * 0.075 +
-                                  sample_noise(hills, x * 1.9, z * 1.9) * 0.035;
-        const double coast_distance = radial + coast_warp;
-        const double land_mask = 1.0 - smoothstep(0.965, 1.035, coast_distance);
+        const double shoreline_distance = coast_distance(x, z);
+        const double land_mask = 1.0 - smoothstep(0.965, 1.035, shoreline_distance);
         // Warp the underwater shelf independently from the shoreline. Broad and
         // medium-scale noise breaks the old elliptical/ring-like seabed footprint.
         const double underwater_warp =
             static_cast<double>(sample_noise(seafloor_macro, x * 0.63, z * 0.63)) * 0.105 +
             static_cast<double>(sample_noise(seafloor_hills, x * 1.55, z * 1.55)) * 0.052 +
             static_cast<double>(sample_noise(seafloor_detail, x * 3.8, z * 3.8)) * 0.018;
-        const double underwater_distance = coast_distance + underwater_warp;
+        const double underwater_distance = shoreline_distance + underwater_warp;
         double ocean_depth = -3.0 - 72.0 * smoothstep(1.0, 2.25, underwater_distance);
         // The island's existing hills/ridges/mountain profile is retained, but fades
         // only at the actual shoreline. There is deliberately no spawn-centre fade.
@@ -263,6 +301,174 @@ struct NoiseSet {
 
         height = land_height * land_mask + ocean_depth * (1.0 - land_mask);
         return std::clamp(height, -220.0, 1600.0);
+    }
+
+    struct FloodNode {
+        double elevation = 0.0;
+        int32_t index = -1;
+        bool operator>(const FloodNode &other) const {
+            return elevation > other.elevation;
+        }
+    };
+
+    // Build a compact, deterministic global drainage field once per world seed.
+    // Priority-Flood routes closed depressions to the nearest ocean cell; D8 flow
+    // accumulation then gives every downstream cell a stable catchment area.
+    void build_hydrology_field() {
+        hydrology_resolution = std::clamp(
+            static_cast<int32_t>(std::ceil(world_size_m / 18.0)) + 1, 129, 385);
+        hydrology_step_m = world_size_m / static_cast<double>(hydrology_resolution - 1);
+        const int32_t count = hydrology_resolution * hydrology_resolution;
+        std::vector<double> base_heights(static_cast<size_t>(count), 0.0);
+        std::vector<double> filled_heights(static_cast<size_t>(count), 0.0);
+        std::vector<int32_t> receiver(static_cast<size_t>(count), -1);
+        std::vector<uint8_t> visited(static_cast<size_t>(count), 0);
+        hydrology_accumulation.assign(static_cast<size_t>(count), 0.0f);
+        hydrology_flow_x.assign(static_cast<size_t>(count), 0.0f);
+        hydrology_flow_z.assign(static_cast<size_t>(count), 0.0f);
+
+        const double half_world = world_size_m * 0.5;
+        for (int32_t z = 0; z < hydrology_resolution; ++z) {
+            const double world_z = -half_world + static_cast<double>(z) * hydrology_step_m;
+            for (int32_t x = 0; x < hydrology_resolution; ++x) {
+                const int32_t index = z * hydrology_resolution + x;
+                const double world_x = -half_world + static_cast<double>(x) * hydrology_step_m;
+                const double height = base_surface_height(world_x, world_z);
+                base_heights[static_cast<size_t>(index)] = height;
+                filled_heights[static_cast<size_t>(index)] = height;
+            }
+        }
+
+        std::priority_queue<FloodNode, std::vector<FloodNode>, std::greater<FloodNode>> frontier;
+        for (int32_t z = 0; z < hydrology_resolution; ++z) {
+            for (int32_t x = 0; x < hydrology_resolution; ++x) {
+                const int32_t index = z * hydrology_resolution + x;
+                const bool boundary = x == 0 || z == 0 ||
+                    x == hydrology_resolution - 1 || z == hydrology_resolution - 1;
+                if (base_heights[static_cast<size_t>(index)] <= 0.0 || boundary) {
+                    visited[static_cast<size_t>(index)] = 1;
+                    frontier.push({filled_heights[static_cast<size_t>(index)], index});
+                }
+            }
+        }
+
+        constexpr int32_t neighbor_x[8] = {-1, 0, 1, -1, 1, -1, 0, 1};
+        constexpr int32_t neighbor_z[8] = {-1, -1, -1, 0, 0, 1, 1, 1};
+        constexpr double minimum_slope = 0.0005;
+        while (!frontier.empty()) {
+            const FloodNode node = frontier.top();
+            frontier.pop();
+            const int32_t current_x = node.index % hydrology_resolution;
+            const int32_t current_z = node.index / hydrology_resolution;
+            for (int32_t direction = 0; direction < 8; ++direction) {
+                const int32_t next_x = current_x + neighbor_x[direction];
+                const int32_t next_z = current_z + neighbor_z[direction];
+                if (next_x < 0 || next_z < 0 ||
+                    next_x >= hydrology_resolution || next_z >= hydrology_resolution) {
+                    continue;
+                }
+                const int32_t next_index = next_z * hydrology_resolution + next_x;
+                if (visited[static_cast<size_t>(next_index)] != 0) continue;
+                visited[static_cast<size_t>(next_index)] = 1;
+                receiver[static_cast<size_t>(next_index)] = node.index;
+                const double filled = std::max(
+                    base_heights[static_cast<size_t>(next_index)],
+                    node.elevation + hydrology_step_m * minimum_slope);
+                filled_heights[static_cast<size_t>(next_index)] = filled;
+                frontier.push({filled, next_index});
+            }
+        }
+
+        std::vector<int32_t> order(static_cast<size_t>(count));
+        std::iota(order.begin(), order.end(), 0);
+        std::sort(order.begin(), order.end(), [&filled_heights](int32_t a, int32_t b) {
+            if (filled_heights[static_cast<size_t>(a)] == filled_heights[static_cast<size_t>(b)]) {
+                return a < b;
+            }
+            return filled_heights[static_cast<size_t>(a)] > filled_heights[static_cast<size_t>(b)];
+        });
+
+        for (int32_t index = 0; index < count; ++index) {
+            if (base_heights[static_cast<size_t>(index)] > 0.0) {
+                hydrology_accumulation[static_cast<size_t>(index)] = 1.0f;
+            }
+        }
+        for (const int32_t index : order) {
+            if (base_heights[static_cast<size_t>(index)] <= 0.0) continue;
+            const int32_t downstream = receiver[static_cast<size_t>(index)];
+            if (downstream < 0) continue;
+            const double x = static_cast<double>(index % hydrology_resolution);
+            const double z = static_cast<double>(index / hydrology_resolution);
+            const double dx = static_cast<double>(downstream % hydrology_resolution) - x;
+            const double dz = static_cast<double>(downstream / hydrology_resolution) - z;
+            const double length = std::max(std::sqrt(dx * dx + dz * dz), 1.0);
+            hydrology_flow_x[static_cast<size_t>(index)] = static_cast<float>(dx / length);
+            hydrology_flow_z[static_cast<size_t>(index)] = static_cast<float>(dz / length);
+            hydrology_accumulation[static_cast<size_t>(downstream)] +=
+                hydrology_accumulation[static_cast<size_t>(index)];
+        }
+    }
+
+    HydrologySample sample_hydrology(double x, double z) const {
+        HydrologySample sample;
+        if (hydrology_resolution < 2 || hydrology_accumulation.empty()) return sample;
+        const double half_world = world_size_m * 0.5;
+        const double grid_x = (x + half_world) / hydrology_step_m;
+        const double grid_z = (z + half_world) / hydrology_step_m;
+        if (grid_x < 0.0 || grid_z < 0.0 ||
+            grid_x > static_cast<double>(hydrology_resolution - 1) ||
+            grid_z > static_cast<double>(hydrology_resolution - 1)) {
+            return sample;
+        }
+        const int32_t x0 = std::clamp(static_cast<int32_t>(std::floor(grid_x)), 0, hydrology_resolution - 1);
+        const int32_t z0 = std::clamp(static_cast<int32_t>(std::floor(grid_z)), 0, hydrology_resolution - 1);
+        const int32_t x1 = std::min(x0 + 1, hydrology_resolution - 1);
+        const int32_t z1 = std::min(z0 + 1, hydrology_resolution - 1);
+        const double tx = std::clamp(grid_x - static_cast<double>(x0), 0.0, 1.0);
+        const double tz = std::clamp(grid_z - static_cast<double>(z0), 0.0, 1.0);
+        const auto bilinear = [this, x0, z0, x1, z1, tx, tz](
+                const std::vector<float> &field) {
+            const double a = field[static_cast<size_t>(z0) * hydrology_resolution + x0];
+            const double b = field[static_cast<size_t>(z0) * hydrology_resolution + x1];
+            const double c = field[static_cast<size_t>(z1) * hydrology_resolution + x0];
+            const double d = field[static_cast<size_t>(z1) * hydrology_resolution + x1];
+            const double top = a + (b - a) * tx;
+            const double bottom = c + (d - c) * tx;
+            return top + (bottom - top) * tz;
+        };
+        sample.accumulation = bilinear(hydrology_accumulation);
+        sample.flow_x = bilinear(hydrology_flow_x);
+        sample.flow_z = bilinear(hydrology_flow_z);
+        const double direction_length = std::sqrt(
+            sample.flow_x * sample.flow_x + sample.flow_z * sample.flow_z);
+        if (direction_length > 0.0001) {
+            sample.flow_x /= direction_length;
+            sample.flow_z /= direction_length;
+        }
+        return sample;
+    }
+
+    double surface_height(double x, double z) const {
+        const double base_height = base_surface_height(x, z);
+        if (base_height <= 0.0 || hydrology_accumulation.empty()) return base_height;
+        const HydrologySample flow = sample_hydrology(x, z);
+        if (flow.accumulation < 5.0) return base_height;
+
+        const double stream_strength = smoothstep(6.0, 48.0, flow.accumulation);
+        const double major_stream = smoothstep(36.0, 520.0, flow.accumulation);
+        const double along = x * flow.flow_x + z * flow.flow_z;
+        const double across = -x * flow.flow_z + z * flow.flow_x;
+        // Anisotropic ridged noise follows the local drainage direction. Its narrow
+        // cross-flow wavelength cuts small channels into the larger accumulated valleys.
+        const double groove_noise = std::abs(sample_noise(
+            flow_gully, along * 0.024, across * 0.24));
+        const double groove = 1.0 - smoothstep(0.045, 0.30, groove_noise);
+        const double bank_noise = sample_noise(
+            micro_detail, along * 0.036, across * 0.11);
+        const double broad_incision = stream_strength * (0.16 + major_stream * 0.68);
+        const double local_incision = stream_strength * groove *
+            (0.22 + major_stream * 1.10 + std::abs(bank_noise) * 0.18);
+        return std::max(0.15, base_height - broad_incision - local_incision);
     }
 
     double cached_grid_height(int32_t grid_x, int32_t grid_z) const {
@@ -1256,6 +1462,7 @@ void VoxEnNativeBuilder::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_surface_rock_weight", "slope", "x", "z"), &VoxEnNativeBuilder::get_surface_rock_weight);
     ClassDB::bind_method(D_METHOD("get_surface_material", "height_m", "slope", "x", "z"), &VoxEnNativeBuilder::get_surface_material);
     ClassDB::bind_method(D_METHOD("get_surface_sample", "x", "z", "step_m"), &VoxEnNativeBuilder::get_surface_sample);
+    ClassDB::bind_method(D_METHOD("get_surface_flow", "x", "z"), &VoxEnNativeBuilder::get_surface_flow);
     ClassDB::bind_method(D_METHOD("sample_height_grid", "origin_x", "origin_z", "columns", "rows", "step_m"), &VoxEnNativeBuilder::sample_height_grid);
     ClassDB::bind_method(D_METHOD("set_result", "value"), &VoxEnNativeBuilder::set_result);
     ClassDB::bind_method(D_METHOD("get_result"), &VoxEnNativeBuilder::get_result);
@@ -1322,6 +1529,13 @@ Vector3 VoxEnNativeBuilder::get_surface_sample(double x, double z, double step_m
     if (!terrain_sampler_data) return Vector3(VOXEL_SIZE, 0.0, 0.0);
     const auto sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
     return sampler->surface_sample(x, z, step_m);
+}
+
+Vector3 VoxEnNativeBuilder::get_surface_flow(double x, double z) const {
+    if (!terrain_sampler_data) return Vector3();
+    const auto sampler = std::static_pointer_cast<NoiseSet>(terrain_sampler_data);
+    const NoiseSet::HydrologySample flow = sampler->sample_hydrology(x, z);
+    return Vector3(flow.flow_x, flow.accumulation, flow.flow_z);
 }
 
 PackedFloat32Array VoxEnNativeBuilder::sample_height_grid(double origin_x, double origin_z,
