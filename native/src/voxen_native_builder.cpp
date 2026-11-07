@@ -51,6 +51,7 @@ constexpr int SAND = 4;
 struct NoiseSet {
     voxen::PgIslandTerrain pg_island;
     fastnoiselite::FastNoiseLite micro_erosion;
+    fastnoiselite::FastNoiseLite rock_roughness;
     fastnoiselite::FastNoiseLite fine_grain;
     fastnoiselite::FastNoiseLite meso_detail;
     int64_t seed_value = 0;
@@ -140,6 +141,10 @@ struct NoiseSet {
         micro_erosion.SetFrequency(0.16f);
         fine_grain = make_noise(static_cast<int32_t>(seed_value + 2909), 2, 0.48f);
         fine_grain.SetFrequency(0.62f);
+        // Low-amplitude, zero-centred relief is applied only to elevated rocky terrain.
+        // It adds a little surface breakup without changing the macro mountain profile.
+        rock_roughness = make_noise(static_cast<int32_t>(seed_value + 2927), 3, 0.50f);
+        rock_roughness.SetFrequency(0.024f * frequency_scale);
         // A world-anchored 2.5-4 m detail band restores meso-scale variation
         // between the 3.9 m macro-height samples without increasing map resolution.
         meso_detail = make_noise(static_cast<int32_t>(seed_value + 2917), 3, 0.48f, true);
@@ -215,6 +220,15 @@ struct NoiseSet {
             std::max(0.0, static_cast<double>(sample_noise(transition, x * 0.42, z * 0.42))));
 
         double height = macro_height + gully + meso + shore_relief + fine + drainage_cut;
+
+        // Restrained mountain-surface roughness. The zero-mean field is deliberately
+        // sub-metre and masked away from beaches/lowlands; no cliff-height multiplier
+        // or summit lift is introduced here.
+        const double exposed_rock = smoothstep(115.0, 285.0, macro_height) *
+            smoothstep(45.0, 185.0, coast_sdf);
+        const double rock_relief = sample_noise(rock_roughness, x, z) *
+            (0.16 + 0.20 * slope_proxy) * exposed_rock;
+        height += rock_relief;
 
         // Narrow, slope-aligned incisions connect to the simulated drainage network.
         // Their direction follows the macro-height gradient, keeping chunk borders exact.
