@@ -35,7 +35,12 @@ func generate(new_seed: int = 1337) -> void:
     _generation_active = true
     _progress_timer = 0.0
     generation_started.emit(world_seed)
-    generation_progress.emit(world_seed, 0.08, "Запускаем потоковую генерацию VoxEn...")
+    generation_progress.emit(world_seed, 0.035, "Сид %d принят. Подготавливаем систему генерации и параметры острова…" % world_seed)
+
+    # Let the loading UI render before VoxelWorld schedules its initial terrain work.
+    # Without this frame boundary, the first synchronous setup can look like a frozen game.
+    await get_tree().process_frame
+    generation_progress.emit(world_seed, 0.07, "Создаём базовую форму острова, береговую линию и высотное поле…")
     _voxel_world.world_size_m = world_size
     _voxel_world.regenerate_with_seed(world_seed)
 
@@ -47,7 +52,11 @@ func _process(delta: float) -> void:
     if _voxel_world.is_startup_loading():
         if _progress_timer >= 0.2:
             _progress_timer = 0.0
-            var status: String = "Строим грубые воксельные тайлы всей карты..." if not _voxel_world.is_world_coverage_ready() else "Готовим подробную стартовую область и коллизию... (%d чанков)" % _voxel_world.get_loaded_chunk_count()
+            var status: String
+            if not _voxel_world.is_world_coverage_ready():
+                status = "Формируем общий рельеф и дальние уровни детализации острова…"
+            else:
+                status = "Строим детальные чанки вокруг точки появления, рассчитываем поверхность и физическую коллизию… (%d чанков)" % _voxel_world.get_loaded_chunk_count()
             generation_progress.emit(world_seed, _voxel_world.get_startup_progress(), status)
         return
     _generation_active = false
