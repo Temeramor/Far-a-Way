@@ -53,10 +53,12 @@ func _process(delta: float) -> void:
         if _progress_timer >= 0.2:
             _progress_timer = 0.0
             var status: String
-            if not _voxel_world.is_world_coverage_ready():
-                status = "Формируем общий рельеф и дальние уровни детализации острова…"
+            if _voxel_world.is_terrain_preparing():
+                status = "Рассчитываем макрорельеф 2048×2048: береговую линию, горные массивы, гидравлический перенос воды и осадков, капельную эрозию, овраги и осыпи…"
+            elif not _voxel_world.is_world_coverage_ready():
+                status = "Строим дальние воксельные уровни острова и согласуем границы чанков…"
             else:
-                status = "Строим детальные чанки вокруг точки появления, рассчитываем поверхность и физическую коллизию… (%d чанков)" % _voxel_world.get_loaded_chunk_count()
+                status = "Готовим стартовую область: детальные чанки, поверхность, коллизию и проверку безопасной точки появления… (%d чанков)" % _voxel_world.get_loaded_chunk_count()
             generation_progress.emit(world_seed, _voxel_world.get_startup_progress(), status)
         return
     _generation_active = false
