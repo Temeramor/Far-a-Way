@@ -156,7 +156,11 @@ func begin_generation(seed_value: int) -> void:
     _apply_view_distance_environment(GameSettings.view_distance_m)
 
     loading_screen.visible = true
-    loading_screen.set_progress(0.0, "Подготавливаем генератор ландшафта...")
+    loading_screen.set_progress(0.015, "Сцена мира загружена. Инициализируем окружение, генератор острова и систему чанков…")
+    # A deferred call alone does not guarantee that the visible loading screen
+    # has been drawn. Yield one frame before any potentially expensive startup work.
+    await get_tree().process_frame
+    loading_screen.set_progress(0.025, "Подключаем генератор рельефа и запускаем подготовку мира…")
     terrain.generate(seed_value)
 
 
