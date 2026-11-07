@@ -86,6 +86,8 @@ var _stale_result_count: int = 0
 var _world_started: bool = false
 var _last_frame_delta_ms: float = 16.67
 var _adaptive_apply_limit: int = 1
+var _terrain_prepare_jobs: Dictionary = {}
+var _active_terrain_prepare_task_id: int = -1
 
 func _ready() -> void:
     if not ClassDB.class_exists("VoxEnNativeBuilder"):
@@ -113,29 +115,23 @@ func _ready() -> void:
     if _player != null:
         _player.set_physics_process(false)
         _player.velocity = Vector3.ZERO
-    _generator = GeneratorScript.new(seed_value, world_size_m)
-    _mountain_profile_cache = _generator.get_mountain_profile()
-    _spawn_position_xz = _generator.find_safe_spawn_position(chunk_size_m)
-    if not is_finite(_spawn_position_xz.x) or not is_finite(_spawn_position_xz.y):
-        push_error("Far a Way cannot start: no safe, flat, dry spawn area was found.")
-        set_process(false)
-        set_physics_process(false)
-        return
-
     var surface_shader := load("res://shaders/voxel_surface.gdshader") as Shader
     _voxel_material = ShaderMaterial.new()
     _voxel_material.shader = surface_shader
     _apply_seed_to_material()
 
     if _player != null:
-        # Do not let gravity move the player before the spawn chunk's collider exists.
-        _player.global_position = Vector3(_spawn_position_xz.x, get_surface_height(_spawn_position_xz.x, _spawn_position_xz.y) + 8.0, _spawn_position_xz.y)
+        # Keep physics disabled until the background terrain preparation finds and
+        # validates a safe spawn point and the corresponding collider is streamed.
+        _player.global_position = Vector3(0.0, 1200.0, 0.0)
+        _player.set_physics_process(false)
         _startup_load_pending = true
 
     if auto_start_on_ready:
-        call_deferred("_prepare_world_for_epoch", _generation_epoch)
+        regenerate_with_seed(seed_value)
 
 func _process(delta: float) -> void:
+    _poll_terrain_prepare_jobs()
     _spawn_validation_retry_cooldown = maxf(0.0, _spawn_validation_retry_cooldown - delta)
     _last_frame_delta_ms = delta * 1000.0
     if _last_frame_delta_ms >= 33.0:
@@ -185,6 +181,44 @@ func _process(delta: float) -> void:
             _update_lod_subtree_visibility(root_key, true)
     _retire_stale_resources()
     _try_finish_startup_loading()
+
+func _poll_terrain_prepare_jobs() -> void:
+    if _terrain_prepare_jobs.is_empty():
+        return
+    for task_value in _terrain_prepare_jobs.keys():
+        var task_id: int = int(task_value)
+        if not WorkerThreadPool.is_task_completed(task_id):
+            continue
+        WorkerThreadPool.wait_for_task_completion(task_id)
+        var job: Dictionary = _terrain_prepare_jobs[task_id]
+        _terrain_prepare_jobs.erase(task_id)
+        if task_id != _active_terrain_prepare_task_id:
+            continue
+        _active_terrain_prepare_task_id = -1
+        if int(job.get("epoch", -1)) != _generation_epoch:
+            continue
+        var prepared_generator: VoxelTerrainGenerator = job.get("generator") as VoxelTerrainGenerator
+        if prepared_generator == null or not prepared_generator.is_terrain_prepared():
+            push_error("Far a Way terrain preparation failed for seed %d." % seed_value)
+            continue
+        var spawn: Vector2 = prepared_generator.get_prepared_spawn_position()
+        if not is_finite(spawn.x) or not is_finite(spawn.y):
+            push_error("Far a Way cannot start: no safe, flat, dry spawn area was found for seed %d." % seed_value)
+            continue
+        _mountain_profile_cache = prepared_generator.get_mountain_profile()
+        _spawn_position_xz = spawn
+        _apply_seed_to_material()
+        terrain_seed_changed.emit(seed_value)
+        if _player != null:
+            var spawn_height: float = prepared_generator.get_surface_height(spawn.x, spawn.y)
+            _player.global_position = Vector3(spawn.x, spawn_height + 8.0, spawn.y)
+            _player.velocity = Vector3.ZERO
+        call_deferred("_prepare_world_for_epoch", _generation_epoch)
+
+
+func is_terrain_preparing() -> bool:
+    return _active_terrain_prepare_task_id >= 0
+
 
 func _unhandled_input(event: InputEvent) -> void:
     if not (event is InputEventKey and event.pressed and not event.echo):
@@ -239,27 +273,33 @@ func regenerate_with_seed(new_seed: int) -> void:
     _chunks.clear()
 
     _generator = GeneratorScript.new(seed_value, world_size_m)
-    _mountain_profile_cache = _generator.get_mountain_profile()
-    _spawn_position_xz = _generator.find_safe_spawn_position(chunk_size_m)
-    if not is_finite(_spawn_position_xz.x) or not is_finite(_spawn_position_xz.y):
-        push_error("Far a Way cannot regenerate: no safe, flat, dry spawn area was found for this seed.")
-        _startup_load_pending = true
-        _spawn_validation_in_progress = false
-        return
+    _mountain_profile_cache.clear()
+    _spawn_position_xz = Vector2.ZERO
     _spawn_validation_in_progress = false
-    _apply_seed_to_material()
-    terrain_seed_changed.emit(seed_value)
+    _startup_load_pending = true
+    _world_started = false
     if _player != null:
         _player.set_physics_process(false)
         _player.velocity = Vector3.ZERO
-        var spawn_x: float = _spawn_position_xz.x
-        var spawn_z: float = _spawn_position_xz.y
-        _player.global_position = Vector3(spawn_x, get_surface_height(spawn_x, spawn_z) + 8.0, spawn_z)
-        _startup_load_pending = true
+        _player.global_position = Vector3(0.0, 1200.0, 0.0)
     _last_player_position = Vector2(INF, INF)
     _last_player_height = INF
     _last_refresh_chunk = Vector2i(-2147483648, -2147483648)
-    call_deferred("_prepare_world_for_epoch", _generation_epoch)
+
+    # The native 2048² heightfield, hydraulic erosion and spawn search are CPU-heavy.
+    # Run them away from the main thread so the loading screen can keep rendering.
+    var task_id: int = WorkerThreadPool.add_task(
+        Callable(_generator, "prepare_native_terrain").bind(chunk_size_m),
+        false, "VoxEn terrain preparation seed %d" % seed_value
+    )
+    if task_id < 0:
+        push_error("Far a Way could not schedule background terrain preparation.")
+        return
+    _active_terrain_prepare_task_id = task_id
+    _terrain_prepare_jobs[task_id] = {
+        "generator": _generator,
+        "epoch": _generation_epoch
+    }
 
 func _prepare_world_for_epoch(epoch: int) -> void:
     if epoch != _generation_epoch:
@@ -371,15 +411,13 @@ func _apply_seed_to_material() -> void:
 
 
 func get_surface_height(x: float, z: float) -> float:
-    if _generator == null:
-        _generator = GeneratorScript.new(seed_value, world_size_m)
-        _mountain_profile_cache = _generator.get_mountain_profile()
+    if _generator == null or not _generator.is_terrain_prepared():
+        return 25.0
     return _generator.get_surface_height(x, z)
 
 func get_voxel_material(global_voxel: Vector3i) -> int:
-    if _generator == null:
-        _generator = GeneratorScript.new(seed_value, world_size_m)
-        _mountain_profile_cache = _generator.get_mountain_profile()
+    if _generator == null or not _generator.is_terrain_prepared():
+        return 1
     return _generator.get_voxel_material(global_voxel, _world_min_x, _world_min_z, _world_size_voxels)
 
 func get_debug_text() -> String:
@@ -443,6 +481,8 @@ func get_loaded_chunk_count() -> int:
 func get_startup_progress() -> float:
     if not _startup_load_pending:
         return 1.0
+    if is_terrain_preparing():
+        return 0.035
     var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 128))
     var roots_total: int = 0
     var roots_ready: int = 0
@@ -470,9 +510,8 @@ func get_startup_progress() -> float:
     return clampf(0.65 + 0.30 * float(near_ready) / float(maxi(near_total, 1)), 0.65, 0.95)
 
 func surface_sample_at_world(world_x: float, world_z: float) -> Vector3:
-    if _generator == null:
-        _generator = GeneratorScript.new(seed_value, world_size_m)
-        _mountain_profile_cache = _generator.get_mountain_profile()
+    if _generator == null or not _generator.is_terrain_prepared():
+        return Vector3(25.0, 0.0, 0.0)
     return _generator.get_surface_sample(world_x, world_z)
 
 func _try_finish_startup_loading() -> void:
