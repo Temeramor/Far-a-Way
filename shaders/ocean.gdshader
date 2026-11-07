@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode blend_mix, depth_prepass_alpha, cull_back, diffuse_burley, specular_schlick_ggx;
+render_mode blend_mix, cull_back, diffuse_burley, specular_schlick_ggx;
 
 // The sea remains a lightweight single surface. Broad waves displace a subdivided
 // plane; smaller waves are represented analytically in the normal field.
@@ -64,7 +64,7 @@ void fragment() {
     float raw_depth = textureLod(depth_texture, SCREEN_UV, 0.0).r;
     vec3 ndc = vec3(SCREEN_UV * 2.0 - 1.0, raw_depth);
     vec4 view_position = INV_PROJECTION_MATRIX * vec4(ndc, 1.0);
-    view_position.xyz /= max(view_position.w, 0.00001);
+    view_position.xyz /= view_position.w;
     float water_view_depth = -VERTEX.z;
     float bottom_depth = max(-view_position.z - water_view_depth, 0.0);
 
