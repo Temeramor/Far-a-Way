@@ -481,7 +481,7 @@ func get_loaded_chunk_count() -> int:
 func get_startup_progress() -> float:
     if not _startup_load_pending:
         return 1.0
-    if is_terrain_preparing():
+    if is_terrain_preparing() or not _world_started:
         return 0.035
     var root_tiles: int = ceili(float(_world_size_voxels) / float(_chunk_size_voxels * 128))
     var roots_total: int = 0
