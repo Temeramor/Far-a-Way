@@ -19,7 +19,7 @@ namespace voxen {
 class PgIslandTerrain {
 public:
     static constexpr int RES = 2048;
-    static constexpr int HYDRO_RES = 256;
+    static constexpr int HYDRO_RES = 512;
     // Stripe-direction guide for slope_aligned_gullies: height blur radius as a fraction of the
     // octave's cell size. The raw per-cell gradient flips direction from cell to cell and, since
     // the stripe phase is (distance * direction), that becomes cell-sized noise (the "spikes").
@@ -62,6 +62,7 @@ public:
 
     void generate(int64_t p_seed,double p_world_size) {
         seed=p_seed; world_size=p_world_size;
+        massifs.clear();
         const int count=RES*RES;
         warp_x=noise(static_cast<int32_t>(seed+101),0.00115f,3);
         warp_z=noise(static_cast<int32_t>(seed+211),0.00115f,3);
@@ -101,24 +102,61 @@ public:
         const float threshold=sorted[sorted.size()-target-1];
         for(float &v:coast) v-=threshold;
 
-        // Seeded 1..5 massifs, with PG-Island's 200..600 m peak envelope.
-        int massif_count=1;
-        if(random01()<0.75){massif_count=2;if(random01()<0.38){massif_count=3;if(random01()<0.16){massif_count=4;if(random01()<0.06)massif_count=5;}}}
-        std::vector<std::pair<double,double>> centres;
-        for(int m=0;m<massif_count;++m) {
-            double cx=0,cz=0; bool found=false;
-            for(int a=0;a<700&&!found;++a) {
-                cx=(random01()*0.58-0.29)*world_size; cz=(random01()*0.58-0.29)*world_size;
-                int ix=std::clamp(static_cast<int>(std::llround((cx/world_size+0.5)*(RES-1))),0,RES-1);
-                int iz=std::clamp(static_cast<int>(std::llround((cz/world_size+0.5)*(RES-1))),0,RES-1);
-                if(coast[ix+iz*RES]<300.0f) continue;
-                found=true; for(auto p:centres) if(std::hypot(cx-p.first,cz-p.second)<720.0) found=false;
+        // Mountain systems are generated as one loose tectonic chain rather than
+        // unrelated peaks scattered over the island. Their foothill aprons overlap,
+        // while the individual cores keep separate summits and intervening valleys.
+        const double count_roll=random01();
+        const int massif_count=count_roll<0.16?1:(count_roll<0.57?2:(count_roll<0.86?3:(count_roll<0.97?4:5)));
+        const double ridge_axis=random01()*6.283185307179586;
+        const double axis_x=std::cos(ridge_axis),axis_z=std::sin(ridge_axis);
+        const double side_x=-axis_z,side_z=axis_x;
+        double anchor_x=0.0,anchor_z=0.0; bool anchor_found=false;
+        for(int a=0;a<900&&!anchor_found;++a) {
+            const double cx=(random01()*0.50-0.25)*world_size;
+            const double cz=(random01()*0.50-0.25)*world_size;
+            const int ix=std::clamp(static_cast<int>(std::llround((cx/world_size+0.5)*(RES-1))),0,RES-1);
+            const int iz=std::clamp(static_cast<int>(std::llround((cz/world_size+0.5)*(RES-1))),0,RES-1);
+            if(coast[ix+iz*RES]>420.0f){anchor_x=cx;anchor_z=cz;anchor_found=true;}
+        }
+        if(!anchor_found) {
+            double best=-1e9;
+            for(int i=0;i<count;i+=17) if(coast[i]>best) {
+                best=coast[i];anchor_x=((i%RES)/(RES-1.0)-0.5)*world_size;
+                anchor_z=((i/RES)/(RES-1.0)-0.5)*world_size;
             }
-            if(!found && centres.empty()) { double best=-1e9; for(int i=0;i<count;i+=17) if(coast[i]>best){best=coast[i];cx=((i%RES)/(RES-1.0)-0.5)*world_size;cz=((i/RES)/(RES-1.0)-0.5)*world_size;} }
-            if(!found && centres.empty() && coast[std::clamp(static_cast<int>((cx/world_size+0.5)*(RES-1)),0,RES-1)+std::clamp(static_cast<int>((cz/world_size+0.5)*(RES-1)),0,RES-1)*RES]<=0) continue;
+            anchor_found=best>0.0;
+        }
+        std::vector<std::pair<double,double>> centres;
+        for(int m=0;m<massif_count&&anchor_found;++m) {
+            double cx=anchor_x,cz=anchor_z; bool found=false;
+            for(int a=0;a<900&&!found;++a) {
+                const double spacing=610.0+random01()*230.0;
+                const double along=(m-(massif_count-1)*0.5)*spacing;
+                const double side=(random01()-0.5)*420.0;
+                cx=anchor_x+axis_x*along+side_x*side;
+                cz=anchor_z+axis_z*along+side_z*side;
+                const int ix=std::clamp(static_cast<int>(std::llround((cx/world_size+0.5)*(RES-1))),0,RES-1);
+                const int iz=std::clamp(static_cast<int>(std::llround((cz/world_size+0.5)*(RES-1))),0,RES-1);
+                if(coast[ix+iz*RES]<300.0f) continue;
+                found=true;
+                for(const auto &p:centres) if(std::hypot(cx-p.first,cz-p.second)<430.0) found=false;
+            }
+            if(!found) {
+                for(int a=0;a<700&&!found;++a) {
+                    cx=anchor_x+(random01()*2.0-1.0)*1050.0;
+                    cz=anchor_z+(random01()*2.0-1.0)*1050.0;
+                    const int ix=std::clamp(static_cast<int>(std::llround((cx/world_size+0.5)*(RES-1))),0,RES-1);
+                    const int iz=std::clamp(static_cast<int>(std::llround((cz/world_size+0.5)*(RES-1))),0,RES-1);
+                    if(coast[ix+iz*RES]<300.0f) continue;
+                    found=true;
+                    for(const auto &p:centres) if(std::hypot(cx-p.first,cz-p.second)<430.0) found=false;
+                }
+            }
+            if(!found) continue;
             centres.emplace_back(cx,cz);
             const double peak=200.0+400.0*std::pow(random01(),2.15), scale=1.0+0.28*(peak-200.0)/400.0;
-            massifs.push_back({cx,cz,random01()*6.283185307179586,(330.0+random01()*280.0)*scale,
+            const double angle=ridge_axis+(random01()-0.5)*0.58;
+            massifs.push_back({cx,cz,angle,(330.0+random01()*280.0)*scale,
                 (215.0+random01()*180.0)*scale,peak,0.0032+random01()*0.002,
                 random01()*2000.0-1000.0,70.0+random01()*75.0});
         }
@@ -190,12 +228,14 @@ private:
         const int n=HYDRO_RES*HYDRO_RES, stride=HYDRO_RES;
         std::vector<float> h(n), initial(n), coast_h(n), water(n,0), sediment(n,0), hard(n), rain(n);
         std::vector<float> fl(n),fr(n),fu(n),fd(n), accum(n,0);
+        std::vector<float> nw(n),ns(n),nh(n);
         for(int y=0;y<HYDRO_RES;++y)for(int x=0;x<HYDRO_RES;++x){
             int sx=static_cast<int>(std::llround(x*(RES-1.0)/(HYDRO_RES-1))),sy=static_cast<int>(std::llround(y*(RES-1.0)/(HYDRO_RES-1))),i=x+y*stride,si=sx+sy*RES;
             h[i]=initial[i]=height[si];coast_h[i]=coast[si];hard[i]=0.72f+static_cast<float>(hash01(x,y,seed,0,3))*0.56f;rain[i]=0.78f+static_cast<float>(hash01(x,y,seed,0,4))*0.44f;
         }
         const double cell=world_size/(HYDRO_RES-1);
-        for(int iter=0;iter<28;++iter){
+        constexpr int HYDRO_ITERATIONS=48;
+        for(int iter=0;iter<HYDRO_ITERATIONS;++iter){
             for(int i=0;i<n;++i)if(coast_h[i]>0)water[i]+=0.26f*rain[i];
             std::fill(fl.begin(),fl.end(),0);std::fill(fr.begin(),fr.end(),0);std::fill(fu.begin(),fu.end(),0);std::fill(fd.begin(),fd.end(),0);
             for(int y=1;y<HYDRO_RES-1;++y)for(int x=1;x<HYDRO_RES-1;++x){
@@ -206,7 +246,9 @@ private:
                 double total=raw[0]+raw[1]+raw[2]+raw[3],scale=std::min(1.0,water[i]*0.78/std::max(total,0.00001));
                 fl[i]=static_cast<float>(raw[0]*scale);fr[i]=static_cast<float>(raw[1]*scale);fu[i]=static_cast<float>(raw[2]*scale);fd[i]=static_cast<float>(raw[3]*scale);
             }
-            std::vector<float> nw(n,0),ns(n,0),nh=h;
+            std::fill(nw.begin(),nw.end(),0.0f);
+            std::fill(ns.begin(),ns.end(),0.0f);
+            nh=h;
             for(int y=1;y<HYDRO_RES-1;++y)for(int x=1;x<HYDRO_RES-1;++x){
                 int i=x+y*stride;if(coast_h[i]<=0)continue;
                 int l=i-1,r=i+1,u=i-stride,d=i+stride;
@@ -222,7 +264,7 @@ private:
                 accum[i]+=static_cast<float>(incoming+out);
             }
             h.swap(nh);water.swap(nw);sediment.swap(ns);
-            if(iter%7==6)thermal_coarse(h,coast_h,cell);
+            if(iter%8==7)thermal_coarse(h,coast_h,cell);
         }
         for(int y=0;y<RES;++y)for(int x=0;x<RES;++x){
             double gx=x*(HYDRO_RES-1.0)/(RES-1),gz=y*(HYDRO_RES-1.0)/(RES-1);
@@ -231,14 +273,28 @@ private:
             double a=val(ix,iz)*(1-tx)+val(ix+1,iz)*tx,b=val(ix,iz+1)*(1-tx)+val(ix+1,iz+1)*tx;
             int i=x+y*RES;if(coast[i]>0)height[i]=std::max(0.35f,height[i]+static_cast<float>((a*(1-tz)+b*tz)*0.92));
         }
-        // Convert accumulated coarse runoff into a global drainage guide field.
+        // Convert runoff to a normalized, sparse drainage guide. Raw accumulated
+        // flux grows with iteration count and otherwise saturates downstream masks.
+        std::vector<float> land_runoff; land_runoff.reserve(n);
+        for(int i=0;i<n;++i) if(coast_h[i]>0.0f) land_runoff.push_back(accum[i]);
+        float runoff_low=0.0f,runoff_high=1.0f;
+        if(!land_runoff.empty()) {
+            const size_t lo=std::min(land_runoff.size()-1,static_cast<size_t>(land_runoff.size()*0.84));
+            const size_t hi=std::min(land_runoff.size()-1,static_cast<size_t>(land_runoff.size()*0.995));
+            std::nth_element(land_runoff.begin(),land_runoff.begin()+static_cast<std::ptrdiff_t>(lo),land_runoff.end());
+            runoff_low=land_runoff[lo];
+            std::nth_element(land_runoff.begin(),land_runoff.begin()+static_cast<std::ptrdiff_t>(hi),land_runoff.end());
+            runoff_high=std::max(land_runoff[hi],runoff_low+1e-4f);
+        }
         for(int y=0;y<RES;++y)for(int x=0;x<RES;++x){
             double gx=x*(HYDRO_RES-1.0)/(RES-1),gz=y*(HYDRO_RES-1.0)/(RES-1);
             int ix=std::min(static_cast<int>(gx),HYDRO_RES-2),iz=std::min(static_cast<int>(gz),HYDRO_RES-2);
             double tx=gx-ix,tz=gz-iz;
             auto val=[&](int a,int b){return accum[a+b*stride];};
             double a=val(ix,iz)*(1-tx)+val(ix+1,iz)*tx,b=val(ix,iz+1)*(1-tx)+val(ix+1,iz+1)*tx;
-            drainage[x+y*RES]=static_cast<float>(a*(1-tz)+b*tz);
+            const double raw=a*(1-tz)+b*tz;
+            drainage[x+y*RES]=coast[x+y*RES]>0.0f
+                ? static_cast<float>(smooth(runoff_low,runoff_high,raw)) : 0.0f;
         }
     }
     void thermal_coarse(std::vector<float>& h,const std::vector<float>& c,double cell) {
