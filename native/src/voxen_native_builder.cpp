@@ -180,12 +180,14 @@ struct NoiseSet {
         // mountain fields, shallow-water erosion, droplet erosion and thermal talus.
         const double macro_height = pg_island.sample_height(x, z);
         const double coast_sdf = pg_island.sample_coast(x, z);
-        const double runoff = std::clamp(
-            static_cast<double>(pg_island.sample_drainage(x, z)) / 1.8, 0.0, 1.0);
+        // PgIslandTerrain exports a percentile-normalized 0..1 runoff field.
+        // A nonlinear response keeps only persistent high-flow paths as channels.
+        const double runoff = std::pow(std::clamp(
+            static_cast<double>(pg_island.sample_drainage(x, z)), 0.0, 1.0), 1.35);
         const double slope_proxy = std::clamp(
             std::abs(static_cast<double>(sample_noise(ridges, x, z))), 0.0, 1.0);
         const double inland = smoothstep(12.0, 180.0, coast_sdf);
-        const double channel_mask = std::pow(runoff, 0.72) * inland;
+        const double channel_mask = std::pow(runoff, 1.15) * inland;
 
         // Coordinate-anchored meso/micro relief. It is deliberately separate
         // from the simulated macro erosion and fades with LOD via the mesh step.
