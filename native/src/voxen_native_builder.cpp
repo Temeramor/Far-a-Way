@@ -248,8 +248,8 @@ struct NoiseSet {
         const double mountain_exposure = smoothstep(42.0, 145.0, macro_height);
         const double coast_edge_warp = sample_noise(rock_fractures, x * 0.42, z * 0.42) * 22.0;
         const double coastal_cliff_exposure =
-            smoothstep(8.0, 19.0, macro_height) *
-            (1.0 - smoothstep(28.0 + coast_edge_warp, 138.0 + coast_edge_warp, coast_sdf));
+            smoothstep(3.5, 8.5, macro_height) *
+            (1.0 - smoothstep(22.0 + coast_edge_warp, 112.0 + coast_edge_warp, coast_sdf));
         const double rock_exposure = std::max(mountain_exposure, coastal_cliff_exposure);
         const double rock_relief = ((crags - 0.5) * 10.0 +
             fractures * 3.4 + ledges * 1.25) * rock_exposure;
@@ -426,9 +426,9 @@ struct NoiseSet {
                 z + sample_noise(rock_warp_z, x, z) * 26.0);
         const double elevation_exposure = smoothstep(55.0, 175.0, height_m) * rock_pattern;
         rock_weight = std::max(rock_weight, elevation_exposure);
-        const double coastal_cliff = smoothstep(8.0, 18.0, height_m) *
-            (1.0 - smoothstep(24.0, 120.0, shore)) *
-            smoothstep(0.28, 0.82, slope);
+        const double coastal_cliff = smoothstep(3.5, 8.5, height_m) *
+            (1.0 - smoothstep(20.0, 105.0, shore)) *
+            smoothstep(0.22, 0.68, slope);
         rock_weight = std::max(rock_weight, coastal_cliff);
         // Below sea level, grass never continues underwater: gentle seabed is sand,
         // while genuinely steep rock faces continue as rock.
