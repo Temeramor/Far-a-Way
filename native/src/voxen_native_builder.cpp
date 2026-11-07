@@ -296,9 +296,10 @@ struct NoiseSet {
                 p[column + 1] = sample(grid_x + column, grid_z + row);
                 local_min = std::min(local_min, p[column + 1]);
                 local_max = std::max(local_max, p[column + 1]);
-                if (column < 2) {
-                    max_dx = std::max(max_dx, std::abs(p[column + 2] - p[column + 1]) / safe_step);
-                }
+            }
+            for (int32_t column = 0; column < 3; ++column) {
+                max_dx = std::max(max_dx,
+                    std::abs(p[column + 1] - p[column]) / safe_step);
             }
             rows[row + 1] = cubic_interpolate(p[0], p[1], p[2], p[3], tx);
             row_dx[row + 1] = cubic_interpolate_derivative(
