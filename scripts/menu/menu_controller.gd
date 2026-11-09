@@ -354,14 +354,119 @@ func _start_game() -> void:
     # Preserve arbitrary input as a deterministic integer key for noise.
     var seed_value: int = _seed_from_text(seed_edit.text)
     GameSettings.request_new_game(seed_value)
-    var change_error: Error = get_tree().change_scene_to_file(WORLD_SCENE_PATH)
+    _show_world_loading_overlay(seed_value)
+
+    # Loading the world scene (and all its dependencies) synchronously used to
+    # block the menu before the in-world loading screen could be displayed.
+    # Threaded loading keeps this menu-owned overlay responsive during that phase.
+    var request_error: Error = ResourceLoader.load_threaded_request(WORLD_SCENE_PATH, "PackedScene", true)
+    if request_error != OK:
+        _abort_world_launch("Не удалось запустить загрузку сцены: " + error_string(request_error))
+        return
+
+    await get_tree().process_frame
+    var load_progress: Array[float] = []
+    var load_status: ResourceLoader.ThreadLoadStatus = ResourceLoader.load_threaded_get_status(WORLD_SCENE_PATH, load_progress)
+    while load_status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+        var ratio: float = load_progress[0] if not load_progress.is_empty() else 0.0
+        _set_world_loading_progress(0.04 + ratio * 0.26, "Загружаем сцену мира и её ресурсы…")
+        await get_tree().process_frame
+        load_status = ResourceLoader.load_threaded_get_status(WORLD_SCENE_PATH, load_progress)
+
+    if load_status != ResourceLoader.THREAD_LOAD_LOADED:
+        _abort_world_launch("Не удалось загрузить сцену мира.")
+        return
+
+    _set_world_loading_progress(0.32, "Сцена загружена. Подготавливаем генерацию острова…")
+    await get_tree().process_frame
+    var packed_world: PackedScene = ResourceLoader.load_threaded_get(WORLD_SCENE_PATH) as PackedScene
+    if packed_world == null:
+        _abort_world_launch("Загруженный ресурс мира имеет неверный формат.")
+        return
+
+    var change_error: Error = get_tree().change_scene_to_packed(packed_world)
     if change_error != OK:
-        GameSettings.has_requested_seed = false
-        _launching_world = false
-        start_button.disabled = false
-        seed_edit.editable = true
-        status_label.text = "Не удалось открыть сцену мира: " + error_string(change_error)
-        status_label.visible = true
+        _abort_world_launch("Не удалось открыть сцену мира: " + error_string(change_error))
+
+
+func _show_world_loading_overlay(seed_value: int) -> void:
+    var overlay := ColorRect.new()
+    overlay.name = "WorldLoadingOverlay"
+    overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    overlay.color = Color(0.018, 0.035, 0.031, 0.96)
+    overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+    overlay.z_index = 100
+    add_child(overlay)
+
+    var center := CenterContainer.new()
+    center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    overlay.add_child(center)
+
+    var panel_loading := PanelContainer.new()
+    panel_loading.custom_minimum_size = Vector2(460.0, 190.0)
+    center.add_child(panel_loading)
+    var panel_style := StyleBoxFlat.new()
+    panel_style.bg_color = Color("#18302F")
+    panel_style.border_color = COLOR_GOLD
+    panel_style.set_border_width_all(2)
+    panel_style.set_corner_radius_all(0)
+    panel_style.content_margin_left = 24.0
+    panel_style.content_margin_right = 24.0
+    panel_style.content_margin_top = 22.0
+    panel_style.content_margin_bottom = 22.0
+    panel_loading.add_theme_stylebox_override("panel", panel_style)
+
+    var stack := VBoxContainer.new()
+    stack.add_theme_constant_override("separation", 12)
+    panel_loading.add_child(stack)
+
+    var title := Label.new()
+    title.text = "ПОДГОТОВКА МИРА"
+    title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    title.add_theme_font_size_override("font_size", 21)
+    title.add_theme_color_override("font_color", COLOR_GOLD)
+    stack.add_child(title)
+
+    var message := Label.new()
+    message.name = "LoadingMessage"
+    message.text = "Сид мира: %d — подготавливаем ресурсы…" % seed_value
+    message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    message.add_theme_color_override("font_color", COLOR_PARCHMENT)
+    message.add_theme_font_size_override("font_size", 14)
+    stack.add_child(message)
+
+    var progress := ProgressBar.new()
+    progress.name = "LoadingProgress"
+    progress.min_value = 0.0
+    progress.max_value = 100.0
+    progress.value = 4.0
+    progress.custom_minimum_size = Vector2(0.0, 18.0)
+    stack.add_child(progress)
+
+
+func _set_world_loading_progress(value: float, message: String) -> void:
+    var overlay := get_node_or_null("WorldLoadingOverlay") as ColorRect
+    if overlay == null:
+        return
+    var label := overlay.get_node_or_null("Center/PanelContainer/VBoxContainer/LoadingMessage") as Label
+    var bar := overlay.get_node_or_null("Center/PanelContainer/VBoxContainer/LoadingProgress") as ProgressBar
+    if label != null:
+        label.text = message
+    if bar != null:
+        bar.value = clampf(value, 0.0, 1.0) * 100.0
+
+
+func _abort_world_launch(message: String) -> void:
+    GameSettings.has_requested_seed = false
+    _launching_world = false
+    start_button.disabled = false
+    seed_edit.editable = true
+    var overlay := get_node_or_null("WorldLoadingOverlay")
+    if overlay != null:
+        overlay.queue_free()
+    status_label.text = message
+    status_label.visible = true
 
 
 func _seed_from_text(value: String) -> int:

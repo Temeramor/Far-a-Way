@@ -19,6 +19,8 @@ const REFERENCE_WORLD_SIZE_M: float = 10000.0
 var seed_value: int = 1337
 var world_size_m: float = 2000.0
 var _native_sampler: Object
+var _terrain_prepared: bool = false
+var _prepared_spawn_position: Vector2 = Vector2(INF, INF)
 var _mountain_starts: Array[Vector2] = []
 var _mountain_deltas: Array[Vector2] = []
 var _mountain_lengths_squared: Array[float] = []
@@ -40,11 +42,28 @@ func _init(
     if _native_sampler == null:
         push_error("VoxelTerrainGenerator requires VoxEnNativeBuilder as its native terrain sampler.")
         return
+    # The expensive 2048² terrain build is deliberately deferred to
+    # prepare_native_terrain(), which VoxelWorld runs on WorkerThreadPool.
+
+
+func prepare_native_terrain(spawn_chunk_size_m: float = 32.0) -> void:
+    if _native_sampler == null or _terrain_prepared:
+        return
     _native_sampler.call("configure_terrain_sampler", {
         "seed": seed_value,
         "terrain_world_size_m": world_size_m,
         "mountain_profile": get_mountain_profile()
     })
+    _terrain_prepared = true
+    _prepared_spawn_position = find_safe_spawn_position(spawn_chunk_size_m)
+
+
+func is_terrain_prepared() -> bool:
+    return _terrain_prepared
+
+
+func get_prepared_spawn_position() -> Vector2:
+    return _prepared_spawn_position
 
 
 func get_native_sampler() -> Object:
@@ -136,10 +155,11 @@ func get_surface_height_voxels(x: float, z: float) -> int:
 
 
 func find_safe_spawn_position(_chunk_size_m: float = 32.0) -> Vector2:
-    # Search the whole island for a naturally flat, dry clearing. Height alone is
-    # deliberately not a selection criterion: mountain peaks and steep ridges fail.
+    # The native PG-Island generator owns the actual coastline and mountain field.
+    # Do not reject candidates using the legacy GDScript mountain profile: it is a
+    # different seeded layout and can cover otherwise valid clearings.
     var half: float = world_size_m * 0.5
-    var coarse_step: float = 25.0
+    var coarse_step: float = 20.0
     var columns: int = int(floor(world_size_m / coarse_step)) + 1
     var samples: PackedFloat32Array = get_surface_height_grid(
         -half, -half, columns, columns, coarse_step
@@ -153,14 +173,11 @@ func find_safe_spawn_position(_chunk_size_m: float = 32.0) -> Vector2:
             if index >= samples.size():
                 continue
             var coarse_height: float = samples[index]
-            if coarse_height < 3.0 or coarse_height > 100.0:
+            if coarse_height < 1.5 or coarse_height > 120.0:
                 continue
             var px: float = -half + float(x) * coarse_step
             var pz: float = -half + float(z) * coarse_step
-            if absf(px) > half - 8.0 or absf(pz) > half - 8.0:
-                continue
-            # Keep the start point away from the map's central mountain zone.
-            if Vector2(px, pz).length() < 220.0:
+            if absf(px) > half - 12.0 or absf(pz) > half - 12.0:
                 continue
             var chunk_local_x: float = fposmod(px + half, maxf(_chunk_size_m, 1.0))
             var chunk_local_z: float = fposmod(pz + half, maxf(_chunk_size_m, 1.0))
@@ -174,16 +191,13 @@ func find_safe_spawn_position(_chunk_size_m: float = 32.0) -> Vector2:
     if not is_finite(best_score):
         return Vector2(INF, INF)
 
-    # Refine around the best broad-area candidate so the final point is not tied
-    # to the coarse scan lattice.
+    # Refine around the best broad-area candidate on a finer lattice.
     var coarse_best: Vector2 = best_position
-    for z in range(-6, 7):
-        for x in range(-6, 7):
-            var px: float = coarse_best.x + float(x) * 2.0
-            var pz: float = coarse_best.y + float(z) * 2.0
-            if absf(px) > half - 8.0 or absf(pz) > half - 8.0:
-                continue
-            if Vector2(px, pz).length() < 220.0:
+    for z in range(-10, 11):
+        for x in range(-10, 11):
+            var px: float = coarse_best.x + float(x) * 1.0
+            var pz: float = coarse_best.y + float(z) * 1.0
+            if absf(px) > half - 12.0 or absf(pz) > half - 12.0:
                 continue
             var chunk_local_x: float = fposmod(px + half, maxf(_chunk_size_m, 1.0))
             var chunk_local_z: float = fposmod(pz + half, maxf(_chunk_size_m, 1.0))
@@ -197,20 +211,19 @@ func find_safe_spawn_position(_chunk_size_m: float = 32.0) -> Vector2:
 
 
 func _safe_spawn_candidate_score(world_x: float, world_z: float) -> float:
-    # A broad mountain foothill can be nearly flat and sit below 100 m.
-    # Exclude the generated mountain-range footprint explicitly, not by slope/height alone.
-    if _is_within_mountain_spawn_exclusion(world_x, world_z):
-        return -INF
+    # Slope and local height continuity are evaluated against the same native
+    # height field used by chunk meshing; these checks exclude mountain faces,
+    # cliffs and submerged terrain without relying on a second mountain layout.
     var center: Vector3 = get_surface_sample(world_x, world_z)
     var center_slope: float = Vector2(center.y, center.z).length()
-    if center.x < 3.0 or center.x > 58.0 or center_slope > 0.16:
+    if center.x < 1.5 or center.x > 120.0 or center_slope > 0.28:
         return -INF
 
     var offsets: Array[Vector2] = [
-        Vector2(3.0, 0.0), Vector2(-3.0, 0.0),
-        Vector2(0.0, 3.0), Vector2(0.0, -3.0),
-        Vector2(2.1, 2.1), Vector2(-2.1, 2.1),
-        Vector2(2.1, -2.1), Vector2(-2.1, -2.1)
+        Vector2(4.0, 0.0), Vector2(-4.0, 0.0),
+        Vector2(0.0, 4.0), Vector2(0.0, -4.0),
+        Vector2(2.8, 2.8), Vector2(-2.8, 2.8),
+        Vector2(2.8, -2.8), Vector2(-2.8, -2.8)
     ]
     var min_height: float = center.x
     var max_height: float = center.x
@@ -218,32 +231,22 @@ func _safe_spawn_candidate_score(world_x: float, world_z: float) -> float:
     for offset in offsets:
         var sample: Vector3 = get_surface_sample(world_x + offset.x, world_z + offset.y)
         var sample_slope: float = Vector2(sample.y, sample.z).length()
-        if sample.x < 2.0 or sample_slope > 0.28:
+        if sample.x < 0.8 or sample_slope > 0.48:
             return -INF
         min_height = minf(min_height, sample.x)
         max_height = maxf(max_height, sample.x)
         max_slope = maxf(max_slope, sample_slope)
 
     var height_spread: float = max_height - min_height
-    if height_spread > 1.5:
+    if height_spread > 3.0:
         return -INF
-    # Prefer broad, nearly level ground; elevation is only a small tie-breaker.
-    return -max_slope * 24.0 - height_spread * 5.0 - center.x * 0.025
+    # Prefer broad, gently sloping ground and a little clearance above sea level.
+    return -max_slope * 22.0 - height_spread * 4.0 - center.x * 0.012
 
 
-func _is_within_mountain_spawn_exclusion(world_x: float, world_z: float) -> bool:
-    var point := Vector2(world_x, world_z)
-    for i in range(_mountain_starts.size()):
-        var start: Vector2 = _mountain_starts[i]
-        var delta: Vector2 = _mountain_deltas[i]
-        var length_squared: float = maxf(_mountain_lengths_squared[i], 0.001)
-        var along: float = clampf((point - start).dot(delta) / length_squared, 0.0, 1.0)
-        var closest: Vector2 = start + delta * along
-        # Match the broad foothill mask used by the native height sampler, with
-        # an extra buffer so the player is not placed on the mountain shoulder.
-        var exclusion_radius: float = _mountain_widths[i] * 1.85 + 40.0
-        if point.distance_squared_to(closest) <= exclusion_radius * exclusion_radius:
-            return true
+func _is_within_mountain_spawn_exclusion(_world_x: float, _world_z: float) -> bool:
+    # Kept for compatibility with callers from older project revisions.
+    # The native PG-Island field is authoritative for mountain placement now.
     return false
 
 

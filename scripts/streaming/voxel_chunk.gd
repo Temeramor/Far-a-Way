@@ -84,10 +84,9 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     var incoming_normals: PackedVector3Array = data.get("normals", PackedVector3Array())
     var incoming_colors: PackedColorArray = data.get("colors", PackedColorArray())
     var incoming_indices: PackedInt32Array = data.get("indices", PackedInt32Array())
-
-    # Validate before retiring a working mesh. If a terrain tile exceeds safe GPU limits,
-    # keep the current generation visible and remember the rejected request.
     var has_geometry: bool = bool(data.get("has_geometry", false))
+
+    # Reject invalid geometry before touching the current generation.
     var invalid_mesh: bool = incoming_vertices.size() > 1200000 or incoming_vertices.is_empty() or incoming_indices.is_empty() or incoming_indices.size() % 3 != 0 or incoming_normals.size() != incoming_vertices.size() or incoming_colors.size() != incoming_vertices.size()
     if has_geometry and invalid_mesh:
         mesh_upload_rejected = true
@@ -98,63 +97,54 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
         ])
         return
 
-    mesh_upload_rejected = false
-    rejected_mesh_lod = -1
-    rejected_mesh_step_voxels = -1
+    var previous_generation: Array[Node] = []
+    for child in get_children():
+        previous_generation.append(child)
 
-    # Collision is based on world height, not visual LOD. Preserve an existing heightmap body
-    # when only the render mesh changes so visual streaming does not churn physics resources.
+    # Keep a valid collider while the replacement render generation is assembled.
     var wants_collision: bool = bool(data.get("want_collision", false))
     var collision_body := get_node_or_null("VoxelCollision") as StaticBody3D
     var preserve_collision: bool = wants_collision and collision_enabled and collision_body != null
-    _retire_current_generation(preserve_collision)
-    # Release the replaced generation before uploading its successor. Keeping both generations
-    # alive during ArrayMesh creation can temporarily double GPU memory and trigger Vulkan OOM.
-    while retire_one_old_node():
-        pass
-    _mesh_shader_material = null
+
     coord = data.get("coord", Vector2i.ZERO)
-    lod = int(data.get("lod", -1))
-    mesh_step_voxels = int(data.get("step_voxels", 1 << clampi(lod, 0, 7)))
+    lod = incoming_lod
+    mesh_step_voxels = incoming_step_voxels
     neighbor_lods_used = data.get("neighbor_lods_used", {}).duplicate(true)
-    collision_enabled = false
-    collision_active = false
     position = data.get("position", Vector3.ZERO)
-    mesh_ready = false
     render_vertex_count = 0
     render_index_count = 0
     shadow_vertex_count = 0
     estimated_mesh_bytes = 0
-    if preserve_collision:
-        collision_enabled = true
-        set_collision_active(wants_collision)
-    else:
-        collision_enabled = false
-        collision_active = false
+    mesh_upload_rejected = false
+    rejected_mesh_lod = -1
+    rejected_mesh_step_voxels = -1
 
-    if not bool(data.get("has_geometry", false)):
+    if not has_geometry:
+        _retire_previous_generation(previous_generation, preserve_collision)
+        _mesh_shader_material = null
+        mesh_ready = false
+        collision_enabled = preserve_collision
+        collision_active = false
+        if preserve_collision:
+            set_collision_active(wants_collision)
         return
 
-    # Instance uniforms reserve a fixed per-node buffer on the Compatibility renderer.
-    # A regular uniform on a per-chunk material avoids exhausting that hardware-limited buffer.
+    # Build and attach the new generation first. The previous visible generation remains
+    # intact until both replacement render meshes have been created and attached.
     var mesh_material: Material = material
+    var next_shader_material: ShaderMaterial
     if material is ShaderMaterial:
-        _mesh_shader_material = (material as ShaderMaterial).duplicate() as ShaderMaterial
-        _mesh_shader_material.set_shader_parameter("skirt_visibility", Vector4(1.0, 1.0, 1.0, 1.0))
-        _mesh_shader_material.set_shader_parameter("lod_cell_size", float(mesh_step_voxels) * VOXEL_SIZE)
-        _mesh_shader_material.set_shader_parameter("lod_index", lod)
-        mesh_material = _mesh_shader_material
+        next_shader_material = (material as ShaderMaterial).duplicate() as ShaderMaterial
+        next_shader_material.set_shader_parameter("skirt_visibility", Vector4(1.0, 1.0, 1.0, 1.0))
+        next_shader_material.set_shader_parameter("lod_cell_size", float(mesh_step_voxels) * VOXEL_SIZE)
+        next_shader_material.set_shader_parameter("lod_index", lod)
+        mesh_material = next_shader_material
 
-    var render_vertices_data: PackedVector3Array = incoming_vertices
-    var render_normals_data: PackedVector3Array = incoming_normals
-    var render_colors_data: PackedColorArray = incoming_colors
-    var render_indices_data: PackedInt32Array = incoming_indices
     var shadow_vertices: PackedVector3Array = data.get("smooth_shadow_vertices", PackedVector3Array())
     var shadow_indices: PackedInt32Array = data.get("smooth_shadow_indices", PackedInt32Array())
-    render_vertex_count = render_vertices_data.size()
-    render_index_count = render_indices_data.size()
+    render_vertex_count = incoming_vertices.size()
+    render_index_count = incoming_indices.size()
     shadow_vertex_count = shadow_vertices.size()
-    # Conservative estimate for GPU position/normal/colour buffers and triangle indices.
     estimated_mesh_bytes = render_vertex_count * 28 + render_index_count * 4 + shadow_vertex_count * 24 + shadow_indices.size() * 4
 
     var mesh := _make_array_mesh(data, mesh_material)
@@ -162,13 +152,8 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
     var mesh_instance := MeshInstance3D.new()
     mesh_instance.name = "VoxelMesh"
     mesh_instance.mesh = mesh
-    # Rebuilt chunks can remain logically inactive while hidden in the hierarchy.
-    # New VisualInstances are visible by default, so inherit the chunk state immediately.
     mesh_instance.visible = _render_active
-    # The visible colour mesh never enters the shadow map; each active LOD has a separate
-    # invisible caster, so shadow complexity can change without changing material lighting.
     mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-    _skirt_visibility_cache = Vector4(-1.0, -1.0, -1.0, -1.0)
     add_child(mesh_instance)
 
     var shadow_normals: PackedVector3Array = data.get("smooth_shadow_normals", PackedVector3Array())
@@ -187,8 +172,6 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
         shadow_proxy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
         add_child(shadow_proxy)
 
-    mesh_ready = true
-
     if wants_collision and not preserve_collision:
         var collision_data: Dictionary = data.get("collision_height_map", {})
         if not collision_data.is_empty():
@@ -201,8 +184,6 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
             collision_shape.name = "VoxelCollisionShape"
             collision_shape.shape = height_shape
             var step_m: float = float(collision_data.get("step_m", 0.2))
-            # Height samples are already in metres vertically; only X/Z need
-            # the 0.4 m spacing of the collision heightmap grid.
             collision_shape.scale = Vector3(step_m, 1.0, step_m)
             collision_shape.position = Vector3(
                 float(int(collision_data["width"]) - 1) * step_m * 0.5,
@@ -212,7 +193,6 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
 
             var body := StaticBody3D.new()
             body.name = "VoxelCollision"
-            # Collision data is world-space terrain coverage and remains valid even if this LOD mesh is hidden under a parent fallback.
             var should_collide: bool = bool(data.get("want_collision", false))
             body.collision_layer = 1 if should_collide else 0
             body.collision_mask = 1 if should_collide else 0
@@ -221,6 +201,35 @@ func apply_mesh_data(data: Dictionary, material: Material) -> void:
             add_child(body)
             collision_enabled = true
             collision_active = should_collide
+    elif preserve_collision:
+        collision_enabled = true
+        collision_active = false
+        set_collision_active(wants_collision)
+    else:
+        collision_enabled = false
+        collision_active = false
+
+    _mesh_shader_material = next_shader_material
+    _skirt_visibility_cache = Vector4(-1.0, -1.0, -1.0, -1.0)
+    _retire_previous_generation(previous_generation, preserve_collision)
+    mesh_ready = true
+
+
+func _retire_previous_generation(previous_generation: Array[Node], preserve_collision: bool) -> void:
+    for old_node in previous_generation:
+        if not is_instance_valid(old_node):
+            continue
+        if preserve_collision and old_node is StaticBody3D and old_node.name == "VoxelCollision":
+            continue
+        if old_node is StaticBody3D:
+            old_node.collision_layer = 0
+            old_node.collision_mask = 0
+        if old_node is VisualInstance3D:
+            old_node.visible = false
+        remove_child(old_node)
+        # The old mesh is released immediately after the replacement has been attached.
+        # This bounds the overlap to one synchronous swap instead of retaining two GPU generations.
+        old_node.free()
 
 func set_render_active(active: bool, request_collision: bool = false) -> void:
     var render_state_changed: bool = _render_active != active

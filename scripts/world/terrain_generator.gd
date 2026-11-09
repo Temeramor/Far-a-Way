@@ -9,7 +9,7 @@ signal generation_progress(seed_value: int, progress: float, status: String)
 signal generation_finished(seed_value: int)
 
 @export_group("World")
-@export var world_size: float = 5000.0
+@export var world_size: float = 8000.0
 @export_range(1024, 2048, 1024) var resolution: int = 2048
 @export var world_seed: int = 1337
 
@@ -35,7 +35,12 @@ func generate(new_seed: int = 1337) -> void:
     _generation_active = true
     _progress_timer = 0.0
     generation_started.emit(world_seed)
-    generation_progress.emit(world_seed, 0.08, "Запускаем потоковую генерацию VoxEn...")
+    generation_progress.emit(world_seed, 0.035, "Сид %d принят. Подготавливаем систему генерации и параметры острова…" % world_seed)
+
+    # Let the loading UI render before VoxelWorld schedules its initial terrain work.
+    # Without this frame boundary, the first synchronous setup can look like a frozen game.
+    await get_tree().process_frame
+    generation_progress.emit(world_seed, 0.07, "Создаём базовую форму острова, береговую линию и высотное поле…")
     _voxel_world.world_size_m = world_size
     _voxel_world.regenerate_with_seed(world_seed)
 
@@ -47,7 +52,13 @@ func _process(delta: float) -> void:
     if _voxel_world.is_startup_loading():
         if _progress_timer >= 0.2:
             _progress_timer = 0.0
-            var status: String = "Строим грубые воксельные тайлы всей карты..." if not _voxel_world.is_world_coverage_ready() else "Готовим подробную стартовую область и коллизию... (%d чанков)" % _voxel_world.get_loaded_chunk_count()
+            var status: String
+            if _voxel_world.is_terrain_preparing():
+                status = "Рассчитываем макрорельеф 2048×2048: береговую линию, горные массивы, гидравлический перенос воды и осадков, капельную эрозию, овраги и осыпи…"
+            elif not _voxel_world.is_world_coverage_ready():
+                status = "Строим дальние воксельные уровни острова и согласуем границы чанков…"
+            else:
+                status = "Готовим стартовую область: детальные чанки, поверхность, коллизию и проверку безопасной точки появления… (%d чанков)" % _voxel_world.get_loaded_chunk_count()
             generation_progress.emit(world_seed, _voxel_world.get_startup_progress(), status)
         return
     _generation_active = false
