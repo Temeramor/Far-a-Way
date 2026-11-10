@@ -78,9 +78,19 @@ jobs:
             if (-not (Test-Path ".godot/global_script_class_cache.cfg")) {
               throw "Godot did not generate the global script class cache during project import."
             }
-            if (-not (Test-Path ".godot/imported/noiseClouds.png-07511094ef8b72a49cc860b35c60d0fd.etc2.ctex")) {
-              throw "Godot did not import the required sky noise texture."
+            # The generated cache filename is importer/platform dependent. Validate the
+            # imported resource by its stable source basename instead of a pinned hash.
+            $noiseImports = @(
+              Get-ChildItem -LiteralPath ".godot/imported" -Filter "noiseClouds.png-*" -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Length -gt 0 }
+            )
+            if ($noiseImports.Count -eq 0) {
+              $importedFiles = Get-ChildItem -LiteralPath ".godot/imported" -File -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty Name
+              Write-Host "Imported cache files: $($importedFiles -join ', ')"
+              throw "Godot did not produce an imported cache file for assets/sky/noiseClouds.png."
             }
+            Write-Host "Imported sky noise texture: $($noiseImports[0].Name) ($($noiseImports[0].Length) bytes)"
             if (Select-String -Path artifacts/project-import.log -Pattern "SCRIPT ERROR|Parse Error|ERROR:" -Quiet) {
               throw "Godot project import reported script or resource errors; inspect artifacts/project-import.log."
             }
