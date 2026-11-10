@@ -121,9 +121,62 @@ jobs:
             $testName = [System.IO.Path]::GetFileNameWithoutExtension($test)
             $testLog = "artifacts/test-$testName.log"
             if ($test.StartsWith("res://")) {
-              # --scene explicitly starts the scene inside the project runtime, including Autoloads.
-              $testOutput = @(& .\godot.exe --headless --path . --scene $test --quit-after 120 2>&1)
-              $testExit = $LASTEXITCODE
+              # Godot has no --scene CLI switch. Temporarily point the project main scene
+              # at the smoke scene so the normal project runtime and Autoloads are initialized.
+              $projectConfig = "project.godot"
+              $projectBackup = "artifacts/project.godot.original"
+              Copy-Item -LiteralPath $projectConfig -Destination $projectBackup -Force
+              try {
+                $projectText = Get-Content -LiteralPath $projectConfig -Raw
+                if ($projectText -notmatch '(?m)^run/main_scene=') {
+                  throw "project.godot does not define run/main_scene; cannot safely launch the smoke scene."
+                }
+                $projectText = [regex]::Replace(
+                  $projectText,
+                  '(?m)^run/main_scene=.*
+            $testOutput | Tee-Object -FilePath $testLog
+            $testOutputText = $testOutput -join "`n"
+            $hasGodotErrors = $testOutputText -match "SCRIPT ERROR|Parse Error|ERROR:"
+            $missingPassMarker = $test.StartsWith("res://") -and $testOutputText -notmatch "PASS: refactor_entrypoints_smoke_test"
+            if ($testExit -ne 0 -or $hasGodotErrors -or $missingPassMarker) {
+              $failed += $test
+              Write-Error "Test failed: $test (exit $testExit, Godot errors: $hasGodotErrors, pass marker missing: $missingPassMarker)"
+              break
+            }
+          }
+          Stop-Transcript
+          if ($failed.Count -gt 0) {
+            Set-Content -Path artifacts/failed-tests.txt -Value $failed
+            exit 1
+          }
+      - name: Run native chunk benchmark
+        shell: pwsh
+        env:
+          VOXEN_BENCHMARK_BASELINE_PATH: ${{ github.workspace }}/artifacts/native-chunk-benchmark-baseline.json
+        run: |
+          Start-Transcript -Path artifacts/native-chunk-benchmark.log
+          & .\godot.exe --headless --path . --script res://tests/native_chunk_benchmark.gd
+          $benchmarkExit = $LASTEXITCODE
+          Stop-Transcript
+          if ($benchmarkExit -ne 0) { exit $benchmarkExit }
+      - name: Upload CI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-ci-diagnostics-${{ github.run_number }}
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 14
+,
+                  'run/main_scene="' + $test + '"',
+                  1
+                )
+                Set-Content -LiteralPath $projectConfig -Value $projectText -NoNewline
+                $testOutput = @(& .\godot.exe --headless --path . --quit-after 120 2>&1)
+                $testExit = $LASTEXITCODE
+              } finally {
+                Copy-Item -LiteralPath $projectBackup -Destination $projectConfig -Force
+              }
             } else {
               $testOutput = @(& .\godot.exe --headless --path . --script "res://tests/$test" 2>&1)
               $testExit = $LASTEXITCODE
