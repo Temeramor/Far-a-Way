@@ -6,6 +6,7 @@
 
 - Разделены исходники VoxelWorld, VoxelSurfaceScatter и WorldController; сохранены исходные пути точек входа, class_name, exports и сигналы.
 - Нативный builder разделён на sampler, heightfield mesher и отдельный builder данных HeightMap collision; публичные методы GDExtension сохранены.
+- MeshDataCache и ChunkResourceManager выделены в самостоятельные сервисы; добавлены отдельные smoke-тесты для кэша и пула чанков.
 - ADR-001…ADR-017 перенесены в docs/decisions; добавлена карта архитектуры и зависимостей модулей.
 - Добавлен Windows x86-64 GitHub Actions workflow: сборка debug/release GDExtension, импорт проекта и smoke/parity tests.
 - Версия проекта обновлена до 0.1.0.4. Алгоритмы генерации, параметры террейна, LOD, streaming priorities и generation_epoch не менялись.
@@ -56,12 +57,16 @@
 - `scripts/streaming/voxel_world/voxel_world_layer_06_runtime.gd`
 - `scripts/streaming/voxel_world/voxel_world_layer_07_orchestration.gd`
 - `scripts/streaming/voxel_world/voxel_world_state.gd`
+- `scripts/streaming/mesh_data_cache.gd`
+- `scripts/streaming/chunk_resource_manager.gd`
 - `scripts/world/world_controller.gd`
 - `scripts/world/world_controller/world_controller_layer_01_environment.gd`
 - `scripts/world/world_controller/world_controller_layer_02_ui_generation.gd`
 - `scripts/world/world_controller/world_controller_layer_03_runtime.gd`
 - `scripts/world/world_controller/world_controller_state.gd`
 - `tests/refactor_entrypoints_smoke_test.gd`
+- `tests/mesh_data_cache_test.gd`
+- `tests/chunk_resource_manager_test.gd`
 
 
 ### Берег

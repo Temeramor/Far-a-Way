@@ -218,6 +218,6 @@ godot --headless --path . --script res://tests/native_chunk_benchmark.gd
 
 Сохранены публичные пути трёх основных GDScript-точек входа: `scripts/streaming/voxel_world.gd`, `scripts/rendering/voxel_surface_scatter.gd` и `scripts/world/world_controller.gd`. Их реализация разложена по слоям в одноимённых подпапках; state-файлы содержат поля и exports, остальные файлы — методы, сгруппированные по зависимостям. Сцены и внешние preload продолжают ссылаться на прежние пути.
 
-Нативный builder разделён на terrain sampler, heightfield mesher и отдельный builder данных HeightMap collision. Алгоритмы и публичный API сохранены. Это по-прежнему heightfield-система, а не объёмный SDF.
+Нативный builder разделён на terrain sampler, heightfield mesher и отдельный builder данных HeightMap collision. MeshDataCache и ChunkResourceManager вынесены в самостоятельные сервисы. Алгоритмы и публичный API сохранены. Это по-прежнему heightfield-система, а не объёмный SDF.
 
 Подробная карта: [docs/architecture/README.md](docs/architecture/README.md). ADR из ROADMAP: [docs/decisions/](docs/decisions/).

@@ -56,6 +56,8 @@ jobs:
         run: |
           $tests = @(
             "refactor_entrypoints_smoke_test.gd",
+            "mesh_data_cache_test.gd",
+            "chunk_resource_manager_test.gd",
             "native_builder_smoke_test.gd",
             "native_terrain_sampler_test.gd",
             "pg_island_native_terrain_test.gd",

@@ -10,10 +10,12 @@ func _initialize() -> void:
     assert(cache.get_entry_count() == 1)
     assert(cache.get_mesh("first").has("vertices"))
     assert(cache.get_bytes_used() == 12)
-    for index in range(33):
+    cache.clear()
+    cache.store_mesh("oldest", payload)
+    for index in range(32):
         cache.store_mesh("mesh_%d" % index, payload)
     assert(cache.get_entry_count() == 32)
-    assert(cache.get_mesh("first").is_empty())
+    assert(cache.get_mesh("oldest").is_empty())
     cache.clear()
     assert(cache.get_entry_count() == 0)
     assert(cache.get_bytes_used() == 0)
