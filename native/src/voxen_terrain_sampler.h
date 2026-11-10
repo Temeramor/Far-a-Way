@@ -439,7 +439,7 @@ struct NoiseSet {
     }
 };
 
-Color rgb8(int r, int g, int b, double a = 1.0) {
+inline Color rgb8(int r, int g, int b, double a = 1.0) {
     return Color(static_cast<double>(r) / 255.0,
                  static_cast<double>(g) / 255.0,
                  static_cast<double>(b) / 255.0,
