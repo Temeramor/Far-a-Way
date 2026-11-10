@@ -1,5 +1,14 @@
 # Журнал изменений
 
+## Work in progress — CI and baseline hardening (0.1.0.4-new)
+
+- Corrected the Godot 4.7.2 Windows x64 download URL to the official release asset `Godot_v4.7.2-stable_win64.exe.zip`; added SHA-256 verification and executable version check.
+- Enabled Windows CI on push and pull requests targeting `0.1.0.4-new`.
+- Added headless project import, full smoke/parity test list, native chunk benchmark, and 14-day upload of import/test/benchmark diagnostics.
+- Added `docs/testing/baseline.md` documenting deterministic seeds already covered by tests and explicitly marking visual/performance baseline work still outstanding.
+- Updated `ROADMAP.md` with the current CI repair and baseline status.
+
+
 ## Дополнение к 0.1.0.4 — актуализация ROADMAP (10 ноября 2026)
 - Windows CI workflow включён в push/PR-фильтры новой рабочей ветки `0.1.0.4-new`, чтобы дальнейшие изменения в ней автоматически проверялись.
 
