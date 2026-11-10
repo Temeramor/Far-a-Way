@@ -121,27 +121,10 @@ jobs:
             $testName = [System.IO.Path]::GetFileNameWithoutExtension($test)
             $testLog = "artifacts/test-$testName.log"
             if ($test.StartsWith("res://")) {
-              # Run the smoke scene as the configured project main scene so Autoloads initialize.
-              $projectConfig = "project.godot"
-              $projectBackup = "artifacts/project.godot.original"
-              Copy-Item -LiteralPath $projectConfig -Destination $projectBackup -Force
-              try {
-                $projectText = Get-Content -LiteralPath $projectConfig -Raw
-                if ($projectText -notmatch '(?m)^run/main_scene=') {
-                  throw "project.godot does not define run/main_scene; cannot launch smoke scene."
-                }
-                $projectText = [regex]::Replace(
-                  $projectText,
-                  '(?m)^run/main_scene=.*$',
-                  ('run/main_scene="' + $test + '"'),
-                  1
-                )
-                Set-Content -LiteralPath $projectConfig -Value $projectText -NoNewline
-                $testOutput = @(& .\godot.exe --headless --path . --quit-after 120 2>&1)
-                $testExit = $LASTEXITCODE
-              } finally {
-                Copy-Item -LiteralPath $projectBackup -Destination $projectConfig -Force
-              }
+              # Godot accepts a scene path as a positional project argument. This keeps
+              # project Autoloads active without mutating project.godot during CI.
+              $testOutput = @(& .\godot.exe --headless --path . --quit-after 120 $test 2>&1)
+              $testExit = $LASTEXITCODE
             } else {
               $testOutput = @(& .\godot.exe --headless --path . --script "res://tests/$test" 2>&1)
               $testExit = $LASTEXITCODE
