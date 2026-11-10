@@ -15,4 +15,5 @@ func _ready() -> void:
             get_tree().quit(1)
             return
         instance.free()
+    print("PASS: refactor_entrypoints_smoke_test")
     get_tree().quit(0)
