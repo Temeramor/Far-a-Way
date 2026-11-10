@@ -49,7 +49,7 @@ jobs:
       - name: Import project and validate scripts
         shell: pwsh
         run: |
-          & .\\godot.exe --headless --editor --path . --quit
+          & .\godot.exe --headless --editor --path . --quit
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run smoke and parity tests
         shell: pwsh
@@ -70,6 +70,6 @@ jobs:
           )
           foreach ($test in $tests) {
             Write-Host "Running $test"
-            & .\\godot.exe --headless --path . --script "res://tests/$test"
+            & .\godot.exe --headless --path . --script "res://tests/$test"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
