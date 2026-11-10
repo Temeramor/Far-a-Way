@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main, "0.1.0.4"]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   windows-x86_64:
     runs-on: windows-latest
