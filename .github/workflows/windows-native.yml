@@ -68,10 +68,22 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          Start-Transcript -Path artifacts/project-import.log
+          Start-Transcript -Path artifacts/project-import-transcript.log
           try {
-            & .\godot.exe --headless --editor --path . --quit
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            # --import waits for the editor import pipeline to finish; --quit alone exits
+            # before textures, script-class metadata, and the .godot cache are generated.
+            & .\godot.exe --headless --editor --path . --import 2>&1 | Tee-Object -FilePath artifacts/project-import.log
+            $importExit = $LASTEXITCODE
+            if ($importExit -ne 0) { exit $importExit }
+            if (-not (Test-Path ".godot/global_script_class_cache.cfg")) {
+              throw "Godot did not generate the global script class cache during project import."
+            }
+            if (-not (Test-Path ".godot/imported/noiseClouds.png-07511094ef8b72a49cc860b35c60d0fd.etc2.ctex")) {
+              throw "Godot did not import the required sky noise texture."
+            }
+            if (Select-String -Path artifacts/project-import.log -Pattern "SCRIPT ERROR|Parse Error|ERROR:" -Quiet) {
+              throw "Godot project import reported script or resource errors; inspect artifacts/project-import.log."
+            }
           } finally {
             Stop-Transcript
           }
