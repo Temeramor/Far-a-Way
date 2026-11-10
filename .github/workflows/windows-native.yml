@@ -118,15 +118,23 @@ jobs:
           $failed = @()
           foreach ($test in $tests) {
             Write-Host "Running $test"
+            $testName = [System.IO.Path]::GetFileNameWithoutExtension($test)
+            $testLog = "artifacts/test-$testName.log"
             if ($test.StartsWith("res://")) {
-              # Run this test as a project scene so configured Autoload singletons are active.
-              & .\godot.exe --headless --path . $test
+              # --scene explicitly starts the scene inside the project runtime, including Autoloads.
+              $testOutput = @(& .\godot.exe --headless --path . --scene $test --quit-after 120 2>&1)
+              $testExit = $LASTEXITCODE
             } else {
-              & .\godot.exe --headless --path . --script "res://tests/$test"
+              $testOutput = @(& .\godot.exe --headless --path . --script "res://tests/$test" 2>&1)
+              $testExit = $LASTEXITCODE
             }
-            if ($LASTEXITCODE -ne 0) {
+            $testOutput | Tee-Object -FilePath $testLog
+            $testOutputText = $testOutput -join "`n"
+            $hasGodotErrors = $testOutputText -match "SCRIPT ERROR|Parse Error|ERROR:"
+            $missingPassMarker = $test.StartsWith("res://") -and $testOutputText -notmatch "PASS: refactor_entrypoints_smoke_test"
+            if ($testExit -ne 0 -or $hasGodotErrors -or $missingPassMarker) {
               $failed += $test
-              Write-Error "Test failed: $test (exit $LASTEXITCODE)"
+              Write-Error "Test failed: $test (exit $testExit, Godot errors: $hasGodotErrors, pass marker missing: $missingPassMarker)"
               break
             }
           }
