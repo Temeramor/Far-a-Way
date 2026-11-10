@@ -11,6 +11,8 @@ func _initialize() -> void:
         quit(1)
         return
 
+    generator.configure_native_terrain_sampler()
+
     var origin_x := -12.0
     var origin_z := 8.0
     var step := 0.5
