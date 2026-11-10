@@ -20,26 +20,7 @@ func _chunk_bounds(coord: Vector2i) -> Dictionary:
     return {"start_x": start_x, "start_z": start_z, "size_x": size_x, "size_z": size_z, "origin": Vector2(origin_x, origin_z), "center": Vector2(origin_x + width * 0.5, origin_z + depth * 0.5), "width": width, "depth": depth, "lod": lod_index, "tile_x": tile_x, "tile_z": tile_z}
 
 func _store_cached_mesh(cache_key: String, data: Dictionary) -> void:
-    if cache_key.is_empty() or data.is_empty():
-        return
-    var bytes: int = _estimate_mesh_data_bytes(data)
-    if bytes <= 0 or bytes > MAX_MESH_CACHE_BYTES:
-        return
-    if _mesh_cache.has(cache_key):
-        var old_record: Dictionary = _mesh_cache[cache_key]
-        _mesh_cache_bytes -= int(old_record.get("bytes", 0))
-        _mesh_cache_order.erase(cache_key)
-    _mesh_cache[cache_key] = {"data": data, "bytes": bytes}
-    _mesh_cache_order.append(cache_key)
-    _mesh_cache_bytes += bytes
-    while _mesh_cache_bytes > MAX_MESH_CACHE_BYTES or _mesh_cache.size() > MAX_MESH_CACHE_ENTRIES:
-        if _mesh_cache_order.is_empty():
-            break
-        var oldest_key: String = _mesh_cache_order.pop_front()
-        var oldest_record: Dictionary = _mesh_cache.get(oldest_key, {})
-        _mesh_cache_bytes -= int(oldest_record.get("bytes", 0))
-        _mesh_cache.erase(oldest_key)
-    _mesh_cache_bytes = maxi(0, _mesh_cache_bytes)
+    _mesh_data_cache.store_mesh(cache_key, data)
 
 func _lod_neighbor_key(coord: Vector2i, offset: Vector2i) -> Vector2i:
     var parts := _decode_lod_key(coord)
@@ -95,32 +76,7 @@ func _p95_ms(samples: Array) -> float:
     return _p95_usec(samples) / 1000.0
 
 func _retire_stale_resources() -> void:
-    # Visit only chunks that actually have detached resources awaiting disposal.
-    var started_usec: int = Time.get_ticks_usec()
-    var retired_count: int = 0
-    while not _retirement_queue.is_empty():
-        var resident_chunk: VoxelTerrainChunk = _retirement_queue[0]
-        while retired_count < 8 and resident_chunk.retire_one_old_node():
-            retired_count += 1
-            if retired_count >= 2 and Time.get_ticks_usec() - started_usec >= 2500:
-                return
-        if resident_chunk._retired_nodes.is_empty():
-            _retirement_queue.pop_front()
-            _retirement_lookup.erase(resident_chunk.get_instance_id())
-        if retired_count >= 8 or Time.get_ticks_usec() - started_usec >= 2500:
-            return
-
-    for i in range(_retiring_chunks.size() - 1, -1, -1):
-        var stale_chunk: VoxelTerrainChunk = _retiring_chunks[i]
-        while retired_count < 8 and stale_chunk.retire_one_old_node():
-            retired_count += 1
-            if retired_count >= 2 and Time.get_ticks_usec() - started_usec >= 2500:
-                return
-        if stale_chunk._retired_nodes.is_empty():
-            _retiring_chunks.remove_at(i)
-            _recycle_retired_chunk(stale_chunk)
-        if retired_count >= 8 or Time.get_ticks_usec() - started_usec >= 2500:
-            return
+    _chunk_resource_manager.retire_stale_resources()
 
 func _place_player_on_surface() -> void:
     if _player == null or _spawn_validation_in_progress:

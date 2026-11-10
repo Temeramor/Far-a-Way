@@ -17,9 +17,7 @@ func regenerate_with_seed(new_seed: int) -> void:
     _queued.clear()
     _wanted.clear()
     _completed_jobs.clear()
-    _mesh_cache.clear()
-    _mesh_cache_order.clear()
-    _mesh_cache_bytes = 0
+    _mesh_data_cache.clear()
 
     # Hide the old world immediately; release mesh buffers gradually over later frames.
     # In-flight tasks finish, but their old epoch will reject their results.
@@ -28,7 +26,7 @@ func regenerate_with_seed(new_seed: int) -> void:
         old_chunk.set_render_active(false)
         old_chunk._retire_current_generation()
         remove_child(old_chunk)
-        _retiring_chunks.append(old_chunk)
+        _chunk_resource_manager.track_retiring_chunk(old_chunk)
     _chunks.clear()
 
     _generator = GeneratorScript.new(seed_value, world_size_m)

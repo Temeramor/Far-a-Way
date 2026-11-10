@@ -214,7 +214,7 @@ func get_debug_text() -> String:
         seed_value, _chunks.size(), lod_counts[0], lod_counts[1], lod_counts[2], lod_counts[3], lod_counts[4], lod_counts[5], lod_counts[6], lod_counts[7],
         render_vertices, render_indices, mesh_memory_mb, video_memory_mb, primitives, shadow_vertices,
         collider_count, _running_tasks.size(), _queued.size(), near_pending, _stale_result_count,
-        _mesh_cache.size(), float(_mesh_cache_bytes) / 1048576.0, _chunk_pool.size(),
+        _mesh_data_cache.get_entry_count(), float(_mesh_data_cache.get_bytes_used()) / 1048576.0, _chunk_resource_manager.get_pool_size(),
         _avg_ms(l0), _build_p95_cached_usec[0] / 1000.0, _avg_ms(l1), _build_p95_cached_usec[1] / 1000.0,
         _refresh_p95_cached_usec / 1000.0, _queue_wait_p95_cached_usec / 1000.0,
         float(_max_queue_wait_usec) / 1000.0, _apply_wait_p95_cached_usec / 1000.0,

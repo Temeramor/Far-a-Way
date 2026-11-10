@@ -43,10 +43,8 @@ func _apply_completed_jobs() -> void:
         _completed_jobs.erase(coord)
         var chunk: VoxelTerrainChunk = _chunks.get(coord) as VoxelTerrainChunk
         if chunk == null:
-            if not _chunk_pool.is_empty():
-                chunk = _chunk_pool.pop_back()
-                chunk.set_render_active(true)
-            else:
+            chunk = _chunk_resource_manager.take_pooled_chunk()
+            if chunk == null:
                 chunk = ChunkScript.new()
             chunk.name = "VoxelChunk_%d_%d" % [coord.x, coord.y]
             add_child(chunk)

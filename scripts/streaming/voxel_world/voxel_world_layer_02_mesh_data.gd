@@ -23,37 +23,13 @@ func _distance_to_tile_xz(point: Vector2, coord: Vector2i) -> float:
     return sqrt(nearest_x * nearest_x + nearest_z * nearest_z)
 
 func _make_mesh_cache_key(coord: Vector2i, request: Dictionary, neighbors: Dictionary, build_collision: bool) -> String:
-    return "%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d" % [
-        seed_value, coord.x, coord.y, int(request["lod"]),
-        int(request.get("step_voxels", 1)), int(bool(request["collision"])),
-        int(build_collision), int(bool(request.get("shadow_proxy", false))),
-        int(neighbors.get("left", -1)), int(neighbors.get("right", -1)),
-        int(neighbors.get("north", -1)), int(neighbors.get("south", -1))
-    ]
+    return _mesh_data_cache.make_key(seed_value, coord, request, neighbors, build_collision)
 
 func _estimate_mesh_data_bytes(data: Dictionary) -> int:
-    var bytes: int = 0
-    var vertices: PackedVector3Array = data.get("vertices", PackedVector3Array())
-    var normals: PackedVector3Array = data.get("normals", PackedVector3Array())
-    var colors: PackedColorArray = data.get("colors", PackedColorArray())
-    var indices: PackedInt32Array = data.get("indices", PackedInt32Array())
-    var shadow_vertices: PackedVector3Array = data.get("smooth_shadow_vertices", PackedVector3Array())
-    var shadow_normals: PackedVector3Array = data.get("smooth_shadow_normals", PackedVector3Array())
-    var shadow_indices: PackedInt32Array = data.get("smooth_shadow_indices", PackedInt32Array())
-    bytes += vertices.size() * 12 + normals.size() * 12 + colors.size() * 16 + indices.size() * 4
-    bytes += shadow_vertices.size() * 12 + shadow_normals.size() * 12 + shadow_indices.size() * 4
-    var collision_data: Dictionary = data.get("collision_height_map", {})
-    var collision_heights: PackedFloat32Array = collision_data.get("heights", PackedFloat32Array())
-    bytes += collision_heights.size() * 4
-    return bytes
+    return _mesh_data_cache.estimate_data_bytes(data)
 
 func _get_cached_mesh(cache_key: String) -> Dictionary:
-    if cache_key.is_empty() or not _mesh_cache.has(cache_key):
-        return {}
-    var record: Dictionary = _mesh_cache[cache_key]
-    _mesh_cache_order.erase(cache_key)
-    _mesh_cache_order.append(cache_key)
-    return record.get("data", {})
+    return _mesh_data_cache.get_mesh(cache_key)
 
 func _create_mesh_builder() -> Object:
     if not ClassDB.class_exists("VoxEnNativeBuilder"):

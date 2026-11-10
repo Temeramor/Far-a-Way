@@ -8,9 +8,8 @@ const LOD_KEY_STRIDE: int = 100000
 const BASE_MESH_STEP_VOXELS: int = 1
 const DESIGN_FOV_DEGREES: float = 82.0
 const TERRAIN_SHADOW_DISTANCE_M: float = 640.0
-const MAX_MESH_CACHE_BYTES: int = 48 * 1024 * 1024
-const MAX_MESH_CACHE_ENTRIES: int = 32
-const MAX_POOLED_CHUNK_NODES: int = 32
+const MeshDataCacheScript = preload("res://scripts/streaming/mesh_data_cache.gd")
+const ChunkResourceManagerScript = preload("res://scripts/streaming/chunk_resource_manager.gd")
 const GeneratorScript = preload("res://scripts/world/voxel_generator.gd")
 const ChunkScript = preload("res://scripts/streaming/voxel_chunk.gd")
 
@@ -46,12 +45,8 @@ var _running_tasks: Dictionary = {}
 var _running_by_coord: Dictionary = {}
 var _completed_jobs: Dictionary = {}
 var lod_target_pixels: float = 3.0
-var _mesh_cache: Dictionary = {}
-var _mesh_cache_order: Array[String] = []
-var _mesh_cache_bytes: int = 0
-var _chunk_pool: Array[VoxelTerrainChunk] = []
-var _retirement_queue: Array[VoxelTerrainChunk] = []
-var _retirement_lookup: Dictionary = {}
+var _mesh_data_cache = MeshDataCacheScript.new()
+var _chunk_resource_manager = ChunkResourceManagerScript.new()
 var _refresh_timer: float = 0.0
 var _debug_lod_colors: bool = false
 var _last_player_position := Vector2(INF, INF)
@@ -66,7 +61,6 @@ var _chunk_size_voxels: int
 var _world_min_x: float
 var _world_min_z: float
 var _chunks_per_axis: int
-var _retiring_chunks: Array[VoxelTerrainChunk] = []
 var _generation_epoch: int = 0
 var _startup_load_pending: bool = true
 var _spawn_validation_in_progress: bool = false

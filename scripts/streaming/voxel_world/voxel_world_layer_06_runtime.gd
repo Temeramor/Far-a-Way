@@ -245,7 +245,7 @@ func _refresh_streaming() -> void:
             old_chunk.set_render_active(false)
             old_chunk._retire_current_generation()
             remove_child(old_chunk)
-            _retiring_chunks.append(old_chunk)
+            _chunk_resource_manager.track_retiring_chunk(old_chunk)
             _chunks.erase(existing_coord)
             _completed_jobs.erase(existing_coord)
             _queued.erase(existing_coord)

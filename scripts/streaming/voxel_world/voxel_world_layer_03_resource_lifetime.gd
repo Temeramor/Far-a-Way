@@ -47,45 +47,12 @@ func _p95_usec(samples: Array) -> float:
     return float(ordered[index])
 
 func _queue_chunk_retirement(chunk: VoxelTerrainChunk) -> void:
-    if chunk == null or not is_instance_valid(chunk):
-        return
-    var instance_id: int = chunk.get_instance_id()
-    if _retirement_lookup.has(instance_id):
-        return
-    _retirement_lookup[instance_id] = true
-    _retirement_queue.append(chunk)
+    _chunk_resource_manager.queue_retirement(chunk)
 
-func _recycle_retired_chunk(chunk: VoxelTerrainChunk) -> void:
-    if chunk == null or not is_instance_valid(chunk):
-        return
-    chunk.set_render_active(false)
-    if _chunk_pool.size() < MAX_POOLED_CHUNK_NODES:
-        chunk.name = "PooledVoxelChunk"
-        _chunk_pool.append(chunk)
-    else:
-        chunk.free()
 
 func _exit_tree() -> void:
-    # Detached retired meshes and pooled chunk shells are outside the SceneTree; release them explicitly.
-    for chunk_value in _chunks.values():
-        var chunk: VoxelTerrainChunk = chunk_value as VoxelTerrainChunk
-        while chunk.retire_one_old_node():
-            pass
-    for stale_chunk in _retiring_chunks:
-        while stale_chunk.retire_one_old_node():
-            pass
-        if is_instance_valid(stale_chunk):
-            stale_chunk.free()
-    _retiring_chunks.clear()
-    for pooled_chunk in _chunk_pool:
-        if is_instance_valid(pooled_chunk):
-            pooled_chunk.free()
-    _chunk_pool.clear()
-    _retirement_queue.clear()
-    _retirement_lookup.clear()
-    _mesh_cache.clear()
-    _mesh_cache_order.clear()
-    _mesh_cache_bytes = 0
+    _chunk_resource_manager.shutdown(_chunks)
+    _mesh_data_cache.clear()
 
 func regenerate_with_random_seed() -> void:
     var rng := RandomNumberGenerator.new()
