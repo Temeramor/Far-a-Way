@@ -1,4 +1,4 @@
-extends SceneTree
+extends Node
 
 const ENTRYPOINTS: Array[Script] = [
     preload("res://scripts/streaming/voxel_world.gd"),
@@ -7,12 +7,12 @@ const ENTRYPOINTS: Array[Script] = [
 ]
 
 
-func _initialize() -> void:
+func _ready() -> void:
     for script_resource: Script in ENTRYPOINTS:
         var instance: Object = script_resource.new()
         if not instance is Node3D:
             push_error("Refactored entry point must remain a Node3D: %s" % script_resource.resource_path)
-            quit(1)
+            get_tree().quit(1)
             return
         instance.free()
-    quit(0)
+    get_tree().quit(0)
