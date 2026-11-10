@@ -2,6 +2,68 @@
 
 ## Неизданное
 
+### 0.1.0.4 — структурная реорганизация
+
+- Разделены исходники VoxelWorld, VoxelSurfaceScatter и WorldController; сохранены исходные пути точек входа, class_name, exports и сигналы.
+- Нативный builder разделён на sampler, heightfield mesher и отдельный builder данных HeightMap collision; публичные методы GDExtension сохранены.
+- ADR-001…ADR-017 перенесены в docs/decisions; добавлена карта архитектуры и зависимостей модулей.
+- Добавлен Windows x86-64 GitHub Actions workflow: сборка debug/release GDExtension, импорт проекта и smoke/parity tests.
+- Версия проекта обновлена до 0.1.0.4. Алгоритмы генерации, параметры террейна, LOD, streaming priorities и generation_epoch не менялись.
+- Godot и DLL не запускались локально при подготовке коммита; результат должен быть подтверждён Windows CI.
+
+**Файлы, изменённые или добавленные в 0.1.0.4:**
+
+- `.github/workflows/windows-native.yml`
+- `CHANGELOG.md`
+- `README.md`
+- `ROADMAP.md`
+- `VERSION`
+- `docs/architecture/README.md`
+- `docs/architecture/native-builder.md`
+- `docs/architecture/streaming.md`
+- `docs/decisions/ADR-001.md`
+- `docs/decisions/ADR-002.md`
+- `docs/decisions/ADR-003.md`
+- `docs/decisions/ADR-004.md`
+- `docs/decisions/ADR-005.md`
+- `docs/decisions/ADR-006.md`
+- `docs/decisions/ADR-007.md`
+- `docs/decisions/ADR-008.md`
+- `docs/decisions/ADR-009.md`
+- `docs/decisions/ADR-010.md`
+- `docs/decisions/ADR-011.md`
+- `docs/decisions/ADR-012.md`
+- `docs/decisions/ADR-013.md`
+- `docs/decisions/ADR-014.md`
+- `docs/decisions/ADR-015.md`
+- `docs/decisions/ADR-016.md`
+- `docs/decisions/ADR-017.md`
+- `native/src/voxen_heightfield_collision_builder.h`
+- `native/src/voxen_heightfield_mesher.h`
+- `native/src/voxen_native_builder.cpp`
+- `native/src/voxen_terrain_sampler.h`
+- `project.godot`
+- `scripts/rendering/voxel_surface_scatter.gd`
+- `scripts/rendering/voxel_surface_scatter/voxel_surface_scatter_layer_01_lod_geometry.gd`
+- `scripts/rendering/voxel_surface_scatter/voxel_surface_scatter_layer_02_runtime.gd`
+- `scripts/rendering/voxel_surface_scatter/voxel_surface_scatter_state.gd`
+- `scripts/streaming/voxel_world.gd`
+- `scripts/streaming/voxel_world/voxel_world_layer_01_core.gd`
+- `scripts/streaming/voxel_world/voxel_world_layer_02_mesh_data.gd`
+- `scripts/streaming/voxel_world/voxel_world_layer_03_resource_lifetime.gd`
+- `scripts/streaming/voxel_world/voxel_world_layer_04_streaming.gd`
+- `scripts/streaming/voxel_world/voxel_world_layer_05_lod.gd`
+- `scripts/streaming/voxel_world/voxel_world_layer_06_runtime.gd`
+- `scripts/streaming/voxel_world/voxel_world_layer_07_orchestration.gd`
+- `scripts/streaming/voxel_world/voxel_world_state.gd`
+- `scripts/world/world_controller.gd`
+- `scripts/world/world_controller/world_controller_layer_01_environment.gd`
+- `scripts/world/world_controller/world_controller_layer_02_ui_generation.gd`
+- `scripts/world/world_controller/world_controller_layer_03_runtime.gd`
+- `scripts/world/world_controller/world_controller_state.gd`
+- `tests/refactor_entrypoints_smoke_test.gd`
+
+
 ### Берег
 - **Причина прямого скалистого берега найдена и исправлена.** Линия воды (h = 0) строилась по растру 2048², а не по аналитическому SDF берега: ступенька суша/море была «прибита» к узлам сетки (±3,9 м), а шум морского дна на полную силу поднимал сушу над водой по ту сторону SDF (в полосе SDF −10…0 м над водой было 56 % точек). Теперь высота у берега — непрерывная функция SDF (`pg_island_terrain.h`): скалистые берега получают крутой профиль, пляжи — пологий; шум дна затухает у берега.
 - Добавлена шероховатость берега ниже разрешения растра (`coast_fine`, 5–22 м, амплитуда 0,6 м на пляжах и до 4,5 м на скалах, масштабируется градиентом SDF). `surface_height` переиндексирует растр по невязке аналитический/растровый SDF, поэтому линия воды и скальный склон повторяют эту неровность.

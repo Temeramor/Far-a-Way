@@ -213,3 +213,11 @@ godot --headless --path . --script res://tests/native_chunk_benchmark.gd
 - tests/ — smoke-тесты генерации, LOD, теней и декора.
 
 Будущие RTS/выживание и биомы следует добавлять отдельными модулями данных и игрового процесса, а не включать в генератор террейна. Предполагаемые направления — scripts/biomes/ для параметров биомов и scripts/gameplay/ для юнитов, строительства, ресурсов и механик выживания. Пока эти директории не содержат активной игровой логики.
+
+## Архитектура исходников (0.1.0.4)
+
+Сохранены публичные пути трёх основных GDScript-точек входа: `scripts/streaming/voxel_world.gd`, `scripts/rendering/voxel_surface_scatter.gd` и `scripts/world/world_controller.gd`. Их реализация разложена по слоям в одноимённых подпапках; state-файлы содержат поля и exports, остальные файлы — методы, сгруппированные по зависимостям. Сцены и внешние preload продолжают ссылаться на прежние пути.
+
+Нативный builder разделён на terrain sampler, heightfield mesher и отдельный builder данных HeightMap collision. Алгоритмы и публичный API сохранены. Это по-прежнему heightfield-система, а не объёмный SDF.
+
+Подробная карта: [docs/architecture/README.md](docs/architecture/README.md). ADR из ROADMAP: [docs/decisions/](docs/decisions/).

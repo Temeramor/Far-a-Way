@@ -1,0 +1,73 @@
+name: Windows native build and smoke tests
+
+on:
+  push:
+    branches: [main, "0.1.0.4"]
+  pull_request:
+    branches: [main, "0.1.0.4"]
+
+jobs:
+  windows-x86_64:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      GODOT_VERSION: "4.7.2"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install SCons
+        run: python -m pip install --upgrade scons
+      - name: Fetch matching godot-cpp bindings
+        shell: pwsh
+        run: git clone --depth 1 --branch 10.0.0-stable https://github.com/godotengine/godot-cpp.git native/godot-cpp
+      - name: Build GDExtension (debug and release)
+        working-directory: native
+        shell: pwsh
+        run: |
+          scons platform=windows target=template_debug arch=x86_64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          scons platform=windows target=template_release arch=x86_64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install Godot console
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "godot.zip"
+          $url = "https://github.com/godotengine/godot/releases/download/$($env:GODOT_VERSION)-stable/Godot_v$($env:GODOT_VERSION)-stable_win64_console.exe.zip"
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath "$env:RUNNER_TEMP/godot" -Force
+          $exe = Get-ChildItem "$env:RUNNER_TEMP/godot" -Filter "*console.exe" -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "Godot console executable was not found in the release archive." }
+          Copy-Item $exe.FullName "$env:GITHUB_WORKSPACE/godot.exe"
+      - name: Import project and validate scripts
+        shell: pwsh
+        run: |
+          & .\\godot.exe --headless --editor --path . --quit
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run smoke and parity tests
+        shell: pwsh
+        run: |
+          $tests = @(
+            "refactor_entrypoints_smoke_test.gd",
+            "native_builder_smoke_test.gd",
+            "native_terrain_sampler_test.gd",
+            "pg_island_native_terrain_test.gd",
+            "terrain_smoke_test.gd",
+            "lod_hierarchy_smoke_test.gd",
+            "shadow_lod_smoke_test.gd",
+            "voxel_surface_scatter_smoke_test.gd",
+            "decoration_spatial_index_test.gd",
+            "fastnoise_parity_test.gd"
+          )
+          foreach ($test in $tests) {
+            Write-Host "Running $test"
+            & .\\godot.exe --headless --path . --script "res://tests/$test"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
