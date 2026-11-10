@@ -44,20 +44,38 @@ jobs:
         shell: pwsh
         run: |
           $archive = Join-Path $env:RUNNER_TEMP "godot.zip"
-          $url = "https://github.com/godotengine/godot/releases/download/$($env:GODOT_VERSION)-stable/Godot_v$($env:GODOT_VERSION)-stable_win64_console.exe.zip"
+          $url = "https://github.com/godotengine/godot/releases/download/$($env:GODOT_VERSION)-stable/Godot_v$($env:GODOT_VERSION)-stable_win64.exe.zip"
+          $expectedHash = "731980f9608d61333e5baf54a2ef17210acc7a538446c0cb9969f002aca1e953"
           Invoke-WebRequest -Uri $url -OutFile $archive
+          if (-not (Test-Path $archive) -or (Get-Item $archive).Length -lt 1000000) {
+            throw "Godot release archive is missing or unexpectedly small."
+          }
+          $actualHash = (Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $expectedHash) {
+            throw "Godot archive SHA256 mismatch. Expected $expectedHash, got $actualHash."
+          }
           Expand-Archive -Path $archive -DestinationPath "$env:RUNNER_TEMP/godot" -Force
-          $exe = Get-ChildItem "$env:RUNNER_TEMP/godot" -Filter "*console.exe" -Recurse | Select-Object -First 1
-          if (-not $exe) { throw "Godot console executable was not found in the release archive." }
+          $exeName = "Godot_v$($env:GODOT_VERSION)-stable_win64.exe"
+          $exe = Get-ChildItem "$env:RUNNER_TEMP/godot" -Filter $exeName -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "Expected Godot executable $exeName was not found in the release archive." }
           Copy-Item $exe.FullName "$env:GITHUB_WORKSPACE/godot.exe"
+          & "$env:GITHUB_WORKSPACE/godot.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "Downloaded Godot executable failed its version check." }
       - name: Import project and validate scripts
         shell: pwsh
         run: |
-          & .\godot.exe --headless --editor --path . --quit
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Start-Transcript -Path artifacts/project-import.log
+          try {
+            & .\godot.exe --headless --editor --path . --quit
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Stop-Transcript
+          }
       - name: Run smoke and parity tests
         shell: pwsh
         run: |
+          Start-Transcript -Path artifacts/tests.log
           $tests = @(
             "refactor_entrypoints_smoke_test.gd",
             "mesh_data_cache_test.gd",
@@ -72,8 +90,26 @@ jobs:
             "decoration_spatial_index_test.gd",
             "fastnoise_parity_test.gd"
           )
+          $failed = @()
           foreach ($test in $tests) {
             Write-Host "Running $test"
             & .\godot.exe --headless --path . --script "res://tests/$test"
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            if ($LASTEXITCODE -ne 0) {
+              $failed += $test
+              Write-Error "Test failed: $test (exit $LASTEXITCODE)"
+              break
+            }
           }
+          Stop-Transcript
+          if ($failed.Count -gt 0) {
+            Set-Content -Path artifacts/failed-tests.txt -Value $failed
+            exit 1
+          }
+      - name: Upload CI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-ci-diagnostics-${{ github.run_number }}
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 14
