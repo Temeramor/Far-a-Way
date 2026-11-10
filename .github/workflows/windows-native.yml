@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, "0.1.0.4", "0.1.0.4-new"]
   pull_request:
-    branches: [main, "0.1.0.4"]
+    branches: [main, "0.1.0.4", "0.1.0.4-new"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -108,7 +108,7 @@ jobs:
       - name: Run native chunk benchmark
         shell: pwsh
         env:
-          VOXEN_BENCHMARK_BASELINE_PATH: artifacts/native-chunk-benchmark-baseline.json
+          VOXEN_BENCHMARK_BASELINE_PATH: ${{ github.workspace }}/artifacts/native-chunk-benchmark-baseline.json
         run: |
           Start-Transcript -Path artifacts/native-chunk-benchmark.log
           & .\godot.exe --headless --path . --script res://tests/native_chunk_benchmark.gd
