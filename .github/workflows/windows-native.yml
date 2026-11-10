@@ -120,17 +120,32 @@ jobs:
             Write-Host "Running $test"
             $testName = [System.IO.Path]::GetFileNameWithoutExtension($test)
             $testLog = "artifacts/test-$testName.log"
-            if ($test.StartsWith("res://")) {
-              # Godot accepts a scene path as a positional project argument. This keeps
-              # project Autoloads active without mutating project.godot during CI.
-              $testOutput = @(& .\godot.exe --headless --path . --quit-after 120 $test 2>&1)
-              $testExit = $LASTEXITCODE
-            } else {
-              $testOutput = @(& .\godot.exe --headless --path . --script "res://tests/$test" 2>&1)
-              $testExit = $LASTEXITCODE
+            $godotExe = Join-Path $env:GITHUB_WORKSPACE "godot.exe"
+            if (-not (Test-Path -LiteralPath $godotExe -PathType Leaf)) {
+              throw "Godot executable is missing: $godotExe"
             }
-            $testOutput | Tee-Object -FilePath $testLog
-            $testOutputText = $testOutput -join "`n"
+            $stdoutLog = "$testLog.stdout"
+            $stderrLog = "$testLog.stderr"
+            $godotArgs = @("--headless", "--path", ".")
+            if ($test.StartsWith("res://")) {
+              # Launch the scene as the project main scene so project Autoloads initialize.
+              $godotArgs += @("--quit-after", "120", $test)
+            } else {
+              $godotArgs += @("--script", "res://tests/$test")
+            }
+            Write-Host "Launching: $godotExe $($godotArgs -join ' ')"
+            $process = Start-Process -FilePath $godotExe -ArgumentList $godotArgs -WorkingDirectory $env:GITHUB_WORKSPACE -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
+            $testExit = $process.ExitCode
+            $stdout = if (Test-Path $stdoutLog) { Get-Content -LiteralPath $stdoutLog -Raw } else { "" }
+            $stderr = if (Test-Path $stderrLog) { Get-Content -LiteralPath $stderrLog -Raw } else { "" }
+            $testOutputText = $stdout + "`n" + $stderr
+            Set-Content -LiteralPath $testLog -Value $testOutputText
+            Write-Host "Godot process exit code: $testExit"
+            if ([string]::IsNullOrWhiteSpace($testOutputText)) {
+              Write-Error "Godot produced no output for $test; inspect process launch diagnostics."
+            } else {
+              Write-Host $testOutputText
+            }
             $hasGodotErrors = $testOutputText -match "SCRIPT ERROR|Parse Error|ERROR:"
             $missingPassMarker = $test.StartsWith("res://") -and $testOutputText -notmatch "PASS: refactor_entrypoints_smoke_test"
             if ($testExit -ne 0 -or $hasGodotErrors -or $missingPassMarker) {
