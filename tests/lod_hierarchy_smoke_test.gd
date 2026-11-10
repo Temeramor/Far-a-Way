@@ -53,7 +53,7 @@ func _run() -> void:
     }
     world._store_cached_mesh("screen-space-smoke", cache_payload)
     var recovered_payload: Dictionary = world._get_cached_mesh("screen-space-smoke")
-    if recovered_payload.is_empty() or world._mesh_cache_bytes <= 0:
+    if recovered_payload.is_empty() or world._mesh_data_cache.get_bytes_used() <= 0:
         errors.append("The LRU mesh cache should preserve and return packed mesh arrays.")
 
     # The active viewport's boundaries must map each side of every threshold to adjacent LODs.

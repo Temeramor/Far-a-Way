@@ -65,6 +65,7 @@
 - `scripts/world/world_controller/world_controller_layer_03_runtime.gd`
 - `scripts/world/world_controller/world_controller_state.gd`
 - `tests/refactor_entrypoints_smoke_test.gd`
+- `tests/lod_hierarchy_smoke_test.gd`
 - `tests/mesh_data_cache_test.gd`
 - `tests/chunk_resource_manager_test.gd`
 
