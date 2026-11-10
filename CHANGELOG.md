@@ -21,6 +21,7 @@
 ## Неизданное
 
 ### 0.1.0.4 — структурная реорганизация
+- Исправлен CI import-step: прежний вызов `--editor --quit` завершал Godot до завершения импорта ресурсов и генерации global script class cache. Теперь используется `--import` с ожиданием завершения, сохраняется полный лог, проверяются class cache и импортированная sky texture, а также ошибки парсинга.
 
 - Разделены исходники VoxelWorld, VoxelSurfaceScatter и WorldController; сохранены исходные пути точек входа, class_name, exports и сигналы.
 - Нативный builder разделён на sampler, heightfield mesher и отдельный builder данных HeightMap collision; публичные методы GDExtension сохранены.
