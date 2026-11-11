@@ -1,5 +1,13 @@
 # Журнал изменений
 
+## Обновление 0.1.0.4 — синхронизация веток и подтверждение core CI (11 ноября 2026)
+
+- Проверено сравнение `0.1.0.4-new` → `0.1.0.4`: исходная ветка не содержит уникальных коммитов (ahead_by = 0), отстаёт от целевой на два коммита; перенос выполнен ранее через PR #17, повторное слияние не требуется.
+- Подтверждён успешный целевой Windows core CI: [run 43039732310](https://github.com/Temeramor/Far-a-Way/actions/runs/43039732310), commit `c8364d45d8c0a5a75d1efd13906804c3f3943926`. Успешны Debug/Release GDExtension build, Godot 4.7.2 import/script validation, smoke tests и native terrain field invariants.
+- Исправлены метаданные `ROADMAP.md`: рабочая ветка указана как `0.1.0.4`, текущая база — версия `0.1.0.4`; обновлён статус целевого CI и ближайший фокус.
+- Следующий пункт CI: вручную запустить `windows-extended.yml`, проверить benchmark LOD0–LOD7 и восстановление/создание baseline cache. Запуск пока не выполнен.
+- Код генерации/стриминга в этом обновлении не менялся: перед выделением `StreamingPlanner` и `MeshJobScheduler` требуется зафиксировать их state/epoch/LOD contracts и регрессионные критерии.
+
 ## Work in progress — CI and baseline hardening (0.1.0.4-new)
 
 - Corrected the Godot 4.7.2 Windows x64 download URL to the official release asset `Godot_v4.7.2-stable_win64.exe.zip`; added SHA-256 verification and executable version check.
