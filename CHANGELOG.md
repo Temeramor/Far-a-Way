@@ -1,3 +1,11 @@
+## Синхронизация веток и исправление extended CI (11 ноября 2026)
+
+- Ветка `0.1.0.4-new` fast-forward-синхронизирована с `0.1.0.4`: обе ветки указывали на общий commit `94ed92961a8f187f2f305482ea53c9b04d92416e`; уникальных коммитов в старой `0.1.0.4-new` не было.
+- Исправлен запуск smoke/parity tests: тесты теперь выполняются как `Node` в `tests/ci_test_runner.tscn`, то есть в обычном project tree с инициализированным Autoload `GameSettings`. Это устраняет подтверждённую причину ошибки `Identifier not found: GameSettings` при использовании `--script`.
+- В workflow убрана остановка после первой неудачи; результаты всех семи тестов агрегируются, для успеха требуется отдельный `PASS` marker.
+- Actions обновлены до Node 24-compatible major versions (`checkout@v7`, `setup-python@v7`, `cache@v6`, `upload-artifact@v7`). Для `ilammy/msvc-dev-cmd@v1`, у которого пока нет upstream Node 24 release, включён переходный `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`.
+- Тесты и benchmark ещё не запускались после изменений. Extended workflow требует ручного запуска на ветке `0.1.0.4-new`; до успешного run не считать исправление подтверждённым.
+
 # Журнал изменений
 
 ## Подтверждение core CI после архитектурной документации (11 ноября 2026)
