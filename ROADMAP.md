@@ -40,7 +40,7 @@
 
 ### Следующий рабочий фокус
 
-1. Повторно проверить Windows CI после исправления полного Godot import: подтвердить сборку, SHA-256, import cache, smoke-тесты и проверки инвариантов нативного terrain field и benchmark; устранить следующие ошибки, если они проявятся.
+1. Повторно проверить Windows CI после исправления полного Godot import: подтвердить сборку, SHA-256, import cache, smoke-тесты и проверки инвариантов нативного terrain field. Benchmark запускать отдельно в extended workflow.
 2. Завершить baseline: выбрать контрольные seed, получить визуальные эталоны и диагностические карты, накопить повторяемые benchmark measurements.
 3. Закрыть оставшуюся часть Этапа 1 малыми независимыми шагами: контракты и extraction для planner/scheduler, затем TerrainProfile/GenerationContext и TerrainField adapter; каждый шаг — с parity/regression тестами.
 4. Реализовать базовый WorldSave до любых редактируемых объёмных данных.
