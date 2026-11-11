@@ -99,6 +99,7 @@ jobs:
       - name: Run smoke and parity tests
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           Start-Transcript -Path artifacts/tests.log
           $tests = @(
             "mesh_data_cache_test.gd",
@@ -110,34 +111,48 @@ jobs:
             "terrain_smoke_test.gd"
           )
           $failed = @()
+          $godotExe = Join-Path $env:GITHUB_WORKSPACE "godot.exe"
+          $runnerScene = "res://tests/ci_test_runner.tscn"
+          if (-not (Test-Path -LiteralPath $godotExe -PathType Leaf)) {
+            throw "Godot executable is missing: $godotExe"
+          }
+          if (-not (Test-Path -LiteralPath "tests/ci_test_runner.tscn" -PathType Leaf)) {
+            throw "Project-tree smoke test runner scene is missing."
+          }
+
           foreach ($test in $tests) {
-            Write-Host "Running $test"
             $testName = [System.IO.Path]::GetFileNameWithoutExtension($test)
             $testLog = "artifacts/test-$testName.log"
-            $godotExe = Join-Path $env:GITHUB_WORKSPACE "godot.exe"
-            if (-not (Test-Path -LiteralPath $godotExe -PathType Leaf)) {
-              throw "Godot executable is missing: $godotExe"
-            }
             $stdoutLog = "$testLog.stdout"
             $stderrLog = "$testLog.stderr"
-            $godotArgs = @("--headless", "--path", ".")
-            if ($test.StartsWith("res://")) {
-              # Launch the scene as the project main scene so project Autoloads initialize.
-              $godotArgs += @("--quit-after", "120", $test)
-            } else {
-              $godotArgs += @("--script", "res://tests/$test")
+            $previousTestScript = $env:VOXEN_TEST_SCRIPT
+            try {
+              Write-Host "Running $test in the initialized project tree"
+              $env:VOXEN_TEST_SCRIPT = "res://tests/$test"
+              $godotArgs = @("--headless", "--path", ".", $runnerScene)
+              Write-Host "Launching: $godotExe $($godotArgs -join ' ')"
+              $process = Start-Process -FilePath $godotExe -ArgumentList $godotArgs -WorkingDirectory $env:GITHUB_WORKSPACE -NoNewWindow -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
+              $testTimedOut = -not $process.WaitForExit(180000)
+              if ($testTimedOut) {
+                Write-Error "Test timed out after 180 seconds: $test"
+                try { $process.Kill() } catch { Write-Warning "Could not terminate timed-out Godot process: $_" }
+                $process.WaitForExit(10000) | Out-Null
+                $testExit = 124
+              } else {
+                $testExit = $process.ExitCode
+              }
+            } catch {
+              Write-Error "Could not launch test $test : $_"
+              $testTimedOut = $false
+              $testExit = 125
+            } finally {
+              if ($null -eq $previousTestScript) {
+                Remove-Item Env:VOXEN_TEST_SCRIPT -ErrorAction SilentlyContinue
+              } else {
+                $env:VOXEN_TEST_SCRIPT = $previousTestScript
+              }
             }
-            Write-Host "Launching: $godotExe $($godotArgs -join ' ')"
-            $process = Start-Process -FilePath $godotExe -ArgumentList $godotArgs -WorkingDirectory $env:GITHUB_WORKSPACE -NoNewWindow -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
-            $testTimedOut = -not $process.WaitForExit(180000)
-            if ($testTimedOut) {
-              Write-Error "Test timed out after 180 seconds: $test"
-              try { $process.Kill() } catch { Write-Warning "Could not terminate timed-out Godot process: $_" }
-              $process.WaitForExit(10000) | Out-Null
-              $testExit = 124
-            } else {
-              $testExit = $process.ExitCode
-            }
+
             $stdout = if (Test-Path $stdoutLog) { Get-Content -LiteralPath $stdoutLog -Raw } else { "" }
             $stderr = if (Test-Path $stderrLog) { Get-Content -LiteralPath $stderrLog -Raw } else { "" }
             $testOutputText = $stdout + "`n" + $stderr
@@ -148,19 +163,24 @@ jobs:
             } else {
               Write-Host $testOutputText
             }
+
             $hasGodotErrors = $testOutputText -match "SCRIPT ERROR|Parse Error|ERROR:"
-            $missingPassMarker = $test.StartsWith("res://") -and $testOutputText -notmatch "PASS: refactor_entrypoints_smoke_test"
+            $missingPassMarker = $testOutputText -notmatch ("PASS: " + [regex]::Escape($testName))
             if ($testTimedOut -or $testExit -ne 0 -or $hasGodotErrors -or $missingPassMarker) {
               $failed += $test
               Write-Error "Test failed: $test (exit $testExit, Godot errors: $hasGodotErrors, pass marker missing: $missingPassMarker)"
-              break
+            } else {
+              Write-Host "PASS: $test"
             }
           }
+
           Stop-Transcript
           if ($failed.Count -gt 0) {
             Set-Content -Path artifacts/failed-tests.txt -Value $failed
+            Write-Host "Failed tests: $($failed -join ', ')"
             exit 1
           }
+          Write-Host "All $($tests.Count) smoke and parity tests passed."
       # Restore the last successful benchmark baseline for this branch. The run-id
       # suffix creates a fresh immutable cache after each successful benchmark.
       - name: Restore native benchmark baseline
