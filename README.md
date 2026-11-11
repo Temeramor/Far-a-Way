@@ -185,6 +185,8 @@ scons platform=windows target=template_release arch=x86_64
 
 `native_terrain_field_invariants_test.gd` проверяет конечность, диапазон и повторяемость выборок текущего нативного PG-Island поля. Это намеренно **не** тест побитового совпадения с прежней GDScript/Godot FastNoiseLite-моделью: README выше фиксирует, что нативный порт использует другую конфигурацию шума и RNG.
 
+Обычный `Windows native build and core tests` workflow выполняет сборку, импорт и короткий обязательный набор smoke/invariant-тестов. `Windows extended tests and benchmark` запускается вручную или раз в неделю; он выполняет дополнительные тесты и 8 LOD-бенчмарков. Его 45-минутный лимит не является нормальным временем обязательного CI и не нужен для каждого изменения. Предыдущий успешный benchmark baseline хранится в Actions cache отдельно для ветки и версии Godot.
+
 При установленном Godot 4.7.2 тесты запускаются из корня проекта:
 
 ~~~powershell
