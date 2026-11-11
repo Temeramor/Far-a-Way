@@ -1,5 +1,10 @@
 # Журнал изменений
 
+## Подтверждение core CI после архитектурной документации (11 ноября 2026)
+
+- Успешно завершён Windows core CI [run 43045268776](https://github.com/Temeramor/Far-a-Way/actions/runs/43045268776) на commit `fa94139b4ea1729dbafb7cdcd119aab26f072512`: Debug/Release GDExtension build, Godot import/script validation и smoke/native field tests прошли.
+- `ROADMAP.md` обновлён: последняя подтверждённая целевая проверка указана как run 43045268776. Extended benchmark и визуальный baseline остаются открытыми задачами; до их подтверждения Этап 0 не закрываем.
+
 ## Архитектурная подготовка Этапа 1 — streaming contracts (11 ноября 2026)
 
 - Добавлен предложенный ADR-018 с контрактами `StreamingPlanner` и `MeshJobScheduler`: immutable inputs/job envelope, ownership `seed`/`generation_epoch`, stale-result rules, shared worker budget и acceptance tests.
