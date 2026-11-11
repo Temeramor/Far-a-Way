@@ -1,3 +1,10 @@
+## 11 ноября 2026 — benchmark harness correction
+
+- Source review после успешного run 43068959543 выявил некорректную методику `native_chunk_benchmark.gd`: sampler не конфигурировался до цикла, поэтому каждый `build_mesh_data()` заново выполнял `NoiseSet.configure_from_job()` и глобальную генерацию PG-Island.
+- Предыдущие значения около 11.2–11.7 s p95 не являются временем построения чанка и исключены из performance baseline.
+- Benchmark теперь готовит `VoxEnNativeBuilder` terrain sampler один раз перед LOD loop, проверяет конечную центральную высоту и печатает one-time `terrain_sampler_setup_ms` отдельно. Измеряемые вызовы используют один shared sampler, как и runtime.
+- Следующий Windows extended run должен подтвердить корректность новой методики; до этого численный baseline не утверждён.
+
 ## 11 ноября 2026 — Windows extended CI baseline
 
 - Успешно пройден Windows extended workflow run [43068959543](https://github.com/Temeramor/Far-a-Way/actions/runs/43068959543) на ветке `0.1.0.4-new`, commit `e3b0155bb1823286232432ab42d44cc824c65ba9`: Debug/Release GDExtension, Godot 4.7.2 import/script validation, все семь smoke/parity tests и native chunk benchmark.
