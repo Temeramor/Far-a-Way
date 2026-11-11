@@ -22,6 +22,13 @@
 - Extended workflow теперь выполняет весь список тестов, собирает все ошибки вместо остановки на первой и требует индивидуальный `PASS` marker от каждого теста.
 - Actions обновлены на Node 24-compatible версии; `ilammy/msvc-dev-cmd@v1` пока не имеет upstream Node 24 release, поэтому для него включён `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`.
 - Статус extended CI остаётся **не проверен** до ручного запуска workflow на `0.1.0.4-new`. Не считать benchmark или visual baseline завершёнными.
+### CI follow-up — run 43065249821 (11 ноября 2026)
+
+- Run 43065249821 подтвердил, что предыдущие исправления сработали: Debug/Release native build, Godot import и пять из семи smoke/parity tests прошли, включая `lod_hierarchy_smoke_test`; PowerShell корректно продолжил цикл после неудачного теста.
+- `voxel_surface_scatter_smoke_test` выявил две ошибки test/runtime contract: `_surface_info()` без проверки обращался к `_world._generator`, который отсутствует до старта мира; кроме того, тест передавал `VoxelSurfaceScatter` в генератор геометрии, хотя тот ожидает worker host с `_is_cancelled()` и другими CPU-helper методами. Добавлен безопасный fallback rock weight и тест теперь использует `VoxelSurfaceDecorJob`.
+- `terrain_smoke_test` использовал `VoxelTerrainGenerator` до вызова `configure_native_terrain_sampler()`. После перехода на отложенную подготовку это давало placeholder height `0.2 m`, из-за чего проверка морского дна падала; `assert` прекращал `_ready()` без `get_tree().quit()`, и CI ждал полный timeout. Тест теперь явно подготавливает один native sampler, повторный генератор использует тот же sampler, а проверки собирают ошибки и завершают процесс с кодом 1 без зависания.
+- Конструктор `VoxelTerrainGenerator` теперь формирует детерминированный GDScript mountain profile и при переданном shared native sampler; ранее ранний `return` пропускал создание профиля.
+- Исправления сохранены в `0.1.0.4-new`, но требуют следующего Windows extended CI run. До его результата Stage 0 extended CI остаётся не подтверждённым.
 ### CI follow-up — run 43061904037 (11 ноября 2026)
 
 - Run 43061904037 на commit `289b6c79ab1c79fbf210834d944742a5f892e9db`: Debug/Release native build, установка Godot 4.7.2 и импорт проекта прошли; `mesh_data_cache_test` и `chunk_resource_manager_test` завершились успешно.
