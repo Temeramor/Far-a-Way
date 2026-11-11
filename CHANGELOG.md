@@ -1,3 +1,10 @@
+## 11 ноября 2026 — повторное подтверждение benchmark и анализ variance
+
+- Успешно завершён второй независимый Windows extended run [43080357758](https://github.com/Temeramor/Far-a-Way/actions/runs/43080357758) на том же commit 387f15eccc6ba6bb11d2c12d93bbd4f4f7f5c3a7: Debug/Release GDExtension, Godot 4.7.2 import/script validation и все семь smoke/parity tests прошли.
+- Benchmark повторно выполнил setup sampler один раз (13,339.506 ms), затем пять измерений каждого LOD на общем sampler. p95 LOD0–LOD7: 27.251 / 13.145 / 3.751 / 1.330 / 0.605 / 0.281 / 0.202 / 0.164 ms.
+- Cache восстановил baseline первого исправленного run 43074187166; новый run прошёл 25% regression guard и сохранил собственную cache entry. При этом LOD1–LOD7 оказались на 19–50% быстрее первого run, тогда как LOD0 почти совпал. Разные Azure regions и малая выборка из пяти измерений не позволяют считать это доказанным ускорением.
+- Численный baseline оставлен предварительным; требуется третий независимый run на том же commit. При сохранении разброса нужно увеличить число измерений и отдельно документировать median/percentile и runner metadata.
+- ROADMAP.md и docs/testing/baseline.md обновлены; визуальный baseline (8–12 seed, фиксированные screenshots и diagnostic maps) всё ещё не выполнен.
 ## 11 ноября 2026 — подтверждение исправленного benchmark harness
 
 - Успешно завершён Windows extended workflow [run 43074187166](https://github.com/Temeramor/Far-a-Way/actions/runs/43074187166) на commit `21d479734ff2265ca20132b63be101c1f19c0c4e`: Debug/Release GDExtension build, Godot 4.7.2 import/script validation и все семь smoke/parity tests прошли.
