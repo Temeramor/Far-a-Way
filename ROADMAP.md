@@ -28,6 +28,7 @@
 - `voxel_surface_scatter_smoke_test` выявил две ошибки test/runtime contract: `_surface_info()` без проверки обращался к `_world._generator`, который отсутствует до старта мира; кроме того, тест передавал `VoxelSurfaceScatter` в генератор геометрии, хотя тот ожидает worker host с `_is_cancelled()` и другими CPU-helper методами. Добавлен безопасный fallback rock weight и тест теперь использует `VoxelSurfaceDecorJob`.
 - `terrain_smoke_test` использовал `VoxelTerrainGenerator` до вызова `configure_native_terrain_sampler()`. После перехода на отложенную подготовку это давало placeholder height `0.2 m`, из-за чего проверка морского дна падала; `assert` прекращал `_ready()` без `get_tree().quit()`, и CI ждал полный timeout. Тест теперь явно подготавливает один native sampler, повторный генератор использует тот же sampler, а проверки собирают ошибки и завершают процесс с кодом 1 без зависания.
 - Конструктор `VoxelTerrainGenerator` теперь формирует детерминированный GDScript mountain profile и при переданном shared native sampler; ранее ранний `return` пропускал создание профиля.
+- Два ранее успешных теста (`mesh_data_cache_test`, `chunk_resource_manager_test`) также переведены с `assert` на явную агрегацию ошибок и `quit(1)`, чтобы будущая регрессия завершала процесс сразу, а не превращалась в 180-секундный timeout.
 - Исправления сохранены в `0.1.0.4-new`, но требуют следующего Windows extended CI run. До его результата Stage 0 extended CI остаётся не подтверждённым.
 ### CI follow-up — run 43061904037 (11 ноября 2026)
 
