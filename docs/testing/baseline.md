@@ -1,6 +1,6 @@
 # Performance and generation baseline
 
-**Status:** corrected benchmark harness confirmed by Windows extended CI runs 43074187166 and 43080357758; numerical baseline remains provisional because cross-run timings vary materially; visual baseline is not approved.
+**Status:** benchmark harness v2 now collects 25 measured builds per LOD after one warm-up, preserves 200 raw samples and runner metadata, and reports median plus nearest-rank p95. The v2 implementation awaits Windows extended CI verification; numerical baseline remains provisional and visual baseline is not approved.
 **Engine:** Godot 4.7.2, Windows x86-64, Forward+.
 **World scale:** current project configuration and README describe an 8 × 8 km map.
 **Benchmark implementation:** tests/native_chunk_benchmark.gd.
@@ -17,9 +17,11 @@ These are existing regression-test inputs, not a claim that a visual reference s
 
 ## Automated checks
 
-The Windows workflow builds the GDExtension in debug and release configurations, imports the project headlessly, and runs the core smoke tests and native-field invariant checks. The native chunk benchmark exercises LOD0–LOD7 with five measured runs after one warm-up run and emits CSV columns:
+The Windows workflow builds the GDExtension in debug and release configurations, imports the project headlessly, and runs the core smoke tests and native-field invariant checks. The native chunk benchmark exercises LOD0–LOD7 with 25 measured runs after one warm-up run. It emits summary CSV columns:
 
 lod,runs,min_ms,median_ms,p95_ms,vertices,indices
+
+It also emits one raw_sample CSV row per measured build (sample_index,lod,elapsed_us) and a benchmark_metadata_json record containing Godot/OS/CPU details and GitHub runner/image/run/commit metadata. The cached JSON baseline keeps the p95_ms field for compatibility with the existing 25% guard and adds schema_version, runs_per_lod, p95_method, median_ms, raw_samples_us, and runner_metadata.
 
 CI preserves import logs, test logs, benchmark output and the generated benchmark JSON as a workflow artifact. The extended workflow restores the last successful benchmark JSON from an Actions cache scoped by OS, Godot version and branch, then saves a new immutable cache entry after a successful run. The first successful run on a cache key establishes the baseline; later runs fail if any LOD p95 exceeds that baseline by more than 25%. This is a coarse guardrail, not a hardware-independent performance guarantee: runner image changes and noisy hosted hardware can still affect measurements.
 
@@ -129,3 +131,10 @@ Artifact: [windows-extended-diagnostics-8](https://github.com/Temeramor/Far-a-Wa
 ## Parity scope
 
 The former `fastnoise_parity_test.gd` compared the current PG-Island native terrain against a legacy GDScript height formula. That comparison is invalid: the native port deliberately uses a different RNG and noise configuration, as documented in README. The test has been replaced by `native_terrain_field_invariants_test.gd`, which checks finite and bounded heights, repeatable samples, agreement between height and surface APIs, and bounded rock weights. Exact cross-implementation parity is out of scope until a dedicated RNG/noise-porting milestone is approved.
+
+
+## Benchmark harness v2 — pending CI verification (12 November 2026)
+
+The harness now performs 25 measured builds per LOD after one discarded warm-up build (200 measured chunk builds total). It keeps the one-time terrain sampler setup measurement separate, writes every measured duration in microseconds to the log and cached JSON, records median and nearest-rank p95, and captures runner metadata including Godot version, OS, CPU, runner/image identifiers, workflow run, commit and branch. The existing per-LOD 25% p95 regression guard is retained.
+
+**Verification status:** implementation committed, but no Windows extended run has yet exercised this version. The first successful v2 run must be inspected for the 200 raw samples, metadata, cache restore/save behavior, and all existing build/import/test checks. Repeat the run before approving a numerical performance baseline. The first v2 run will replace the old five-sample JSON after passing the guard; the legacy p95_ms field remains available for comparison.
