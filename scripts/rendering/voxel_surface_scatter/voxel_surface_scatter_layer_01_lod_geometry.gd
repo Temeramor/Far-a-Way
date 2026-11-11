@@ -173,7 +173,12 @@ func _surface_info(world_x: float, world_z: float) -> Dictionary:
     var sample: Vector3 = _world.surface_sample_at_world(world_x, world_z)
     var gradient := Vector2(sample.y, sample.z)
     var slope: float = gradient.length()
-    var rock_weight: float = _world._generator.get_surface_rock_weight(slope, world_x, world_z)
+    # Decoration helpers are also used by isolated tests and can be queried before
+    # terrain startup. In that state the world exposes a safe flat sample and zero rock weight.
+    var rock_weight: float = 0.0
+    var generator: VoxelTerrainGenerator = _world._generator
+    if generator != null and generator.is_terrain_prepared():
+        rock_weight = generator.get_surface_rock_weight(slope, world_x, world_z)
     return {
         "height": _world.get_surface_height(world_x, world_z),
         "slope": slope,
