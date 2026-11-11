@@ -97,7 +97,7 @@ jobs:
           } finally {
             Stop-Transcript
           }
-      - name: Run smoke and parity tests
+      - name: Run smoke and native field tests
         shell: pwsh
         run: |
           Start-Transcript -Path artifacts/tests.log
