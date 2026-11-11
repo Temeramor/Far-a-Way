@@ -1,3 +1,10 @@
+## Дополнительное исправление extended CI после run 43061904037 (11 ноября 2026)
+
+- Исправлен runtime crash в `_collect_lod_tiles()`: вместо прямого вызова `_generator.get_surface_height()` используется безопасный `VoxelWorld.get_surface_height()`, корректный до инициализации генератора.
+- В `lod_hierarchy_smoke_test.gd` добавлена регрессия для LOD-планирования при `auto_start_on_ready = false` и отсутствующем генераторе.
+- Устранено преждевременное завершение PowerShell test loop: `Write-Error` внутри цикла заменён на `Write-Warning`; все тесты теперь могут завершиться, а общий шаг возвращает failure после сбора результатов.
+- Benchmark теперь пишет отдельный диагностический лог и требует completion marker при нулевом exit code.
+- Run 43061904037 подтвердил успешные native Debug/Release build, Godot import и первые два smoke tests; LOD test упал на прямом обращении к null generator. Остальные тесты не запускались из-за PowerShell `Write-Error`. Исправления выше ещё требуют нового CI run.
 ## Синхронизация веток и исправление extended CI (11 ноября 2026)
 
 - Ветка `0.1.0.4-new` fast-forward-синхронизирована с `0.1.0.4`: обе ветки указывали на общий commit `94ed92961a8f187f2f305482ea53c9b04d92416e`; уникальных коммитов в старой `0.1.0.4-new` не было.
