@@ -136,7 +136,7 @@ jobs:
               $process = Start-Process -FilePath $godotExe -ArgumentList $godotArgs -WorkingDirectory $env:GITHUB_WORKSPACE -NoNewWindow -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
               $testTimedOut = -not $process.WaitForExit(180000)
               if ($testTimedOut) {
-                Write-Error "Test timed out after 180 seconds: $test"
+                Write-Warning "Test timed out after 180 seconds: $test"
                 try { $process.Kill() } catch { Write-Warning "Could not terminate timed-out Godot process: $_" }
                 $process.WaitForExit(10000) | Out-Null
                 $testExit = 124
@@ -144,7 +144,7 @@ jobs:
                 $testExit = $process.ExitCode
               }
             } catch {
-              Write-Error "Could not launch test $test : $_"
+              Write-Warning "Could not launch test $test : $_"
               $testTimedOut = $false
               $testExit = 125
             } finally {
@@ -161,7 +161,7 @@ jobs:
             Set-Content -LiteralPath $testLog -Value $testOutputText
             Write-Host "Godot process exit code: $testExit"
             if ([string]::IsNullOrWhiteSpace($testOutputText)) {
-              Write-Error "Godot produced no output for $test; inspect process launch diagnostics."
+              Write-Warning "Godot produced no output for $test; inspect process launch diagnostics."
             } else {
               Write-Host $testOutputText
             }
@@ -170,7 +170,7 @@ jobs:
             $missingPassMarker = $testOutputText -notmatch ("PASS: " + [regex]::Escape($testName))
             if ($testTimedOut -or $testExit -ne 0 -or $hasGodotErrors -or $missingPassMarker) {
               $failed += $test
-              Write-Error "Test failed: $test (exit $testExit, Godot errors: $hasGodotErrors, pass marker missing: $missingPassMarker)"
+              Write-Warning "Test failed: $test (exit $testExit, Godot errors: $hasGodotErrors, pass marker missing: $missingPassMarker)"
             } else {
               Write-Host "PASS: $test"
             }
@@ -197,11 +197,21 @@ jobs:
         env:
           VOXEN_BENCHMARK_BASELINE_PATH: ${{ github.workspace }}/artifacts/native-chunk-benchmark-baseline.json
         run: |
-          Start-Transcript -Path artifacts/native-chunk-benchmark.log
-          & .\godot.exe --headless --path . --script res://tests/native_chunk_benchmark.gd
-          $benchmarkExit = $LASTEXITCODE
-          Stop-Transcript
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Start-Transcript -Path artifacts/native-chunk-benchmark-transcript.log
+          try {
+            & .\godot.exe --headless --path . --script res://tests/native_chunk_benchmark.gd 2>&1 | Tee-Object -FilePath artifacts/native-chunk-benchmark.log
+            $benchmarkExit = $LASTEXITCODE
+          } finally {
+            Stop-Transcript
+          }
           if ($benchmarkExit -ne 0) { exit $benchmarkExit }
+          if (Select-String -Path artifacts/native-chunk-benchmark.log -Pattern "SCRIPT ERROR|Parse Error|ERROR:" -Quiet) {
+            throw "Godot reported errors during the native chunk benchmark."
+          }
+          if (-not (Select-String -Path artifacts/native-chunk-benchmark.log -Pattern "Native chunk benchmark completed\." -Quiet)) {
+            throw "Native chunk benchmark did not emit its completion marker."
+          }
       - name: Upload CI diagnostics
         if: always()
         uses: actions/upload-artifact@v7
