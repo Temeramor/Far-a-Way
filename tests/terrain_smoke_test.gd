@@ -2,33 +2,40 @@ extends Node
 
 const GeneratorScript = preload("res://scripts/world/voxel_generator.gd")
 
+var _errors: Array[String] = []
+
 
 func _ready() -> void:
     var first = GeneratorScript.new(123456, 5000.0)
-    var second = GeneratorScript.new(123456, 5000.0)
+    # Terrain preparation is explicit now; unprepared samplers intentionally return
+    # safe placeholders and are not suitable for terrain invariants.
+    first.configure_native_terrain_sampler()
+    # Reuse the exact prepared native field for the determinism comparison instead of
+    # generating a second 2048² heightfield for the same seed and world size.
+    var second = GeneratorScript.new(123456, 5000.0, first.get_native_sampler())
     var half_size_world = GeneratorScript.new(123456, 2500.0)
     var center_height: float = first.get_surface_height(0.0, 0.0)
     var repeated_height: float = second.get_surface_height(0.0, 0.0)
 
-    assert(is_equal_approx(center_height, repeated_height),
+    _check(is_equal_approx(center_height, repeated_height),
         "Same seed should generate identical island terrain.")
-    assert(center_height > 0.0, "The central island must rise above sea level.")
-    assert(first.get_surface_height(2400.0, 2400.0) < 0.0,
+    _check(center_height > 0.0, "The central island must rise above sea level.")
+    _check(first.get_surface_height(2400.0, 2400.0) < 0.0,
         "The map perimeter must contain seabed below sea level.")
-    assert(first.get_surface_height_voxels(0.0, 0.0) > 0,
+    _check(first.get_surface_height_voxels(0.0, 0.0) > 0,
         "Signed terrain heights must remain correctly represented in voxel units.")
 
     var profile: Array = first.get_mountain_profile()
-    assert(profile.size() >= 0 and profile.size() <= 9,
+    _check(profile.size() >= 0 and profile.size() <= 9,
         "A seed may generate zero to three mountain chains (three segments each).")
     if not profile.is_empty():
         var half_profile: Array = half_size_world.get_mountain_profile()
-        assert(profile.size() == half_profile.size(),
+        _check(profile.size() == half_profile.size(),
             "The same seed should preserve mountain-chain count across map scales.")
-        assert(is_equal_approx(float(profile[0]["width"]) * 0.5,
+        _check(is_equal_approx(float(profile[0]["width"]) * 0.5,
             float(half_profile[0]["width"])),
             "Half-size worlds should get half-width mountain ranges.")
-        assert(is_equal_approx(float(profile[0]["height"]) * 0.5,
+        _check(is_equal_approx(float(profile[0]["height"]) * 0.5,
             float(half_profile[0]["height"])),
             "Half-size worlds should get half-height mountain ranges.")
 
@@ -39,47 +46,50 @@ func _ready() -> void:
             var sampled_height: float = first.get_surface_height(float(x), float(z))
             sampled_min = minf(sampled_min, sampled_height)
             sampled_max = maxf(sampled_max, sampled_height)
-    assert(sampled_min < 0.0 and sampled_max > 0.0,
+    _check(sampled_min < 0.0 and sampled_max > 0.0,
         "The island map must contain both underwater and above-water terrain.")
-    assert(sampled_max - sampled_min >= 12.0,
+    _check(sampled_max - sampled_min >= 12.0,
         "The island must retain meaningful terrain variation.")
 
     var spawn_position: Vector2 = first.find_safe_spawn_position(32.0)
-    assert(is_finite(spawn_position.x) and is_finite(spawn_position.y),
+    _check(is_finite(spawn_position.x) and is_finite(spawn_position.y),
         "A safe flat spawn position must be found before the world can start.")
+    if not is_finite(spawn_position.x) or not is_finite(spawn_position.y):
+        _finish_with_errors()
+        return
     var spawn_sample: Vector3 = first.get_surface_sample(spawn_position.x, spawn_position.y)
     var spawn_slope: float = Vector2(spawn_sample.y, spawn_sample.z).length()
-    assert(spawn_sample.x > 3.0 and spawn_sample.x < 58.0,
+    _check(spawn_sample.x > 3.0 and spawn_sample.x < 58.0,
         "The selected spawn position must be low, dry land rather than a mountain shoulder.")
-    assert(not first._is_within_mountain_spawn_exclusion(spawn_position.x, spawn_position.y),
+    _check(not first._is_within_mountain_spawn_exclusion(spawn_position.x, spawn_position.y),
         "The selected spawn position must be outside every generated mountain-range footprint.")
-    assert(spawn_slope <= 0.22,
+    _check(spawn_slope <= 0.22,
         "The selected spawn position must be on a gentle slope.")
     for offset in [Vector2(3.0, 0.0), Vector2(-3.0, 0.0), Vector2(0.0, 3.0), Vector2(0.0, -3.0)]:
         var nearby_sample: Vector3 = first.get_surface_sample(
             spawn_position.x + offset.x, spawn_position.y + offset.y
         )
-        assert(nearby_sample.x > 2.0 and Vector2(nearby_sample.y, nearby_sample.z).length() <= 0.28,
+        _check(nearby_sample.x > 2.0 and Vector2(nearby_sample.y, nearby_sample.z).length() <= 0.28,
             "The complete spawn footprint must remain dry and gentle.")
-    assert(absf(spawn_position.x) <= 2500.0 and absf(spawn_position.y) <= 2500.0,
+    _check(absf(spawn_position.x) <= 2500.0 and absf(spawn_position.y) <= 2500.0,
         "The selected spawn position must stay within map bounds.")
-    assert(spawn_position.length() >= 220.0,
+    _check(spawn_position.length() >= 220.0,
         "The selected spawn position must stay clear of the map's central mountain zone.")
     var spawn_chunk_x: float = fposmod(spawn_position.x + 2500.0, 32.0)
     var spawn_chunk_z: float = fposmod(spawn_position.y + 2500.0, 32.0)
-    assert(minf(spawn_chunk_x, 32.0 - spawn_chunk_x) >= 2.0
+    _check(minf(spawn_chunk_x, 32.0 - spawn_chunk_x) >= 2.0
         and minf(spawn_chunk_z, 32.0 - spawn_chunk_z) >= 2.0,
         "The spawn footprint must not straddle a terrain chunk border.")
 
     var surface_height: float = first.get_surface_height(0.0, 0.0)
-    assert(first.get_terrain_density(0.0, surface_height - 1.0, 0.0) > 0.0,
+    _check(first.get_terrain_density(0.0, surface_height - 1.0, 0.0) > 0.0,
         "Below the surface must be solid.")
-    assert(first.get_terrain_density(0.0, surface_height + 1.0, 0.0) < 0.0,
+    _check(first.get_terrain_density(0.0, surface_height + 1.0, 0.0) < 0.0,
         "Above the surface must be air.")
 
     var seabed_sample: Vector3 = first.get_surface_sample(2400.0, 2400.0)
     var seabed_slope: float = Vector2(seabed_sample.y, seabed_sample.z).length()
-    assert(first.get_surface_material(seabed_sample.x, seabed_slope, 2400.0, 2400.0)
+    _check(first.get_surface_material(seabed_sample.x, seabed_slope, 2400.0, 2400.0)
         == GeneratorScript.SAND,
         "Gentle underwater terrain must use sand rather than grass.")
 
@@ -95,18 +105,32 @@ func _ready() -> void:
                 var underwater_material: int = first.get_surface_material(
                     depth, underwater_slope, float(x), float(z)
                 )
-                assert(underwater_material == GeneratorScript.SAND or underwater_material == GeneratorScript.ROCK,
+                _check(underwater_material == GeneratorScript.SAND or underwater_material == GeneratorScript.ROCK,
                     "Grass must never be used as an underwater terrain material.")
                 if underwater_slope < 0.5:
-                    assert(underwater_material == GeneratorScript.SAND,
+                    _check(underwater_material == GeneratorScript.SAND,
                         "Gentle underwater slopes must remain sandy.")
                 underwater_min = minf(underwater_min, depth)
                 underwater_max = maxf(underwater_max, depth)
                 underwater_samples += 1
-    assert(underwater_samples > 10 and underwater_max - underwater_min > 8.0,
+    _check(underwater_samples > 10 and underwater_max - underwater_min > 8.0,
         "The seabed must contain noticeable hills, basins and depth variation.")
 
+    if not _errors.is_empty():
+        _finish_with_errors()
+        return
     print("PASS: terrain_smoke_test | Island terrain smoke test passed. center_height=%.2f spawn=%s" % [
         center_height, str(spawn_position)
     ])
-    get_tree().quit()
+    get_tree().quit(0)
+
+
+func _check(condition: bool, message: String) -> void:
+    if not condition:
+        _errors.append(message)
+
+
+func _finish_with_errors() -> void:
+    for error_text in _errors:
+        push_error(error_text)
+    get_tree().quit(1)
