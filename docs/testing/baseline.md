@@ -33,3 +33,8 @@ CI preserves import logs, test logs, benchmark output and the generated benchmar
 - Review repeated CI measurements before committing a performance threshold.
 
 Do not treat an unreviewed CI artifact as the canonical performance baseline.
+
+
+## Parity scope
+
+The former `fastnoise_parity_test.gd` compared the current PG-Island native terrain against a legacy GDScript height formula. That comparison is invalid: the native port deliberately uses a different RNG and noise configuration, as documented in README. The test has been replaced by `native_terrain_field_invariants_test.gd`, which checks finite and bounded heights, repeatable samples, agreement between height and surface APIs, and bounded rock weights. Exact cross-implementation parity is out of scope until a dedicated RNG/noise-porting milestone is approved.
