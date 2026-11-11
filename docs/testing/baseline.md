@@ -21,7 +21,7 @@ The Windows workflow builds the GDExtension in debug and release configurations,
 
 lod,runs,min_ms,median_ms,p95_ms,vertices,indices
 
-CI preserves import logs, test logs, benchmark output and the generated benchmark JSON as a workflow artifact. The JSON produced by a CI run is a captured measurement, not yet a trusted cross-run regression threshold: GitHub-hosted runner performance can vary and a stable reference must be reviewed before enforcing hard limits.
+CI preserves import logs, test logs, benchmark output and the generated benchmark JSON as a workflow artifact. The extended workflow restores the last successful benchmark JSON from an Actions cache scoped by OS, Godot version and branch, then saves a new immutable cache entry after a successful run. The first successful run on a cache key establishes the baseline; later runs fail if any LOD p95 exceeds that baseline by more than 25%. This is a coarse guardrail, not a hardware-independent performance guarantee: runner image changes and noisy hosted hardware can still affect measurements.
 
 ## Still required for an approved baseline
 
