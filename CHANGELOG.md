@@ -8,7 +8,7 @@
 ## 11 ноября 2026 — Windows extended CI baseline
 
 - Успешно пройден Windows extended workflow run [43068959543](https://github.com/Temeramor/Far-a-Way/actions/runs/43068959543) на ветке `0.1.0.4-new`, commit `e3b0155bb1823286232432ab42d44cc824c65ba9`: Debug/Release GDExtension, Godot 4.7.2 import/script validation, все семь smoke/parity tests и native chunk benchmark.
-- Все семь тестов завершились с exit code 0 и PASS marker; benchmark LOD0–LOD7 выполнил warm-up и по пять измерений на уровень, завершился с `Native chunk benchmark completed.` и создал первую provisional Actions-cache reference.
+- Все семь тестов завершились с exit code 0 и PASS marker; benchmark LOD0–LOD7 выполнил warm-up и по пять измерений на уровень, завершился с `Native chunk benchmark completed.`; позже выяснилось, что его cache data получена некорректной методикой с повторной генерацией sampler на каждом измерении, поэтому эти timings исключены из performance baseline.
 - Диагностический artifact: `windows-extended-diagnostics-4`. Численный baseline остаётся предварительным до повторных независимых измерений; визуальный baseline (8–12 seed, фиксированные screenshots и diagnostic maps) ещё не выполнен.
 - Обновлены `ROADMAP.md` и `docs/testing/baseline.md`: extended CI отмечен как подтверждённый, следующий приоритет — повторяемость benchmark и завершение визуального baseline.
 
