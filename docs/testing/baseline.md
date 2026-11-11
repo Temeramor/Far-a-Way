@@ -96,6 +96,36 @@ The cache behavior is confirmed: this run restored the previous corrected JSON f
 
 Artifact: [windows-extended-diagnostics-6](https://github.com/Temeramor/Far-a-Way/actions/runs/43080357758/artifacts/13883689322).
 
+
+## Corrected benchmark — third independent repeat (run 43099687501)
+
+The third corrected run used commit `f99817296f05c544f44f8bf600e45341a448b603`, Windows Server 2025 x86-64 and Godot 4.7.2. It restored the p95 JSON saved by run 43080357758 and passed the 25% per-LOD regression guard.
+
+- One-time terrain sampler setup: **10,170.707 ms**.
+- Five measured builds per LOD after warm-up.
+- Full results, milliseconds:
+
+| LOD | min | median | p95 | Vertices | Indices | p95 change vs. run 43080357758 |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 16.526 | 16.760 | 17.015 | 68,160 | 102,240 | -37.6% |
+| 1 | 10.420 | 10.473 | 13.723 | 16,168 | 24,252 | +4.4% |
+| 2 | 2.979 | 2.989 | 3.028 | 3,724 | 5,586 | -19.3% |
+| 3 | 1.008 | 1.019 | 1.065 | 824 | 1,236 | -19.9% |
+| 4 | 0.444 | 0.461 | 0.495 | 272 | 408 | -18.2% |
+| 5 | 0.215 | 0.230 | 0.254 | 72 | 108 | -9.6% |
+| 6 | 0.152 | 0.160 | 0.186 | 8 | 12 | -7.9% |
+| 7 | 0.103 | 0.107 | 0.136 | 16 | 24 | -17.1% |
+
+The third run's medians are approximately 5–21% below the second run, depending on LOD. LOD1 p95 is 13.723 ms versus a 10.473 ms median, illustrating the effect of outliers. The one-time sampler setup has also varied across the three corrected runs (16,499.580 / 13,339.506 / 10,170.707 ms).
+
+Runner metadata: Azure `westus3`, Windows Server 2025, image `windows-2025-vs2026` version `20261103.298.1`, Godot 4.7.2. The second run used Azure `centralus`; detailed hardware configuration is not present in the artifact.
+
+Cache behavior is confirmed: run 43099687501 restored the baseline written by run 43080357758, passed the 25% per-LOD guard, and saved a new immutable cache entry. This validates the guard's operation, not the statistical stability of timings.
+
+**Decision:** keep the numerical baseline provisional. Three runs validate the corrected harness, but five measured samples per LOD are insufficient for a robust p95; it is effectively the maximum and varies with runner load. Increase to approximately 20–30 measured builds per LOD after warm-up, retain raw samples and runner metadata, and repeat before approving a threshold. Keep sampler setup separate from chunk-build timings.
+
+Artifact: [windows-extended-diagnostics-8](https://github.com/Temeramor/Far-a-Way/actions/runs/43099687501/artifacts/13892581387).
+
 ## Parity scope
 
 The former `fastnoise_parity_test.gd` compared the current PG-Island native terrain against a legacy GDScript height formula. That comparison is invalid: the native port deliberately uses a different RNG and noise configuration, as documented in README. The test has been replaced by `native_terrain_field_invariants_test.gd`, which checks finite and bounded heights, repeatable samples, agreement between height and surface APIs, and bounded rock weights. Exact cross-implementation parity is out of scope until a dedicated RNG/noise-porting milestone is approved.
