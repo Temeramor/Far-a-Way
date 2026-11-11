@@ -4,6 +4,7 @@
 - `voxel_surface_scatter_smoke_test.gd` теперь передаёт генераторам геометрии `VoxelSurfaceDecorJob` — правильный CPU worker host с cancellation token и mesh helpers, а не scene node `VoxelSurfaceScatter`.
 - `VoxelTerrainGenerator` создаёт seeded mountain profile независимо от того, передан ли ему общий native sampler.
 - `terrain_smoke_test.gd` теперь явно вызывает `configure_native_terrain_sampler()`, переиспользует подготовленный sampler для проверки детерминизма и завершает процесс с ненулевым кодом при неудачных проверках вместо зависания после `assert`.
+- `mesh_data_cache_test.gd` и `chunk_resource_manager_test.gd` также переведены на явные проверки с `quit(1)` при ошибках; все семь smoke/parity tests больше не полагаются на `assert` для управления завершением CI-процесса.
 - Run 43065249821: native Debug/Release build, импорт проекта и пять smoke/parity tests прошли; оставшиеся ошибки — неинициализированный sampler/неверный worker host в scatter test и неявная подготовка terrain в terrain test. Новые изменения ещё не проверены повторным запуском.
 ## Дополнительное исправление extended CI после run 43061904037 (11 ноября 2026)
 
