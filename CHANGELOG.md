@@ -1,3 +1,9 @@
+## 12 ноября 2026 — исправлена миграция benchmark baseline
+
+- Разобран Windows extended run 43102542013: сборка, импорт и все семь smoke/parity tests прошли; harness выполнил 200 измерений и записал metadata, но regression guard сравнил p95 новой схемы (25 samples, nearest-rank) с несовместимым старым baseline (5 samples).
+- В `tests/native_chunk_benchmark.gd` добавлена проверка `schema_version`, `runs_per_lod` и `p95_method`. Legacy/incompatible baseline теперь пропускается с явным сообщением и заменяется schema v2 только после валидного завершения benchmark. Для последующих v2 запусков 25% per-LOD guard остаётся включён.
+- Исправление требует повторного Windows extended CI запуска; до него миграция не считается проверенной.
+
 ## 12 ноября 2026 — benchmark harness v2: 25 измерений на LOD
 
 - В `tests/native_chunk_benchmark.gd` реализованы 25 измеряемых chunk builds на каждом LOD0–LOD7 после одного исключённого warm-up build (200 измерений суммарно).
