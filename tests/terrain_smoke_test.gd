@@ -1,9 +1,9 @@
-extends SceneTree
+extends Node
 
 const GeneratorScript = preload("res://scripts/world/voxel_generator.gd")
 
 
-func _initialize() -> void:
+func _ready() -> void:
     var first = GeneratorScript.new(123456, 5000.0)
     var second = GeneratorScript.new(123456, 5000.0)
     var half_size_world = GeneratorScript.new(123456, 2500.0)
@@ -106,7 +106,7 @@ func _initialize() -> void:
     assert(underwater_samples > 10 and underwater_max - underwater_min > 8.0,
         "The seabed must contain noticeable hills, basins and depth variation.")
 
-    print("Island terrain smoke test passed. center_height=%.2f spawn=%s" % [
+    print("PASS: terrain_smoke_test | Island terrain smoke test passed. center_height=%.2f spawn=%s" % [
         center_height, str(spawn_position)
     ])
-    quit()
+    get_tree().quit()
