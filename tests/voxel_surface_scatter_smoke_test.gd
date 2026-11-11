@@ -3,6 +3,7 @@ extends Node
 const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
 const RockScatterScript = preload("res://scripts/world/decoration/voxel_rock_scatter.gd")
 const VegetationScatterScript = preload("res://scripts/world/decoration/voxel_vegetation_scatter.gd")
+const DecorJobScript = preload("res://scripts/meshing/voxel_surface_decor_job.gd")
 
 
 func _ready() -> void:
@@ -71,15 +72,21 @@ func _run() -> void:
         errors.append("Surface sampling must return height, slope and rock weight.")
     elif float(surface["rock_weight"]) < 0.0 or float(surface["rock_weight"]) > 1.0:
         errors.append("Surface rock weight must stay in the 0..1 interval.")
+    if world._generator == null and not is_equal_approx(float(surface.get("rock_weight", -1.0)), 0.0):
+        errors.append("Unprepared terrain must use the safe zero rock-weight fallback.")
 
+    # Geometry helpers expect the CPU worker host, which owns cancellation and mesh-copy helpers.
+    # Passing the scene Node here used to call a nonexistent _is_cancelled() method.
+    var decor_job = DecorJobScript.new()
+    decor_job.configure(world.seed_value, world.world_size_m)
     var rock_scatter = RockScatterScript.new()
     var vegetation_scatter = VegetationScatterScript.new()
-    var stone_grid = rock_scatter.make_rock_grid(scatter, 8.0, palette, 12345)
+    var stone_grid = rock_scatter.make_rock_grid(decor_job, 8.0, palette, 12345)
     var stone_mesh_data = MeshDataScript.new()
     stone_grid.emit(stone_mesh_data, Vector3.ZERO, 0.1, 12345)
     if stone_mesh_data.verts.is_empty() or stone_mesh_data.indices.is_empty():
         errors.append("The voxel rock generator must emit visible mesh geometry.")
-    var coarse_stone_grid = rock_scatter.make_rock_grid(scatter, 8.0, palette, 12346, 3)
+    var coarse_stone_grid = rock_scatter.make_rock_grid(decor_job, 8.0, palette, 12346, 3)
     var downsampled_stone_grid = coarse_stone_grid
     for _lod_step in range(3):
         downsampled_stone_grid = downsampled_stone_grid.downsampled()
