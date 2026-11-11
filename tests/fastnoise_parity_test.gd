@@ -8,6 +8,7 @@ const REFERENCE_WORLD_SIZE_M := 10000.0
 func _initialize() -> void:
     var seed_value := 1337
     var generator = GeneratorScript.new(seed_value, WORLD_SIZE_M)
+    generator.configure_native_terrain_sampler()
     var reference_noises := _make_reference_noises(seed_value, WORLD_SIZE_M)
     var profile: Array[Dictionary] = generator.get_mountain_profile()
     var points: Array[Vector2] = [
