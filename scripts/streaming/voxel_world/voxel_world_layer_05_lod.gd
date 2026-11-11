@@ -58,7 +58,9 @@ func _collect_lod_tiles(lod_index: int, tile_x: int, tile_z: int, player_xz: Vec
     var dx: float = player_xz.x - nearest_x
     var dz: float = player_xz.y - nearest_z
     # Euclidean distance from the player to the local terrain surface (X, Y, Z), not an XZ-only radius.
-    var terrain_y: float = _generator.get_surface_height(nearest_x, nearest_z)
+    # Use the guarded world accessor: LOD planning is also exercised before terrain startup,
+    # when _generator is intentionally null (for example, pure streaming/LOD tests).
+    var terrain_y: float = get_surface_height(nearest_x, nearest_z)
     var vertical_delta: float = player_y - terrain_y
     var nearest: float = sqrt(dx * dx + dz * dz + vertical_delta * vertical_delta)
     if nearest > render_distance_m:
