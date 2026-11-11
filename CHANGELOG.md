@@ -4,6 +4,7 @@
 - В `lod_hierarchy_smoke_test.gd` добавлена регрессия для LOD-планирования при `auto_start_on_ready = false` и отсутствующем генераторе.
 - Устранено преждевременное завершение PowerShell test loop: `Write-Error` внутри цикла заменён на `Write-Warning`; все тесты теперь могут завершиться, а общий шаг возвращает failure после сбора результатов.
 - Benchmark теперь пишет отдельный диагностический лог и требует completion marker при нулевом exit code.
+- Тайм-аут smoke test теперь завершает всё дерево процессов Godot, предотвращая оставшиеся дочерние процессы на Windows runner.
 - Run 43061904037 подтвердил успешные native Debug/Release build, Godot import и первые два smoke tests; LOD test упал на прямом обращении к null generator. Остальные тесты не запускались из-за PowerShell `Write-Error`. Исправления выше ещё требуют нового CI run.
 ## Синхронизация веток и исправление extended CI (11 ноября 2026)
 
