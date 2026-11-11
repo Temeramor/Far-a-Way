@@ -1,5 +1,11 @@
 # Журнал изменений
 
+## Архитектурная подготовка Этапа 1 — streaming contracts (11 ноября 2026)
+
+- Добавлен предложенный ADR-018 с контрактами `StreamingPlanner` и `MeshJobScheduler`: immutable inputs/job envelope, ownership `seed`/`generation_epoch`, stale-result rules, shared worker budget и acceptance tests.
+- Обновлены `docs/architecture/streaming.md` и `ROADMAP.md`: extraction должен идти после characterization tests, сначала planner, затем scheduler; кодовые алгоритмы LOD/priority/cache и применение Node/physics остаются неизменными.
+- Это подготовительный архитектурный шаг, а не реализация сервисов. Код runtime не менялся; тесты для ADR-018 ещё предстоит добавить.
+
 ## Обновление 0.1.0.4 — синхронизация веток и подтверждение core CI (11 ноября 2026)
 
 - Проверено сравнение `0.1.0.4-new` → `0.1.0.4`: исходная ветка не содержит уникальных коммитов (ahead_by = 0), отстаёт от целевой на два коммита; перенос выполнен ранее через PR #17, повторное слияние не требуется.
