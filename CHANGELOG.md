@@ -1,3 +1,11 @@
+## 11 ноября 2026 — подтверждение исправленного benchmark harness
+
+- Успешно завершён Windows extended workflow [run 43074187166](https://github.com/Temeramor/Far-a-Way/actions/runs/43074187166) на commit `21d479734ff2265ca20132b63be101c1f19c0c4e`: Debug/Release GDExtension build, Godot 4.7.2 import/script validation и все семь smoke/parity tests прошли.
+- Исправленный benchmark теперь отдельно измеряет однократную подготовку sampler (16,499.580 ms), затем выполняет пять измерений chunk build для каждого LOD0–LOD7 на общем sampler.
+- Первые корректные p95 (ms): LOD0–LOD7 = 27.304 / 16.667 / 4.670 / 1.771 / 0.818 / 0.470 / 0.402 / 0.289. Это предварительные данные; требуется ещё 1–2 независимых запуска для оценки variance перед утверждением performance baseline.
+- Artifact `windows-extended-diagnostics-5` содержит benchmark log/JSON, import log и результаты всех семи тестов.
+- Следующий фокус: повторить benchmark на том же commit, затем завершить визуальный baseline на 8–12 seed. К extraction StreamingPlanner/MeshJobScheduler по ADR-018 переходить после принятия baseline.
+
 ## 11 ноября 2026 — benchmark harness correction
 
 - Source review после успешного run 43068959543 выявил некорректную методику `native_chunk_benchmark.gd`: sampler не конфигурировался до цикла, поэтому каждый `build_mesh_data()` заново выполнял `NoiseSet.configure_from_job()` и глобальную генерацию PG-Island.
