@@ -17,6 +17,8 @@ func _initialize() -> void:
         quit(1)
         return
 
+    generator.configure_native_terrain_sampler()
+
     var grid: PackedFloat32Array = generator.get_surface_height_grid(
         -4000.0, -4000.0, 17, 17, 500.0
     )

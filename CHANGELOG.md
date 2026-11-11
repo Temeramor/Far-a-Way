@@ -1,6 +1,17 @@
 # Журнал изменений
 
+## Work in progress — CI and baseline hardening (0.1.0.4-new)
+
+- Corrected the Godot 4.7.2 Windows x64 download URL to the official release asset `Godot_v4.7.2-stable_win64.exe.zip`; added SHA-256 verification and executable version check.
+- Fixed the version probe: validate the reported `4.7.2.stable` string instead of relying on the Windows GUI executable's process exit code; the first CI run printed the correct version but returned a non-zero code. Native debug/release builds passed in that run; import/tests/benchmark were not reached.
+- Enabled Windows CI on push and pull requests targeting `0.1.0.4-new`.
+- Added headless project import, full smoke/parity test list, native chunk benchmark, and 14-day upload of import/test/benchmark diagnostics.
+- Added `docs/testing/baseline.md` documenting deterministic seeds already covered by tests and explicitly marking visual/performance baseline work still outstanding.
+- Updated `ROADMAP.md` with the current CI repair and baseline status.
+
+
 ## Дополнение к 0.1.0.4 — актуализация ROADMAP (10 ноября 2026)
+- Windows CI workflow включён в push/PR-фильтры новой рабочей ветки `0.1.0.4-new`, чтобы дальнейшие изменения в ней автоматически проверялись.
 
 - Обновлён `ROADMAP.md`: отражены выполненные и частично выполненные части этапов 0 и 1, а также оставшиеся задачи.
 - Зафиксировано, что Windows CI собрал debug/release GDExtension, но завершился ошибкой скачивания Godot 4.7.2 (404); импорт проекта и автоматические тесты в этом запуске не выполнялись.
@@ -10,6 +21,7 @@
 ## Неизданное
 
 ### 0.1.0.4 — структурная реорганизация
+- Исправлен CI import-step: прежний вызов `--editor --quit` завершал Godot до завершения импорта ресурсов и генерации global script class cache. Теперь используется `--import` с ожиданием завершения, сохраняется полный лог, проверяются class cache и импортированная sky texture, а также ошибки парсинга.
 
 - Разделены исходники VoxelWorld, VoxelSurfaceScatter и WorldController; сохранены исходные пути точек входа, class_name, exports и сигналы.
 - Нативный builder разделён на sampler, heightfield mesher и отдельный builder данных HeightMap collision; публичные методы GDExtension сохранены.

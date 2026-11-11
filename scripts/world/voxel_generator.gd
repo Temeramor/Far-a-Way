@@ -36,6 +36,7 @@ func _init(
     world_size_m = maxf(256.0, p_world_size_m)
     if p_native_sampler != null:
         _native_sampler = p_native_sampler
+        _terrain_prepared = true
         return
     _create_mountain_ranges()
     _native_sampler = ClassDB.instantiate("VoxEnNativeBuilder")
@@ -46,7 +47,7 @@ func _init(
     # prepare_native_terrain(), which VoxelWorld runs on WorkerThreadPool.
 
 
-func prepare_native_terrain(spawn_chunk_size_m: float = 32.0) -> void:
+func configure_native_terrain_sampler() -> void:
     if _native_sampler == null or _terrain_prepared:
         return
     _native_sampler.call("configure_terrain_sampler", {
@@ -55,6 +56,12 @@ func prepare_native_terrain(spawn_chunk_size_m: float = 32.0) -> void:
         "mountain_profile": get_mountain_profile()
     })
     _terrain_prepared = true
+
+
+func prepare_native_terrain(spawn_chunk_size_m: float = 32.0) -> void:
+    configure_native_terrain_sampler()
+    if _native_sampler == null:
+        return
     _prepared_spawn_position = find_safe_spawn_position(spawn_chunk_size_m)
 
 
