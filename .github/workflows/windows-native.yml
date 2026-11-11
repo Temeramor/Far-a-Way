@@ -106,7 +106,7 @@ jobs:
             "native_builder_smoke_test.gd",
             "native_terrain_sampler_test.gd",
             "pg_island_native_terrain_test.gd",
-            "fastnoise_parity_test.gd"
+            "native_terrain_field_invariants_test.gd"
           )
           $failed = @()
           foreach ($test in $tests) {
