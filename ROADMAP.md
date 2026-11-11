@@ -1,7 +1,7 @@
 # Far a Way — ROADMAP (редакция)
 
 > **Статус:** проектная спецификация и план будущих работ. Ничего из описанного ниже пока не реализовано этим документом.
-> **Ветка:** `0.1.0.4`
+> **Рабочая ветка:** `0.1.0.4-new` (fast-forward-синхронизирована с `0.1.0.4` на commit `94ed92961a8f187f2f305482ea53c9b04d92416e`)
 > **Дата исходного документа:** 9 ноября 2026 г.
 > **Дата редакции:** 11 ноября 2026 г.
 > **Текущая база:** Far a Way 0.1.0.4, Godot 4.7.2, Forward+
@@ -14,6 +14,14 @@
 
 Этот раздел имеет приоритет над историческими формулировками аудита ниже. Разделы 2 и далее описывают исходную архитектурную проблему и целевое направление; они не означают, что все перечисленные задачи остаются нетронутыми.
 
+### CI hardening — статус после run 43057437642 (11 ноября 2026)
+
+- Run 43057437642 запускался на устаревшем `0.1.0.4-new` до синхронизации веток и завершился на `lod_hierarchy_smoke_test.gd`.
+- Подтверждённая причина: тесты запускались через `godot --headless --path . --script ...`; такой custom MainLoop не создаёт обычный project scene tree с Autoload `GameSettings`. Ошибка `get_lod_boundary_m_for_height` была каскадной: метод присутствует в слое `VoxelWorld`, но скрипт не мог корректно скомпилировать цепочку из-за отсутствующего Autoload-контекста.
+- Исправление подготовлено, но ещё не подтверждено запуском: семь smoke/parity-тестов переведены на `Node`, добавлена `tests/ci_test_runner.tscn`, которая загружает каждый тест в обычном project tree после инициализации Autoload.
+- Extended workflow теперь выполняет весь список тестов, собирает все ошибки вместо остановки на первой и требует индивидуальный `PASS` marker от каждого теста.
+- Actions обновлены на Node 24-compatible версии; `ilammy/msvc-dev-cmd@v1` пока не имеет upstream Node 24 release, поэтому для него включён `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`.
+- Статус extended CI остаётся **не проверен** до ручного запуска workflow на `0.1.0.4-new`. Не считать benchmark или visual baseline завершёнными.
 ### Выполнено в версии 0.1.0.4
 
 - Сохранены публичные пути и `class_name` трёх точек входа: `VoxelWorld`, `VoxelSurfaceScatter`, `WorldController`; их реализация распределена по state-файлам и слоям наследования.
@@ -40,7 +48,7 @@
 
 ### Следующий рабочий фокус
 
-1. Core Windows CI на целевой ветке `0.1.0.4` подтверждён успешным run 43045268776 (commit `fa94139b4ea1729dbafb7cdcd119aab26f072512`): Debug/Release build, Godot import, smoke tests и native field invariants прошли. Следующий CI-шаг — вручную запустить `windows-extended.yml` и проверить benchmark/cache на реальном runner; в журнале репозитория пока нет подтверждённого extended run.
+1. Core Windows CI ранее прошёл на commit `fa94139b4ea1729dbafb7cdcd119aab26f072512` (run 43045268776). После исправления test harness следующий шаг — вручную запустить `windows-extended.yml` на `0.1.0.4-new`; только этот запуск подтвердит работу Autoload-aware smoke tests, benchmark и cache на реальном Windows runner.
 2. Завершить baseline: выбрать контрольные seed, получить визуальные эталоны и диагностические карты, накопить повторяемые benchmark measurements.
 3. Продолжить Этап 1 малыми независимыми шагами по ADR-018: characterization tests для текущего streaming planner, затем выделение `StreamingPlanner`, после него `MeshJobScheduler`; далее TerrainProfile/GenerationContext и TerrainField adapter. Каждый шаг — отдельным PR с parity/regression тестами; алгоритмы и ownership epoch/seed не менять одновременно с extraction.
 4. Реализовать базовый WorldSave до любых редактируемых объёмных данных.
