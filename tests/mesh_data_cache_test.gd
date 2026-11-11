@@ -1,9 +1,9 @@
-extends SceneTree
+extends Node
 
 const CacheScript = preload("res://scripts/streaming/mesh_data_cache.gd")
 
 
-func _initialize() -> void:
+func _ready() -> void:
     var cache = CacheScript.new()
     var payload := {"vertices": PackedVector3Array([Vector3.ZERO])}
     cache.store_mesh("first", payload)
@@ -19,4 +19,5 @@ func _initialize() -> void:
     cache.clear()
     assert(cache.get_entry_count() == 0)
     assert(cache.get_bytes_used() == 0)
-    quit(0)
+    print("PASS: mesh_data_cache_test")
+    get_tree().quit(0)
