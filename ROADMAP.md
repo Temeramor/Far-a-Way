@@ -14,31 +14,19 @@
 
 Этот раздел имеет приоритет над историческими формулировками аудита ниже. Разделы 2 и далее описывают исходную архитектурную проблему и целевое направление; они не означают, что все перечисленные задачи остаются нетронутыми.
 
-### CI hardening — статус после run 43057437642 (11 ноября 2026)
+### Extended CI — подтверждён run 43068959543 (11 ноября 2026)
 
-- Run 43057437642 запускался на устаревшем `0.1.0.4-new` до синхронизации веток и завершился на `lod_hierarchy_smoke_test.gd`.
-- Подтверждённая причина: тесты запускались через `godot --headless --path . --script ...`; такой custom MainLoop не создаёт обычный project scene tree с Autoload `GameSettings`. Ошибка `get_lod_boundary_m_for_height` была каскадной: метод присутствует в слое `VoxelWorld`, но скрипт не мог корректно скомпилировать цепочку из-за отсутствующего Autoload-контекста.
-- Исправление подготовлено, но ещё не подтверждено запуском: семь smoke/parity-тестов переведены на `Node`, добавлена `tests/ci_test_runner.tscn`, которая загружает каждый тест в обычном project tree после инициализации Autoload.
-- Extended workflow теперь выполняет весь список тестов, собирает все ошибки вместо остановки на первой и требует индивидуальный `PASS` marker от каждого теста.
-- Actions обновлены на Node 24-compatible версии; `ilammy/msvc-dev-cmd@v1` пока не имеет upstream Node 24 release, поэтому для него включён `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`.
-- Статус extended CI остаётся **не проверен** до ручного запуска workflow на `0.1.0.4-new`. Не считать benchmark или visual baseline завершёнными.
-### CI follow-up — run 43065249821 (11 ноября 2026)
+- Windows x86-64 job завершилась с `success`; все 17 шагов выполнены успешно на commit `e3b0155bb1823286232432ab42d44cc824c65ba9` ветки `0.1.0.4-new`.
+- Debug и Release GDExtension собраны; Godot 4.7.2 установлена; импорт проекта и проверка скриптов завершились без ошибок.
+- Все семь smoke/parity tests завершились с exit code 0 и собственными PASS markers: `mesh_data_cache_test`, `chunk_resource_manager_test`, `lod_hierarchy_smoke_test`, `shadow_lod_smoke_test`, `voxel_surface_scatter_smoke_test`, `decoration_spatial_index_test`, `terrain_smoke_test`. Ошибок Godot и ненулевого stderr в тестовых логах нет.
+- Native chunk benchmark завершился штатно для LOD0–LOD7: каждый уровень — один warm-up и пять измеренных запусков. Так как cache baseline для этой ветки ещё отсутствовал, run создал первую provisional reference и сохранил её в Actions cache. Это подтверждает работоспособность benchmark pipeline, но **не утверждает**, что performance baseline уже статистически устойчив или принят.
+- Диагностический artifact: `windows-extended-diagnostics-4` (run 43068959543). В нём находятся логи импорта, всех тестов и benchmark.
+- Остались предупреждения компилятора MSVC C4244 в заголовке стандартной библиотеки `xmemory` и предупреждение GitHub Actions о принудительном запуске `ilammy/msvc-dev-cmd@v1` под Node 24 из-за отсутствия upstream Node 24 release. Они не повлияли на успешный результат, но должны учитываться при обновлении toolchain/actions.
 
-- Run 43065249821 подтвердил, что предыдущие исправления сработали: Debug/Release native build, Godot import и пять из семи smoke/parity tests прошли, включая `lod_hierarchy_smoke_test`; PowerShell корректно продолжил цикл после неудачного теста.
-- `voxel_surface_scatter_smoke_test` выявил две ошибки test/runtime contract: `_surface_info()` без проверки обращался к `_world._generator`, который отсутствует до старта мира; кроме того, тест передавал `VoxelSurfaceScatter` в генератор геометрии, хотя тот ожидает worker host с `_is_cancelled()` и другими CPU-helper методами. Добавлен безопасный fallback rock weight и тест теперь использует `VoxelSurfaceDecorJob`.
-- `terrain_smoke_test` использовал `VoxelTerrainGenerator` до вызова `configure_native_terrain_sampler()`. После перехода на отложенную подготовку это давало placeholder height `0.2 m`, из-за чего проверка морского дна падала; `assert` прекращал `_ready()` без `get_tree().quit()`, и CI ждал полный timeout. Тест теперь явно подготавливает один native sampler, повторный генератор использует тот же sampler, а проверки собирают ошибки и завершают процесс с кодом 1 без зависания.
-- Конструктор `VoxelTerrainGenerator` теперь формирует детерминированный GDScript mountain profile и при переданном shared native sampler; ранее ранний `return` пропускал создание профиля.
-- Два ранее успешных теста (`mesh_data_cache_test`, `chunk_resource_manager_test`) также переведены с `assert` на явную агрегацию ошибок и `quit(1)`, чтобы будущая регрессия завершала процесс сразу, а не превращалась в 180-секундный timeout.
-- Исправления сохранены в `0.1.0.4-new`, но требуют следующего Windows extended CI run. До его результата Stage 0 extended CI остаётся не подтверждённым.
-### CI follow-up — run 43061904037 (11 ноября 2026)
+### История диагностики CI
 
-- Run 43061904037 на commit `289b6c79ab1c79fbf210834d944742a5f892e9db`: Debug/Release native build, установка Godot 4.7.2 и импорт проекта прошли; `mesh_data_cache_test` и `chunk_resource_manager_test` завершились успешно.
-- `lod_hierarchy_smoke_test` выявил реальную ошибку runtime-кода: `_collect_lod_tiles()` напрямую вызывал `_generator.get_surface_height()`, хотя при `auto_start_on_ready = false` генератор намеренно не создан. Исправлено обращением через `VoxelWorld.get_surface_height()`, которое возвращает безопасное значение до подготовки terrain generator.
-- Добавлена регрессионная проверка: изолированный LOD test подтверждает ожидаемое состояние без генератора и проверяет fallback высоты поверхности.
-- Второй дефект был в CI harness: GitHub Actions запускает PowerShell с `$ErrorActionPreference = 'Stop'`; `Write-Error` внутри цикла тестов прерывал весь шаг на первой ошибке, поэтому предыдущая версия не запускала оставшиеся тесты. Пер-сценарные сообщения заменены на `Write-Warning`, а ненулевой exit code выставляется после полного прохода и агрегирования результатов.
-- Benchmark теперь сохраняет отдельный stdout/stderr log, проверяет код возврата, отсутствие Godot errors и обязательный маркер `Native chunk benchmark completed.`
-- Timeout handling завершает всё дерево процессов Godot (`Kill($true)`), а не только родительский процесс, чтобы зависшие дочерние процессы не оставались на Windows runner.
-- Эти исправления закоммичены, но ещё не проверены новым run. Следующий запуск `windows-extended.yml` на `0.1.0.4-new` должен проверить все семь smoke/parity tests и затем benchmark.
+Следующие записи — история поиска причин предыдущих падений. Их временные статусы были актуальны на дату соответствующего run; исправления впоследствии подтверждены успешным run 43068959543.
+
 ### Выполнено в версии 0.1.0.4
 
 - Сохранены публичные пути и `class_name` трёх точек входа: `VoxelWorld`, `VoxelSurfaceScatter`, `WorldController`; их реализация распределена по state-файлам и слоям наследования.
@@ -65,10 +53,10 @@
 
 ### Следующий рабочий фокус
 
-1. Core Windows CI ранее прошёл на commit `fa94139b4ea1729dbafb7cdcd119aab26f072512` (run 43045268776). После исправления test harness следующий шаг — вручную запустить `windows-extended.yml` на `0.1.0.4-new`; только этот запуск подтвердит работу Autoload-aware smoke tests, benchmark и cache на реальном Windows runner.
-2. Завершить baseline: выбрать контрольные seed, получить визуальные эталоны и диагностические карты, накопить повторяемые benchmark measurements.
-3. Продолжить Этап 1 малыми независимыми шагами по ADR-018: characterization tests для текущего streaming planner, затем выделение `StreamingPlanner`, после него `MeshJobScheduler`; далее TerrainProfile/GenerationContext и TerrainField adapter. Каждый шаг — отдельным PR с parity/regression тестами; алгоритмы и ownership epoch/seed не менять одновременно с extraction.
-4. Реализовать базовый WorldSave до любых редактируемых объёмных данных.
+1. **Закрепить численный baseline.** Run 43068959543 впервые создал benchmark reference для ветки: seed 1337, тестовый мир 2,000 м, chunk 160×160 voxels, LOD0–LOD7, один warm-up и пять измерений на уровень. Нужны несколько независимых успешных запусков на той же конфигурации и анализ разброса; пять измерений внутри одного run дают слишком малую выборку для принятия performance threshold.
+2. **Завершить визуальный baseline.** Выбрать 8–12 представительных seed; запустить каждый в настоящей игровой сцене; проверить spawn, берег, силуэты гор и streaming; снять скриншоты с фиксированными камерами/разрешением/настройками; экспортировать height, slope и shoreline maps. Записать hardware/runner image, версию Godot, build mode и параметры измерений. Численный и визуальный baseline пока не утверждены.
+3. **После принятия baseline продолжить Этап 1 по ADR-018:** сначала characterization tests текущего streaming planner, затем выделение чистого `StreamingPlanner`; после parity/regression проверки — отдельное выделение `MeshJobScheduler`. Не менять алгоритмы и ownership seed/generation_epoch одновременно с extraction.
+4. Реализовать базовый WorldSave и политику совместимости до любых редактируемых объёмных данных.
 5. Только после стабилизации основы перейти к отдельной тестовой сцене SDF 32×32×32 м.
 
 ---
