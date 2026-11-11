@@ -1,0 +1,172 @@
+name: Windows extended tests and benchmark
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-x86_64:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      GODOT_VERSION: "4.7.2"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install SCons
+        run: python -m pip install --upgrade scons
+      - name: Fetch matching godot-cpp bindings
+        shell: pwsh
+        run: git clone --depth 1 --branch 10.0.0-stable https://github.com/godotengine/godot-cpp.git native/godot-cpp
+      - name: Build GDExtension (debug and release)
+        working-directory: native
+        shell: pwsh
+        run: |
+          scons platform=windows target=template_debug arch=x86_64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          scons platform=windows target=template_release arch=x86_64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install Godot console
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "godot.zip"
+          $url = "https://github.com/godotengine/godot/releases/download/$($env:GODOT_VERSION)-stable/Godot_v$($env:GODOT_VERSION)-stable_win64.exe.zip"
+          $expectedHash = "731980f9608d61333e5baf54a2ef17210acc7a538446c0cb9969f002aca1e953"
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          if (-not (Test-Path $archive) -or (Get-Item $archive).Length -lt 1000000) {
+            throw "Godot release archive is missing or unexpectedly small."
+          }
+          $actualHash = (Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $expectedHash) {
+            throw "Godot archive SHA256 mismatch. Expected $expectedHash, got $actualHash."
+          }
+          Expand-Archive -Path $archive -DestinationPath "$env:RUNNER_TEMP/godot" -Force
+          $exeName = "Godot_v$($env:GODOT_VERSION)-stable_win64.exe"
+          $exe = Get-ChildItem "$env:RUNNER_TEMP/godot" -Filter $exeName -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "Expected Godot executable $exeName was not found in the release archive." }
+          Copy-Item $exe.FullName "$env:GITHUB_WORKSPACE/godot.exe"
+          $versionOutput = (& "$env:GITHUB_WORKSPACE/godot.exe" --version 2>&1 | Out-String).Trim()
+          Write-Host "Detected Godot version: $versionOutput"
+          if ($versionOutput -notmatch "(?m)^4\.7\.2\.stable\.") {
+            throw "Downloaded Godot executable reported an unexpected version: $versionOutput"
+          }
+      - name: Import project and validate scripts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Start-Transcript -Path artifacts/project-import-transcript.log
+          try {
+            # --import waits for the editor import pipeline to finish; --quit alone exits
+            # before textures, script-class metadata, and the .godot cache are generated.
+            & .\godot.exe --headless --editor --path . --import 2>&1 | Tee-Object -FilePath artifacts/project-import.log
+            $importExit = $LASTEXITCODE
+            if ($importExit -ne 0) { exit $importExit }
+            if (-not (Test-Path ".godot/global_script_class_cache.cfg")) {
+              throw "Godot did not generate the global script class cache during project import."
+            }
+            # The generated cache filename is importer/platform dependent. Validate the
+            # imported resource by its stable source basename instead of a pinned hash.
+            $noiseImports = @(
+              Get-ChildItem -LiteralPath ".godot/imported" -Filter "noiseClouds.png-*" -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Length -gt 0 }
+            )
+            if ($noiseImports.Count -eq 0) {
+              $importedFiles = Get-ChildItem -LiteralPath ".godot/imported" -File -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty Name
+              Write-Host "Imported cache files: $($importedFiles -join ', ')"
+              throw "Godot did not produce an imported cache file for assets/sky/noiseClouds.png."
+            }
+            Write-Host "Imported sky noise texture: $($noiseImports[0].Name) ($($noiseImports[0].Length) bytes)"
+            if (Select-String -Path artifacts/project-import.log -Pattern "SCRIPT ERROR|Parse Error|ERROR:" -Quiet) {
+              throw "Godot project import reported script or resource errors; inspect artifacts/project-import.log."
+            }
+          } finally {
+            Stop-Transcript
+          }
+      - name: Run smoke and parity tests
+        shell: pwsh
+        run: |
+          Start-Transcript -Path artifacts/tests.log
+          $tests = @(
+            "mesh_data_cache_test.gd",
+            "chunk_resource_manager_test.gd",
+            "lod_hierarchy_smoke_test.gd",
+            "shadow_lod_smoke_test.gd",
+            "voxel_surface_scatter_smoke_test.gd",
+            "decoration_spatial_index_test.gd"
+          )
+          $failed = @()
+          foreach ($test in $tests) {
+            Write-Host "Running $test"
+            $testName = [System.IO.Path]::GetFileNameWithoutExtension($test)
+            $testLog = "artifacts/test-$testName.log"
+            $godotExe = Join-Path $env:GITHUB_WORKSPACE "godot.exe"
+            if (-not (Test-Path -LiteralPath $godotExe -PathType Leaf)) {
+              throw "Godot executable is missing: $godotExe"
+            }
+            $stdoutLog = "$testLog.stdout"
+            $stderrLog = "$testLog.stderr"
+            $godotArgs = @("--headless", "--path", ".")
+            if ($test.StartsWith("res://")) {
+              # Launch the scene as the project main scene so project Autoloads initialize.
+              $godotArgs += @("--quit-after", "120", $test)
+            } else {
+              $godotArgs += @("--script", "res://tests/$test")
+            }
+            Write-Host "Launching: $godotExe $($godotArgs -join ' ')"
+            $process = Start-Process -FilePath $godotExe -ArgumentList $godotArgs -WorkingDirectory $env:GITHUB_WORKSPACE -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
+            $testExit = $process.ExitCode
+            $stdout = if (Test-Path $stdoutLog) { Get-Content -LiteralPath $stdoutLog -Raw } else { "" }
+            $stderr = if (Test-Path $stderrLog) { Get-Content -LiteralPath $stderrLog -Raw } else { "" }
+            $testOutputText = $stdout + "`n" + $stderr
+            Set-Content -LiteralPath $testLog -Value $testOutputText
+            Write-Host "Godot process exit code: $testExit"
+            if ([string]::IsNullOrWhiteSpace($testOutputText)) {
+              Write-Error "Godot produced no output for $test; inspect process launch diagnostics."
+            } else {
+              Write-Host $testOutputText
+            }
+            $hasGodotErrors = $testOutputText -match "SCRIPT ERROR|Parse Error|ERROR:"
+            $missingPassMarker = $test.StartsWith("res://") -and $testOutputText -notmatch "PASS: refactor_entrypoints_smoke_test"
+            if ($testExit -ne 0 -or $hasGodotErrors -or $missingPassMarker) {
+              $failed += $test
+              Write-Error "Test failed: $test (exit $testExit, Godot errors: $hasGodotErrors, pass marker missing: $missingPassMarker)"
+              break
+            }
+          }
+          Stop-Transcript
+          if ($failed.Count -gt 0) {
+            Set-Content -Path artifacts/failed-tests.txt -Value $failed
+            exit 1
+          }
+      - name: Run native chunk benchmark
+        shell: pwsh
+        env:
+          VOXEN_BENCHMARK_BASELINE_PATH: ${{ github.workspace }}/artifacts/native-chunk-benchmark-baseline.json
+        run: |
+          Start-Transcript -Path artifacts/native-chunk-benchmark.log
+          & .\godot.exe --headless --path . --script res://tests/native_chunk_benchmark.gd
+          $benchmarkExit = $LASTEXITCODE
+          Stop-Transcript
+          if ($benchmarkExit -ne 0) { exit $benchmarkExit }
+      - name: Upload CI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-extended-diagnostics-${{ github.run_number }}
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 14

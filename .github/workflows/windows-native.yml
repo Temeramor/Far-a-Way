@@ -1,4 +1,4 @@
-name: Windows native build and smoke tests
+name: Windows native build and core tests
 
 on:
   push:
@@ -103,16 +103,10 @@ jobs:
           Start-Transcript -Path artifacts/tests.log
           $tests = @(
             "res://tests/refactor_entrypoints_smoke_test.tscn",
-            "mesh_data_cache_test.gd",
-            "chunk_resource_manager_test.gd",
             "native_builder_smoke_test.gd",
             "native_terrain_sampler_test.gd",
             "pg_island_native_terrain_test.gd",
             "terrain_smoke_test.gd",
-            "lod_hierarchy_smoke_test.gd",
-            "shadow_lod_smoke_test.gd",
-            "voxel_surface_scatter_smoke_test.gd",
-            "decoration_spatial_index_test.gd",
             "fastnoise_parity_test.gd"
           )
           $failed = @()
@@ -159,16 +153,6 @@ jobs:
             Set-Content -Path artifacts/failed-tests.txt -Value $failed
             exit 1
           }
-      - name: Run native chunk benchmark
-        shell: pwsh
-        env:
-          VOXEN_BENCHMARK_BASELINE_PATH: ${{ github.workspace }}/artifacts/native-chunk-benchmark-baseline.json
-        run: |
-          Start-Transcript -Path artifacts/native-chunk-benchmark.log
-          & .\godot.exe --headless --path . --script res://tests/native_chunk_benchmark.gd
-          $benchmarkExit = $LASTEXITCODE
-          Stop-Transcript
-          if ($benchmarkExit -ne 0) { exit $benchmarkExit }
       - name: Upload CI diagnostics
         if: always()
         uses: actions/upload-artifact@v4
