@@ -1,6 +1,6 @@
 # Performance and generation baseline
 
-**Status:** benchmark harness v2 implementation is committed. Run 43102542013 verified all 200 samples and runner metadata, but exposed an invalid comparison against a legacy five-sample baseline. A version-aware migration fix is committed; it still requires a successful Windows extended run. Numerical baseline remains provisional and visual baseline is not approved.
+**Status:** benchmark harness v2 migration is verified by run 43107089833. The legacy schema-v1 baseline was skipped, 200 samples (25 per LOD) and runner metadata were recorded, and a schema-v2 baseline was cached. A second v2 run is still required to verify the 25% regression guard against a compatible baseline. Numerical baseline remains provisional; visual baseline is not approved.
 **Engine:** Godot 4.7.2, Windows x86-64, Forward+.
 **World scale:** current project configuration and README describe an 8 × 8 km map.
 **Benchmark implementation:** tests/native_chunk_benchmark.gd.
@@ -157,3 +157,31 @@ One-time terrain sampler setup was 13,455.105 ms. Runner metadata reports Window
 **Verification still required:** rerun Windows extended workflow on the fix. Confirm it reports the legacy baseline as incompatible, completes with the marker, saves schema v2 with 200 samples and metadata, and caches it. Then run once more to verify the guard against a compatible v2 baseline. Do not approve numerical baseline until repeatability is reviewed.
 
 Artifact: [windows-extended-diagnostics-9](https://github.com/Temeramor/Far-a-Way/actions/runs/43102542013/artifacts/13892978434).
+
+
+## Benchmark harness v2 — migration run and first v2 baseline (run 43107089833)
+
+The Windows x86-64 job checked out commit `05148e477531690b72262fb4e9a945629d4ca0ed` on `0.1.0.4-new`. Debug/Release GDExtension builds, Godot 4.7.2 project import/script validation, and all seven smoke/parity tests passed.
+
+The cache restored the legacy baseline from run 43099687501. The harness correctly reported it as incompatible (`schema=1, runs_per_lod=0, p95_method=legacy`), skipped the invalid cross-method comparison, completed all 200 measured builds (25 per LOD), and saved a schema-v2 baseline with raw samples and runner metadata. The workflow then saved a new cache entry keyed to run 43107089833.
+
+- One-time terrain sampler setup: **16,473.884 ms**.
+- Runner: Windows Server 2025, AMD EPYC 7763 64-Core Processor (4 visible processors), Godot 4.7.2, image `windows-2025-vs2026` version `20261103.298.1`, Azure eastus2.
+- Results, milliseconds:
+
+| LOD | min | median | nearest-rank p95 | Vertices | Indices |
+|---:|---:|---:|---:|---:|---:|
+| 0 | 26.115 | 26.338 | 34.265 | 68,160 | 102,240 |
+| 1 | 15.914 | 16.015 | 22.212 | 16,168 | 24,252 |
+| 2 | 4.578 | 4.602 | 4.697 | 3,724 | 5,586 |
+| 3 | 1.615 | 1.646 | 1.692 | 824 | 1,236 |
+| 4 | 0.783 | 0.825 | 1.158 | 272 | 408 |
+| 5 | 0.392 | 0.458 | 0.530 | 72 | 108 |
+| 6 | 0.283 | 0.354 | 0.411 | 8 | 12 |
+| 7 | 0.208 | 0.224 | 0.291 | 16 | 24 |
+
+LOD0 and LOD1 contain notable high samples, so this run establishes the compatible v2 cache baseline but does not establish stable absolute performance. Crucially, because the restored baseline was legacy/incompatible, this run **did not exercise the 25% guard against a compatible v2 baseline**.
+
+**Next verification:** run Windows extended workflow once more. It must restore the cache entry from 43107089833, compare schema v2 with 25 samples and nearest-rank p95, and pass the 25% per-LOD guard. Keep the numerical baseline provisional until repeated measurements are reviewed.
+
+Artifact: [windows-extended-diagnostics-10](https://github.com/Temeramor/Far-a-Way/actions/runs/43107089833/artifacts/13894669724).
