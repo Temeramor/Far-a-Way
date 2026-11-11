@@ -136,24 +136,40 @@ func _check_regression_baseline(
         return true
 
     var baseline_values: Array = []
+    var baseline_is_compatible := false
     if FileAccess.file_exists(baseline_path):
         var input := FileAccess.open(baseline_path, FileAccess.READ)
         if input != null:
             var parsed = JSON.parse_string(input.get_as_text())
             if parsed is Dictionary:
-                baseline_values = parsed.get("p95_ms", [])
+                var baseline_schema := int(parsed.get("schema_version", 1))
+                var baseline_runs := int(parsed.get("runs_per_lod", 0))
+                var baseline_p95_method := str(parsed.get("p95_method", "legacy"))
+                if baseline_schema == 2 and baseline_runs == RUNS_PER_LOD and baseline_p95_method == "nearest_rank":
+                    baseline_values = parsed.get("p95_ms", [])
+                    baseline_is_compatible = baseline_values.size() == p95_values.size()
+                else:
+                    print("Existing benchmark baseline is incompatible (schema=%d, runs_per_lod=%d, p95_method=%s); skipping comparison and establishing a v2 baseline." % [
+                        baseline_schema, baseline_runs, baseline_p95_method
+                    ])
+            else:
+                push_warning("Existing benchmark baseline is not a JSON object; skipping comparison and replacing it with a validated v2 baseline.")
+        else:
+            push_warning("Could not open existing benchmark baseline; skipping comparison and establishing a v2 baseline.")
+    else:
+        print("No existing benchmark baseline found; this run establishes the v2 baseline.")
 
-    if baseline_values.size() == p95_values.size():
+    if baseline_is_compatible:
         for lod in range(p95_values.size()):
             var baseline_ms: float = float(baseline_values[lod])
             var allowed_ms: float = baseline_ms * 1.25
             if baseline_ms > 0.0 and p95_values[lod] > allowed_ms:
-                push_error("LOD%d p95 regression: %.3f ms exceeds the 25%% threshold over %.3f ms baseline." % [
+                push_error("LOD%d p95 regression: %.3f ms exceeds the 25%% threshold over compatible v2 baseline %.3f ms." % [
                     lod, p95_values[lod], baseline_ms
                 ])
                 return false
-    else:
-        print("No complete LOD benchmark baseline found; this run establishes the baseline.")
+    elif FileAccess.file_exists(baseline_path):
+        print("No compatible v2 LOD baseline found; this run establishes the v2 baseline.")
 
     var output := FileAccess.open(baseline_path, FileAccess.WRITE)
     if output == null:
@@ -168,8 +184,8 @@ func _check_regression_baseline(
         "raw_samples_us": raw_samples,
         "runner_metadata": runner_metadata
     }, "\t"))
+    print("Saved compatible benchmark baseline schema v2 with %d samples per LOD." % RUNS_PER_LOD)
     return true
-
 
 func _make_job(lod: int, generator) -> Dictionary:
     return {
