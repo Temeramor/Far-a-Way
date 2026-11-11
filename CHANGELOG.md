@@ -1,3 +1,10 @@
+## Дополнительное исправление extended CI после run 43065249821 (11 ноября 2026)
+
+- В `VoxelSurfaceScatter._surface_info()` добавлена защита от отсутствующего или ещё не подготовленного terrain generator; до старта мира rock weight безопасно равен нулю.
+- `voxel_surface_scatter_smoke_test.gd` теперь передаёт генераторам геометрии `VoxelSurfaceDecorJob` — правильный CPU worker host с cancellation token и mesh helpers, а не scene node `VoxelSurfaceScatter`.
+- `VoxelTerrainGenerator` создаёт seeded mountain profile независимо от того, передан ли ему общий native sampler.
+- `terrain_smoke_test.gd` теперь явно вызывает `configure_native_terrain_sampler()`, переиспользует подготовленный sampler для проверки детерминизма и завершает процесс с ненулевым кодом при неудачных проверках вместо зависания после `assert`.
+- Run 43065249821: native Debug/Release build, импорт проекта и пять smoke/parity tests прошли; оставшиеся ошибки — неинициализированный sampler/неверный worker host в scatter test и неявная подготовка terrain в terrain test. Новые изменения ещё не проверены повторным запуском.
 ## Дополнительное исправление extended CI после run 43061904037 (11 ноября 2026)
 
 - Исправлен runtime crash в `_collect_lod_tiles()`: вместо прямого вызова `_generator.get_surface_height()` используется безопасный `VoxelWorld.get_surface_height()`, корректный до инициализации генератора.
