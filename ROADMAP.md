@@ -14,14 +14,15 @@
 
 Этот раздел имеет приоритет над историческими формулировками аудита ниже. Разделы 2 и далее описывают исходную архитектурную проблему и целевое направление; они не означают, что все перечисленные задачи остаются нетронутыми.
 
-### Extended CI — подтверждён run 43068959543 (11 ноября 2026)
+### Extended CI — подтверждён run 43074187166 (11 ноября 2026)
 
-- Windows x86-64 job завершилась с `success`; все 17 шагов выполнены успешно на commit `e3b0155bb1823286232432ab42d44cc824c65ba9` ветки `0.1.0.4-new`.
+- Windows x86-64 job завершилась с `success`; все 17 шагов успешны на commit `21d479734ff2265ca20132b63be101c1f19c0c4e` ветки `0.1.0.4-new`.
 - Debug и Release GDExtension собраны; Godot 4.7.2 установлена; импорт проекта и проверка скриптов завершились без ошибок.
-- Все семь smoke/parity tests завершились с exit code 0 и собственными PASS markers: `mesh_data_cache_test`, `chunk_resource_manager_test`, `lod_hierarchy_smoke_test`, `shadow_lod_smoke_test`, `voxel_surface_scatter_smoke_test`, `decoration_spatial_index_test`, `terrain_smoke_test`. Ошибок Godot и ненулевого stderr в тестовых логах нет.
-- Native chunk benchmark завершился штатно для LOD0–LOD7, однако последующий review выявил дефект измерительного harness: перед каждым build не был заранее подготовлен общий native terrain sampler, поэтому каждый вызов повторно генерировал глобальный PG-Island field. Значения run 43068959543 (~11.2–11.7 s p95) **не являются временем построения чанка** и не должны использоваться как performance baseline. Harness исправлен в `tests/native_chunk_benchmark.gd`: sampler конфигурируется один раз до LOD loop, setup time выводится отдельно, а chunk timings измеряются на повторно используемом sampler. Исправление ещё требует подтверждения новым Windows extended run.
-- Диагностический artifact: `windows-extended-diagnostics-4` (run 43068959543). В нём находятся логи импорта, всех тестов и benchmark.
-- Остались предупреждения компилятора MSVC C4244 в заголовке стандартной библиотеки `xmemory` и предупреждение GitHub Actions о принудительном запуске `ilammy/msvc-dev-cmd@v1` под Node 24 из-за отсутствия upstream Node 24 release. Они не повлияли на успешный результат, но должны учитываться при обновлении toolchain/actions.
+- Все семь smoke/parity tests завершились с exit code 0 и PASS markers: `mesh_data_cache_test`, `chunk_resource_manager_test`, `lod_hierarchy_smoke_test`, `shadow_lod_smoke_test`, `voxel_surface_scatter_smoke_test`, `decoration_spatial_index_test`, `terrain_smoke_test`.
+- Исправленная методика benchmark подтверждена: native terrain sampler подготовлен один раз до LOD loop; one-time setup занял 16,499.580 ms и выведен отдельно. После этого каждый LOD измерялся пять раз на повторно используемом sampler. Benchmark завершился штатно.
+- Предварительные p95 (ms), LOD0–LOD7: **27.304 / 16.667 / 4.670 / 1.771 / 0.818 / 0.470 / 0.402 / 0.289**. Эти значения впервые отражают chunk-build path, а не повторную генерацию всего острова. Они сохранены в Actions cache и диагностическом artifact, но пока **не утверждены как окончательный performance baseline**: нужен как минимум ещё один независимый run для оценки разброса.
+- Диагностический artifact: [`windows-extended-diagnostics-5`](https://github.com/Temeramor/Far-a-Way/actions/runs/43074187166/artifacts/13879834870).
+- Предупреждение GitHub Actions о `ilammy/msvc-dev-cmd@v1`, принудительно работающем под Node 24, остаётся upstream-предупреждением; на успешность job не повлияло. Предупреждения MSVC C4244 из предыдущего run требуют отдельного review, но не блокируют baseline.
 
 ### История диагностики CI
 
@@ -53,7 +54,7 @@
 
 ### Следующий рабочий фокус
 
-1. **Исправить и повторно подтвердить численный benchmark.** В `tests/native_chunk_benchmark.gd` сначала подготовить native terrain sampler один раз (как делает runtime), вывести его setup time отдельно и только затем измерять построение чанков LOD0–LOD7. После успешного run получить несколько независимых повторов и оценить разброс. Результаты run 43068959543 исключены из baseline: они включают повторную генерацию всего PG-Island поля на каждом измерении.
+1. **Проверить повторяемость численного benchmark.** Исправленная методика подтверждена run 43074187166; его p95 LOD0–LOD7: 27.304 / 16.667 / 4.670 / 1.771 / 0.818 / 0.470 / 0.402 / 0.289 ms, setup sampler — 16.500 s отдельно. Выполнить ещё 1–2 независимых Windows extended runs на том же commit и сравнить p95 по каждому LOD; проверить, что cache regression guard сравнивает именно новые корректные значения. Только после этого утвердить или скорректировать численный baseline. Run 43068959543 остаётся исключённым: он измерял повторную генерацию всего PG-Island поля.
 2. **Завершить визуальный baseline.** Выбрать 8–12 представительных seed; запустить каждый в настоящей игровой сцене; проверить spawn, берег, силуэты гор и streaming; снять скриншоты с фиксированными камерами/разрешением/настройками; экспортировать height, slope и shoreline maps. Записать hardware/runner image, версию Godot, build mode и параметры измерений. Численный и визуальный baseline пока не утверждены.
 3. **После принятия baseline продолжить Этап 1 по ADR-018:** сначала characterization tests текущего streaming planner, затем выделение чистого `StreamingPlanner`; после parity/regression проверки — отдельное выделение `MeshJobScheduler`. Не менять алгоритмы и ownership seed/generation_epoch одновременно с extraction.
 4. Реализовать базовый WorldSave и политику совместимости до любых редактируемых объёмных данных.
