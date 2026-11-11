@@ -1,6 +1,6 @@
 # Performance and generation baseline
 
-**Status:** extended CI passed; benchmark harness correction is committed and awaits a confirming run; numerical and visual baselines are not approved.
+**Status:** corrected benchmark harness confirmed by Windows extended CI run 43074187166; first valid numerical measurements are provisional pending independent repeats; visual baseline is not approved.
 **Engine:** Godot 4.7.2, Windows x86-64, Forward+.
 **World scale:** current project configuration and README describe an 8 × 8 km map.
 **Benchmark implementation:** tests/native_chunk_benchmark.gd.
@@ -43,6 +43,30 @@ The benchmark is being corrected to mirror the runtime lifecycle: call `configur
 - Review repeated CI measurements before committing a performance threshold.
 
 Do not treat an unreviewed CI artifact as the canonical performance baseline.
+
+## Corrected benchmark — first valid measurement (run 43074187166)
+
+The corrected harness was confirmed on Windows x86-64, Godot 4.7.2, commit `21d479734ff2265ca20132b63be101c1f19c0c4e`. It configures the native terrain sampler once before the LOD loop and reuses it for every measured chunk build.
+
+- One-time terrain sampler setup: **16,499.580 ms** (reported separately; not included in chunk timings).
+- Five measured builds per LOD after warm-up.
+- p95 chunk-build timings, milliseconds:
+
+| LOD | p95 (ms) | Vertices | Indices |
+|---:|---:|---:|---:|
+| 0 | 27.304 | 68,160 | 102,240 |
+| 1 | 16.667 | 16,168 | 24,252 |
+| 2 | 4.670 | 3,724 | 5,586 |
+| 3 | 1.771 | 824 | 1,236 |
+| 4 | 0.818 | 272 | 408 |
+| 5 | 0.470 | 72 | 108 |
+| 6 | 0.402 | 8 | 12 |
+| 7 | 0.289 | 16 | 24 |
+
+These are the first valid chunk-build measurements, not yet an approved performance baseline. Repeat the same workflow on the same commit at least once (preferably twice) and review per-LOD variance before setting a regression threshold. The 16.5-second sampler setup is a separate world-generation cost and should be tracked separately from chunk meshing.
+
+Artifact: [windows-extended-diagnostics-5](https://github.com/Temeramor/Far-a-Way/actions/runs/43074187166/artifacts/13879834870). It contains the raw benchmark CSV-style log, p95 JSON, import log and all seven test logs.
+
 
 
 ## Parity scope
