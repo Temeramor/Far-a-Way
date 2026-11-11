@@ -1,3 +1,11 @@
+## 12 ноября 2026 — benchmark harness v2: 25 измерений на LOD
+
+- В `tests/native_chunk_benchmark.gd` реализованы 25 измеряемых chunk builds на каждом LOD0–LOD7 после одного исключённого warm-up build (200 измерений суммарно).
+- Для каждого измерения сохраняется raw duration в микросекундах; в сводке остаются min/median/p95, p95 рассчитывается методом nearest-rank. One-time terrain sampler setup остаётся отдельной метрикой.
+- Кэшируемый JSON сохраняет совместимое поле `p95_ms` для существующего 25% regression guard и дополнительно содержит median, все raw samples, версию схемы и runner metadata. В лог добавлены metadata JSON и строки `raw_sample`.
+- Метаданные включают версию Godot, ОС, CPU/число потоков, runner/image, GitHub run ID, commit и branch.
+- Изменения записаны в ветку, но Windows extended CI ещё не запускался на этой версии. Требуется проверить сборку, импорт, все семь тестов, 200 samples, metadata и cache guard; численный baseline остаётся предварительным.
+
 ## 11 ноября 2026 — третий исправленный benchmark run и оценка повторяемости
 
 - Успешно завершён Windows extended run [43099687501](https://github.com/Temeramor/Far-a-Way/actions/runs/43099687501) на commit `f99817296f05c544f44f8bf600e45341a448b603`: Debug/Release GDExtension, Godot 4.7.2 import/script validation и все семь smoke/parity tests прошли.
