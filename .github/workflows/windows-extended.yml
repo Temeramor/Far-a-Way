@@ -137,7 +137,15 @@ jobs:
               $testTimedOut = -not $process.WaitForExit(180000)
               if ($testTimedOut) {
                 Write-Warning "Test timed out after 180 seconds: $test"
-                try { $process.Kill() } catch { Write-Warning "Could not terminate timed-out Godot process: $_" }
+                try {
+                  $process.Kill($true)
+                } catch {
+                  try {
+                    if (-not $process.HasExited) { $process.Kill() }
+                  } catch {
+                    Write-Warning "Could not terminate timed-out Godot process tree: $_"
+                  }
+                }
                 $process.WaitForExit(10000) | Out-Null
                 $testExit = 124
               } else {
