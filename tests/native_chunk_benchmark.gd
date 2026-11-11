@@ -26,6 +26,19 @@ func _run_benchmark() -> void:
         quit(1)
         return
 
+    # Match the runtime path: prepare the expensive world-global PG-Island sampler once,
+    # then let every chunk build reuse this builder's configured sampler.
+    var sampler_job := _make_job(0, generator)
+    var sampler_started := Time.get_ticks_usec()
+    builder.call("configure_terrain_sampler", sampler_job)
+    var sampler_setup_ms := float(Time.get_ticks_usec() - sampler_started) / 1000.0
+    var center_height := float(builder.call("get_surface_height", 0.0, 0.0))
+    if not is_finite(center_height):
+        push_error("Native terrain sampler returned a non-finite center height after configuration.")
+        quit(1)
+        return
+
+    print("terrain_sampler_setup_ms,%.3f" % sampler_setup_ms)
     print("lod,runs,min_ms,median_ms,p95_ms,vertices,indices")
     var failed := false
     var p95_by_lod: Array[float] = []
