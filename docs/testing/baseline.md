@@ -1,6 +1,6 @@
 # Performance and generation baseline
 
-**Status:** first automated benchmark reference captured (run 43068959543); numerical and visual baselines are still provisional and not approved.
+**Status:** extended CI passed; benchmark harness correction is committed and awaits a confirming run; numerical and visual baselines are not approved.
 **Engine:** Godot 4.7.2, Windows x86-64, Forward+.
 **World scale:** current project configuration and README describe an 8 × 8 km map.
 **Benchmark implementation:** tests/native_chunk_benchmark.gd.
