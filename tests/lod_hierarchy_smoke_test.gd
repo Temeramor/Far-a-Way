@@ -1,6 +1,6 @@
-extends SceneTree
+extends Node
 
-func _initialize() -> void:
+func _ready() -> void:
     call_deferred("_run")
 
 
@@ -9,8 +9,8 @@ func _run() -> void:
     world.auto_start_on_ready = false
     world.world_size_m = 2000.0
     world.chunk_size_m = 32.0
-    root.add_child(world)
-    await process_frame
+    get_tree().root.add_child(world)
+    await get_tree().process_frame
     # Keep the test's map-corner assertions meaningful on the compact 2 km world.
     world.render_distance_m = 1024.0
 
@@ -127,12 +127,12 @@ func _run() -> void:
     var far_generator := VoxelTerrainGenerator.new(1337, 2000.0)
     if not ClassDB.class_exists("VoxEnNativeBuilder"):
         push_error("VoxEnNativeBuilder is required for LOD mesh smoke tests. Build the native extension first.")
-        quit(1)
+        get_tree().quit(1)
         return
     var far_builder: Object = ClassDB.instantiate("VoxEnNativeBuilder")
     if far_builder == null:
         push_error("Could not instantiate VoxEnNativeBuilder for LOD mesh smoke tests.")
-        quit(1)
+        get_tree().quit(1)
         return
     var far_data: Dictionary = far_builder.call("build_mesh_data", {
         "coord": Vector2i.ZERO,
@@ -265,11 +265,11 @@ func _run() -> void:
         errors.append("Collision coverage should deactivate when the chunk no longer requests collision")
 
     world.queue_free()
-    await process_frame
+    await get_tree().process_frame
     if errors.is_empty():
-        print("Far a Way screen-space voxel LOD smoke test passed.")
-        quit(0)
+        print("PASS: lod_hierarchy_smoke_test | Far a Way screen-space voxel LOD smoke test passed.")
+        get_tree().quit(0)
     else:
         for error_text in errors:
             push_error(error_text)
-        quit(1)
+        get_tree().quit(1)
