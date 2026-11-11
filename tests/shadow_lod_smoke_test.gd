@@ -1,6 +1,6 @@
-extends SceneTree
+extends Node
 
-func _initialize() -> void:
+func _ready() -> void:
     call_deferred("_run")
 
 
@@ -25,8 +25,8 @@ func _run() -> void:
     if not errors.is_empty():
         for error_text in errors:
             push_error(error_text)
-        quit(1)
+        get_tree().quit(1)
         return
 
-    print("Shadow smoke test passed: terrain silhouette proxies remain enabled across LOD tiers; shadow attenuation is distance-based in the shader.")
-    quit()
+    print("PASS: shadow_lod_smoke_test | terrain silhouette proxies remain enabled across LOD tiers; shadow attenuation is distance-based in the shader.")
+    get_tree().quit()
