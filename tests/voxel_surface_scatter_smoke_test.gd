@@ -1,11 +1,11 @@
-extends SceneTree
+extends Node
 
 const MeshDataScript = preload("res://scripts/vegetation/mesh_data.gd")
 const RockScatterScript = preload("res://scripts/world/decoration/voxel_rock_scatter.gd")
 const VegetationScatterScript = preload("res://scripts/world/decoration/voxel_vegetation_scatter.gd")
 
 
-func _initialize() -> void:
+func _ready() -> void:
     call_deferred("_run")
 
 
@@ -15,12 +15,12 @@ func _run() -> void:
     world.auto_start_on_ready = false
     world.world_size_m = 2000.0
     world.chunk_size_m = 32.0
-    root.add_child(world)
-    await process_frame
+    get_tree().root.add_child(world)
+    await get_tree().process_frame
 
     var scatter := VoxelSurfaceScatter.new()
     world.add_child(scatter)
-    await process_frame
+    await get_tree().process_frame
 
     var mixed_a: int = scatter._mix(1337, 12, 31)
     var mixed_b: int = scatter._mix(1337, 12, 31)
@@ -118,11 +118,11 @@ func _run() -> void:
         errors.append("Grass vertices must carry wind-weight data in UV2.")
 
     world.queue_free()
-    await process_frame
+    await get_tree().process_frame
     if errors.is_empty():
-        print("Far a Way voxel surface scatter smoke test passed.")
-        quit(0)
+        print("PASS: voxel_surface_scatter_smoke_test | Far a Way voxel surface scatter smoke test passed.")
+        get_tree().quit(0)
     else:
         for error_text in errors:
             push_error(error_text)
-        quit(1)
+        get_tree().quit(1)
