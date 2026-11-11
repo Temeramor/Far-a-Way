@@ -1,3 +1,10 @@
+## 12 ноября 2026 — успешная миграция benchmark baseline v2
+
+- Разобран Windows extended run 43107089833 на commit `05148e477531690b72262fb4e9a945629d4ca0ed`: Debug/Release GDExtension, Godot import/script validation и все семь smoke/parity tests прошли.
+- Cache восстановил legacy schema v1 baseline; harness распознал несовместимость (`schema=1, runs_per_lod=0, p95_method=legacy`), корректно пропустил сравнение, выполнил 200 измерений (25 на каждый LOD), записал schema v2 с raw samples/runner metadata и сохранил новую cache entry.
+- Это подтверждает миграцию и создание v2 baseline, но не проверяет 25% guard на совместимом baseline. Следующий Windows extended run должен восстановить baseline из 43107089833 и пройти сравнение v2.
+- Численный baseline остаётся предварительным; в выборке есть заметные выбросы LOD0/LOD1. Артефакт: `windows-extended-diagnostics-10` (13894669724).
+
 ## 12 ноября 2026 — исправлена миграция benchmark baseline
 
 - Разобран Windows extended run 43102542013: сборка, импорт и все семь smoke/parity tests прошли; harness выполнил 200 измерений и записал metadata, но regression guard сравнил p95 новой схемы (25 samples, nearest-rank) с несовместимым старым baseline (5 samples).
