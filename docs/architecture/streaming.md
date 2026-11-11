@@ -6,4 +6,4 @@
 - `MeshDataCache` владеет LRU-данными мешей, лимитами памяти/записей и ключом кэша.
 - `ChunkResourceManager` владеет очередью отложенного освобождения, detached chunks и пулом повторного использования.
 
-`StreamingPlanner` и `MeshJobScheduler` пока остаются в слоях координатора. Их выделение требует явных контрактов на состояние чанков, LOD и generation_epoch; механический перенос без таких контрактов создаст риск регрессий.
+`StreamingPlanner` и `MeshJobScheduler` пока остаются в слоях координатора. Контракты и безопасная последовательность extraction описаны в [ADR-018](../decisions/ADR-018.md): сначала characterization tests и immutable inputs, затем planner, затем scheduler. `VoxelWorld` сохраняет ownership seed, generator, `generation_epoch` и применение Node/mesh/collision результатов. Механический перенос без этих контрактов создаст риск регрессий.
