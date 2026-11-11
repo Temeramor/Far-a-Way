@@ -16,6 +16,13 @@ func _run() -> void:
 
     var errors: Array[String] = []
 
+    # This test deliberately disables world startup; LOD distance planning must use
+    # the guarded height accessor rather than dereferencing an uninitialised generator.
+    if world._generator != null:
+        errors.append("The isolated LOD smoke test should start without a terrain generator.")
+    if not is_equal_approx(world.get_surface_height(0.0, 0.0), 25.0):
+        errors.append("An uninitialised world should provide the documented safe surface-height fallback.")
+
     # Screen-space transitions: the next LOD's cell reaches one pixel at each boundary.
     var screen_heights: Array[int] = [720, 900, 1080, 1440]
     var expected_first_boundary: Array[float] = [165.66, 207.06, 248.48, 331.31]
