@@ -17,7 +17,7 @@ These are existing regression-test inputs, not a claim that a visual reference s
 
 ## Automated checks
 
-The Windows workflow builds the GDExtension in debug and release configurations, imports the project headlessly, and runs the smoke/parity tests. The native chunk benchmark exercises LOD0–LOD7 with five measured runs after one warm-up run and emits CSV columns:
+The Windows workflow builds the GDExtension in debug and release configurations, imports the project headlessly, and runs the core smoke tests and native-field invariant checks. The native chunk benchmark exercises LOD0–LOD7 with five measured runs after one warm-up run and emits CSV columns:
 
 lod,runs,min_ms,median_ms,p95_ms,vertices,indices
 
