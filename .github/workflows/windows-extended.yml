@@ -161,6 +161,15 @@ jobs:
             Set-Content -Path artifacts/failed-tests.txt -Value $failed
             exit 1
           }
+      # Restore the last successful benchmark baseline for this branch. The run-id
+      # suffix creates a fresh immutable cache after each successful benchmark.
+      - name: Restore native benchmark baseline
+        uses: actions/cache@v4
+        with:
+          path: artifacts/native-chunk-benchmark-baseline.json
+          key: windows-native-benchmark-${{ runner.os }}-${{ env.GODOT_VERSION }}-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            windows-native-benchmark-${{ runner.os }}-${{ env.GODOT_VERSION }}-${{ github.ref_name }}-
       - name: Run native chunk benchmark
         shell: pwsh
         env:
