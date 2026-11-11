@@ -1,6 +1,6 @@
 # Performance and generation baseline
 
-**Status:** corrected benchmark harness confirmed by Windows extended CI run 43074187166; first valid numerical measurements are provisional pending independent repeats; visual baseline is not approved.
+**Status:** corrected benchmark harness confirmed by Windows extended CI runs 43074187166 and 43080357758; numerical baseline remains provisional because cross-run timings vary materially; visual baseline is not approved.
 **Engine:** Godot 4.7.2, Windows x86-64, Forward+.
 **World scale:** current project configuration and README describe an 8 × 8 km map.
 **Benchmark implementation:** tests/native_chunk_benchmark.gd.
@@ -68,6 +68,33 @@ These are the first valid chunk-build measurements, not yet an approved performa
 Artifact: [windows-extended-diagnostics-5](https://github.com/Temeramor/Far-a-Way/actions/runs/43074187166/artifacts/13879834870). It contains the raw benchmark CSV-style log, p95 JSON, import log and all seven test logs.
 
 
+
+## Corrected benchmark — independent repeat (run 43080357758)
+
+The second corrected run used the same commit 387f15eccc6ba6bb11d2c12d93bbd4f4f7f5c3a7, Windows x86-64 and Godot 4.7.2. It restored the benchmark JSON written by run 43074187166, so the 25% per-LOD regression guard compared against the first corrected measurement and passed.
+
+- One-time terrain sampler setup: **13,339.506 ms**.
+- Five measured builds per LOD after warm-up.
+- p95 chunk-build timings, milliseconds:
+
+| LOD | p95 (ms) | Vertices | Indices | Change vs. run 43074187166 |
+|---:|---:|---:|---:|---:|
+| 0 | 27.251 | 68,160 | 102,240 | -0.2% |
+| 1 | 13.145 | 16,168 | 24,252 | -21.1% |
+| 2 | 3.751 | 3,724 | 5,586 | -19.7% |
+| 3 | 1.330 | 824 | 1,236 | -24.9% |
+| 4 | 0.605 | 272 | 408 | -26.0% |
+| 5 | 0.281 | 72 | 108 | -40.2% |
+| 6 | 0.202 | 8 | 12 | -49.8% |
+| 7 | 0.164 | 16 | 24 | -43.3% |
+
+LOD0 is nearly unchanged, while LOD1–LOD7 are materially faster in this run. The runner image version and Godot version match the first run, but the hosted runner was allocated in a different Azure region (centralus rather than westus3). With only five measured samples per LOD, the reported p95 is effectively the maximum sample and is sensitive to outliers and runner contention. The difference must not be interpreted as a proven code-level speedup.
+
+The cache behavior is confirmed: this run restored the previous corrected JSON from run 43074187166, compared the new values against its 25% threshold, passed, and saved a new immutable cache entry. This guard is a coarse regression tripwire, not a statistical baseline or a hardware-independent guarantee.
+
+**Decision:** keep the numerical baseline provisional. Run at least one more independent measurement on the same commit. If the spread remains this large, increase repetitions and report robust median/percentile statistics and runner metadata before approving a threshold. Continue to keep the sampler setup cost separate from chunk meshing.
+
+Artifact: [windows-extended-diagnostics-6](https://github.com/Temeramor/Far-a-Way/actions/runs/43080357758/artifacts/13883689322).
 
 ## Parity scope
 
