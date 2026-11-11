@@ -13,7 +13,7 @@ concurrency:
 jobs:
   windows-x86_64:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     env:
       GODOT_VERSION: "4.7.2"
     steps:
@@ -106,7 +106,6 @@ jobs:
             "native_builder_smoke_test.gd",
             "native_terrain_sampler_test.gd",
             "pg_island_native_terrain_test.gd",
-            "terrain_smoke_test.gd",
             "fastnoise_parity_test.gd"
           )
           $failed = @()
@@ -128,8 +127,16 @@ jobs:
               $godotArgs += @("--script", "res://tests/$test")
             }
             Write-Host "Launching: $godotExe $($godotArgs -join ' ')"
-            $process = Start-Process -FilePath $godotExe -ArgumentList $godotArgs -WorkingDirectory $env:GITHUB_WORKSPACE -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
-            $testExit = $process.ExitCode
+            $process = Start-Process -FilePath $godotExe -ArgumentList $godotArgs -WorkingDirectory $env:GITHUB_WORKSPACE -NoNewWindow -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
+            $testTimedOut = -not $process.WaitForExit(180000)
+            if ($testTimedOut) {
+              Write-Error "Test timed out after 180 seconds: $test"
+              try { $process.Kill() } catch { Write-Warning "Could not terminate timed-out Godot process: $_" }
+              $process.WaitForExit(10000) | Out-Null
+              $testExit = 124
+            } else {
+              $testExit = $process.ExitCode
+            }
             $stdout = if (Test-Path $stdoutLog) { Get-Content -LiteralPath $stdoutLog -Raw } else { "" }
             $stderr = if (Test-Path $stderrLog) { Get-Content -LiteralPath $stderrLog -Raw } else { "" }
             $testOutputText = $stdout + "`n" + $stderr
@@ -142,7 +149,7 @@ jobs:
             }
             $hasGodotErrors = $testOutputText -match "SCRIPT ERROR|Parse Error|ERROR:"
             $missingPassMarker = $test.StartsWith("res://") -and $testOutputText -notmatch "PASS: refactor_entrypoints_smoke_test"
-            if ($testExit -ne 0 -or $hasGodotErrors -or $missingPassMarker) {
+            if ($testTimedOut -or $testExit -ne 0 -or $hasGodotErrors -or $missingPassMarker) {
               $failed += $test
               Write-Error "Test failed: $test (exit $testExit, Godot errors: $hasGodotErrors, pass marker missing: $missingPassMarker)"
               break
