@@ -22,6 +22,14 @@
 - Extended workflow теперь выполняет весь список тестов, собирает все ошибки вместо остановки на первой и требует индивидуальный `PASS` marker от каждого теста.
 - Actions обновлены на Node 24-compatible версии; `ilammy/msvc-dev-cmd@v1` пока не имеет upstream Node 24 release, поэтому для него включён `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`.
 - Статус extended CI остаётся **не проверен** до ручного запуска workflow на `0.1.0.4-new`. Не считать benchmark или visual baseline завершёнными.
+### CI follow-up — run 43061904037 (11 ноября 2026)
+
+- Run 43061904037 на commit `289b6c79ab1c79fbf210834d944742a5f892e9db`: Debug/Release native build, установка Godot 4.7.2 и импорт проекта прошли; `mesh_data_cache_test` и `chunk_resource_manager_test` завершились успешно.
+- `lod_hierarchy_smoke_test` выявил реальную ошибку runtime-кода: `_collect_lod_tiles()` напрямую вызывал `_generator.get_surface_height()`, хотя при `auto_start_on_ready = false` генератор намеренно не создан. Исправлено обращением через `VoxelWorld.get_surface_height()`, которое возвращает безопасное значение до подготовки terrain generator.
+- Добавлена регрессионная проверка: изолированный LOD test подтверждает ожидаемое состояние без генератора и проверяет fallback высоты поверхности.
+- Второй дефект был в CI harness: GitHub Actions запускает PowerShell с `$ErrorActionPreference = 'Stop'`; `Write-Error` внутри цикла тестов прерывал весь шаг на первой ошибке, поэтому предыдущая версия не запускала оставшиеся тесты. Пер-сценарные сообщения заменены на `Write-Warning`, а ненулевой exit code выставляется после полного прохода и агрегирования результатов.
+- Benchmark теперь сохраняет отдельный stdout/stderr log, проверяет код возврата, отсутствие Godot errors и обязательный маркер `Native chunk benchmark completed.`
+- Эти исправления закоммичены, но ещё не проверены новым run. Следующий запуск `windows-extended.yml` на `0.1.0.4-new` должен проверить все семь smoke/parity tests и затем benchmark.
 ### Выполнено в версии 0.1.0.4
 
 - Сохранены публичные пути и `class_name` трёх точек входа: `VoxelWorld`, `VoxelSurfaceScatter`, `WorldController`; их реализация распределена по state-файлам и слоям наследования.
