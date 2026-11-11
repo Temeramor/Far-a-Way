@@ -34,11 +34,13 @@ func _init(
         p_native_sampler: Object = null) -> void:
     seed_value = p_seed
     world_size_m = maxf(256.0, p_world_size_m)
+    # The deterministic GDScript mountain profile is still part of the generator's
+    # public data even when the native heightfield sampler is shared with another instance.
+    _create_mountain_ranges()
     if p_native_sampler != null:
         _native_sampler = p_native_sampler
         _terrain_prepared = true
         return
-    _create_mountain_ranges()
     _native_sampler = ClassDB.instantiate("VoxEnNativeBuilder")
     if _native_sampler == null:
         push_error("VoxelTerrainGenerator requires VoxEnNativeBuilder as its native terrain sampler.")
