@@ -1,3 +1,12 @@
+## 11 ноября 2026 — третий исправленный benchmark run и оценка повторяемости
+
+- Успешно завершён Windows extended run [43099687501](https://github.com/Temeramor/Far-a-Way/actions/runs/43099687501) на commit `f99817296f05c544f44f8bf600e45341a448b603`: Debug/Release GDExtension, Godot 4.7.2 import/script validation и все семь smoke/parity tests прошли.
+- Benchmark отдельно измерил one-time sampler setup (10,170.707 ms), затем выполнил по пять измерений на LOD0–LOD7. p95: 17.015 / 13.723 / 3.028 / 1.065 / 0.495 / 0.254 / 0.186 / 0.136 ms; median: 16.760 / 10.473 / 2.989 / 1.019 / 0.461 / 0.230 / 0.160 / 0.107 ms.
+- Cache восстановил baseline второго исправленного run 43080357758; все LOD прошли 25% regression guard, затем сохранена новая cache entry. Все семь тестов имеют exit code 0 и PASS marker.
+- Третий run показывает medians на 5–21% ниже второго; sampler setup снизился до 10.17 s против 13.34 и 16.50 s в двух предыдущих запусках. При пяти samples p95 фактически является максимумом; заметен выброс LOD1 (p95 13.723 ms при median 10.473 ms). Это hosted-runner variance, не доказанное ускорение кода.
+- Численный baseline остаётся предварительным. Следующий шаг — увеличить число измерений до 20–30 на LOD после warm-up, сохранять сырые samples и runner metadata, затем повторить серию. Визуальный baseline не утверждён.
+- Обновлены ROADMAP.md и docs/testing/baseline.md. Artifact: [windows-extended-diagnostics-8](https://github.com/Temeramor/Far-a-Way/actions/runs/43099687501/artifacts/13892581387).
+
 ## 11 ноября 2026 — повторное подтверждение benchmark и анализ variance
 
 - Успешно завершён второй независимый Windows extended run [43080357758](https://github.com/Temeramor/Far-a-Way/actions/runs/43080357758) на том же commit 387f15eccc6ba6bb11d2c12d93bbd4f4f7f5c3a7: Debug/Release GDExtension, Godot 4.7.2 import/script validation и все семь smoke/parity tests прошли.
