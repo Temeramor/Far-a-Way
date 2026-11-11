@@ -2,7 +2,8 @@ extends SceneTree
 
 ## Repeatable native terrain benchmark. Run with:
 ## godot --headless --path . --script res://tests/native_chunk_benchmark.gd
-const RUNS_PER_LOD := 5
+## Each LOD gets one discarded warm-up build followed by 25 measured builds.
+const RUNS_PER_LOD := 25
 const CHUNK_SIZE_VOXELS := 160
 const WORLD_SIZE_M := 2000.0
 const WORLD_SIZE_VOXELS := 10000
@@ -38,14 +39,21 @@ func _run_benchmark() -> void:
         quit(1)
         return
 
+    var runner_metadata := _collect_runner_metadata()
     print("terrain_sampler_setup_ms,%.3f" % sampler_setup_ms)
+    print("benchmark_metadata_json," + JSON.stringify(runner_metadata))
     print("lod,runs,min_ms,median_ms,p95_ms,vertices,indices")
+    print("raw_sample,sample_index,lod,elapsed_us")
+
     var failed := false
     var p95_by_lod: Array[float] = []
+    var median_by_lod: Array[float] = []
+    var raw_samples_by_lod: Array = []
     for lod in range(8):
         var timings: Array[int] = []
         var vertex_count := 0
         var index_count := 0
+        # One warm-up build is deliberately excluded from all statistics.
         for run_index in range(RUNS_PER_LOD + 1):
             var job_data := _make_job(lod, generator)
             var started := Time.get_ticks_usec()
@@ -63,31 +71,65 @@ func _run_benchmark() -> void:
                 break
             if run_index > 0:
                 timings.append(elapsed)
+                print("raw_sample,%d,%d,%d" % [run_index - 1, lod, elapsed])
             vertex_count = vertices.size()
             index_count = indices.size()
         if failed:
             break
-        timings.sort()
-        var median_ms := float(timings[int(timings.size() / 2)]) / 1000.0
-        var min_ms := float(timings[0]) / 1000.0
-        var p95_index := clampi(int(ceil(float(timings.size()) * 0.95)) - 1, 0, timings.size() - 1)
-        var p95_ms := float(timings[p95_index]) / 1000.0
+
+        var sorted_timings := timings.duplicate()
+        sorted_timings.sort()
+        var median_us := float(sorted_timings[int(sorted_timings.size() / 2)])
+        # Nearest-rank p95: with 25 samples this is the 24th ordered value.
+        var p95_index := clampi(int(ceil(float(sorted_timings.size()) * 0.95)) - 1, 0, sorted_timings.size() - 1)
+        var p95_us := float(sorted_timings[p95_index])
+        var min_us := float(sorted_timings[0])
+        var median_ms := median_us / 1000.0
+        var p95_ms := p95_us / 1000.0
         p95_by_lod.append(p95_ms)
+        median_by_lod.append(median_ms)
+        raw_samples_by_lod.append(timings)
         print("%d,%d,%.3f,%.3f,%.3f,%d,%d" % [
-            lod, RUNS_PER_LOD, min_ms, median_ms, p95_ms, vertex_count, index_count
+            lod, timings.size(), min_us / 1000.0, median_ms, p95_ms, vertex_count, index_count
         ])
 
     if failed:
         quit(1)
         return
-    if not _check_regression_baseline(p95_by_lod):
+    if not _check_regression_baseline(p95_by_lod, median_by_lod, raw_samples_by_lod, runner_metadata):
         quit(1)
         return
     print("Native chunk benchmark completed.")
     quit(0)
 
 
-func _check_regression_baseline(p95_values: Array[float]) -> bool:
+func _collect_runner_metadata() -> Dictionary:
+    var version_info: Dictionary = Engine.get_version_info()
+    return {
+        "godot_version": version_info.get("string", "unknown"),
+        "godot_build": version_info.get("build", "unknown"),
+        "os": OS.get_name(),
+        "os_version": OS.get_version(),
+        "processor": OS.get_processor_name(),
+        "processor_count": OS.get_processor_count(),
+        "runner_os": OS.get_environment("RUNNER_OS"),
+        "runner_arch": OS.get_environment("RUNNER_ARCH"),
+        "runner_name": OS.get_environment("RUNNER_NAME"),
+        "image_os": OS.get_environment("ImageOS"),
+        "image_version": OS.get_environment("ImageVersion"),
+        "github_run_id": OS.get_environment("GITHUB_RUN_ID"),
+        "github_run_number": OS.get_environment("GITHUB_RUN_NUMBER"),
+        "github_sha": OS.get_environment("GITHUB_SHA"),
+        "github_ref_name": OS.get_environment("GITHUB_REF_NAME")
+    }
+
+
+func _check_regression_baseline(
+    p95_values: Array[float],
+    median_values: Array[float],
+    raw_samples: Array,
+    runner_metadata: Dictionary
+) -> bool:
     var baseline_path: String = OS.get_environment("VOXEN_BENCHMARK_BASELINE_PATH")
     if baseline_path.is_empty():
         push_warning("No VOXEN_BENCHMARK_BASELINE_PATH set; benchmark ran without a regression baseline.")
@@ -117,7 +159,15 @@ func _check_regression_baseline(p95_values: Array[float]) -> bool:
     if output == null:
         push_error("Could not write benchmark baseline: " + baseline_path)
         return false
-    output.store_string(JSON.stringify({"p95_ms": p95_values}, "\t"))
+    output.store_string(JSON.stringify({
+        "schema_version": 2,
+        "runs_per_lod": RUNS_PER_LOD,
+        "p95_method": "nearest_rank",
+        "p95_ms": p95_values,
+        "median_ms": median_values,
+        "raw_samples_us": raw_samples,
+        "runner_metadata": runner_metadata
+    }, "\t"))
     return true
 
 
