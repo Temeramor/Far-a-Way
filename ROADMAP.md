@@ -42,7 +42,7 @@
 
 1. Core Windows CI на целевой ветке `0.1.0.4` подтверждён успешным run 43039732310 (commit `c8364d45d8c0a5a75d1efd13906804c3f3943926`): Debug/Release build, Godot import, smoke tests и native field invariants прошли. Следующий CI-шаг — вручную запустить `windows-extended.yml` и проверить benchmark/cache на реальном runner; запуск ещё не выполнен.
 2. Завершить baseline: выбрать контрольные seed, получить визуальные эталоны и диагностические карты, накопить повторяемые benchmark measurements.
-3. Закрыть оставшуюся часть Этапа 1 малыми независимыми шагами: контракты и extraction для planner/scheduler, затем TerrainProfile/GenerationContext и TerrainField adapter; каждый шаг — с parity/regression тестами.
+3. Продолжить Этап 1 малыми независимыми шагами по ADR-018: characterization tests для текущего streaming planner, затем выделение `StreamingPlanner`, после него `MeshJobScheduler`; далее TerrainProfile/GenerationContext и TerrainField adapter. Каждый шаг — отдельным PR с parity/regression тестами; алгоритмы и ownership epoch/seed не менять одновременно с extraction.
 4. Реализовать базовый WorldSave до любых редактируемых объёмных данных.
 5. Только после стабилизации основы перейти к отдельной тестовой сцене SDF 32×32×32 м.
 
