@@ -1,10 +1,10 @@
-extends SceneTree
+extends Node
 
 const ManagerScript = preload("res://scripts/streaming/chunk_resource_manager.gd")
 const ChunkScript = preload("res://scripts/streaming/voxel_chunk.gd")
 
 
-func _initialize() -> void:
+func _ready() -> void:
     var manager = ManagerScript.new()
     var chunk = ChunkScript.new()
     manager.recycle_retired_chunk(chunk)
@@ -13,4 +13,5 @@ func _initialize() -> void:
     assert(reused == chunk)
     assert(manager.get_pool_size() == 0)
     reused.free()
-    quit(0)
+    print("PASS: chunk_resource_manager_test")
+    get_tree().quit(0)
