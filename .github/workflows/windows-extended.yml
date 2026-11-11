@@ -17,13 +17,15 @@ jobs:
       GODOT_VERSION: "4.7.2"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Configure MSVC
         uses: ilammy/msvc-dev-cmd@v1
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         with:
           arch: x64
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install SCons
@@ -184,7 +186,7 @@ jobs:
       # Restore the last successful benchmark baseline for this branch. The run-id
       # suffix creates a fresh immutable cache after each successful benchmark.
       - name: Restore native benchmark baseline
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: artifacts/native-chunk-benchmark-baseline.json
           key: windows-native-benchmark-${{ runner.os }}-${{ env.GODOT_VERSION }}-${{ github.ref_name }}-${{ github.run_id }}
@@ -202,7 +204,7 @@ jobs:
           if ($benchmarkExit -ne 0) { exit $benchmarkExit }
       - name: Upload CI diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-extended-diagnostics-${{ github.run_number }}
           path: artifacts/
