@@ -1,6 +1,6 @@
 # Performance and generation baseline
 
-**Status:** benchmark harness v2 now collects 25 measured builds per LOD after one warm-up, preserves 200 raw samples and runner metadata, and reports median plus nearest-rank p95. The v2 implementation awaits Windows extended CI verification; numerical baseline remains provisional and visual baseline is not approved.
+**Status:** benchmark harness v2 implementation is committed. Run 43102542013 verified all 200 samples and runner metadata, but exposed an invalid comparison against a legacy five-sample baseline. A version-aware migration fix is committed; it still requires a successful Windows extended run. Numerical baseline remains provisional and visual baseline is not approved.
 **Engine:** Godot 4.7.2, Windows x86-64, Forward+.
 **World scale:** current project configuration and README describe an 8 × 8 km map.
 **Benchmark implementation:** tests/native_chunk_benchmark.gd.
@@ -21,7 +21,7 @@ The Windows workflow builds the GDExtension in debug and release configurations,
 
 lod,runs,min_ms,median_ms,p95_ms,vertices,indices
 
-It also emits one raw_sample CSV row per measured build (sample_index,lod,elapsed_us) and a benchmark_metadata_json record containing Godot/OS/CPU details and GitHub runner/image/run/commit metadata. The cached JSON baseline keeps the p95_ms field for compatibility with the existing 25% guard and adds schema_version, runs_per_lod, p95_method, median_ms, raw_samples_us, and runner_metadata.
+It also emits one raw_sample CSV row per measured build (sample_index,lod,elapsed_us) and a benchmark_metadata_json record containing Godot/OS/CPU details and GitHub runner/image/run/commit metadata. The cached JSON baseline keeps the p95_ms field and adds schema_version, runs_per_lod, p95_method, median_ms, raw_samples_us, and runner_metadata. The guard compares only schema v2 baselines with matching run count and p95 method; legacy/incompatible baselines are explicitly skipped and replaced by a new v2 baseline.
 
 CI preserves import logs, test logs, benchmark output and the generated benchmark JSON as a workflow artifact. The extended workflow restores the last successful benchmark JSON from an Actions cache scoped by OS, Godot version and branch, then saves a new immutable cache entry after a successful run. The first successful run on a cache key establishes the baseline; later runs fail if any LOD p95 exceeds that baseline by more than 25%. This is a coarse guardrail, not a hardware-independent performance guarantee: runner image changes and noisy hosted hardware can still affect measurements.
 
@@ -133,8 +133,27 @@ Artifact: [windows-extended-diagnostics-8](https://github.com/Temeramor/Far-a-Wa
 The former `fastnoise_parity_test.gd` compared the current PG-Island native terrain against a legacy GDScript height formula. That comparison is invalid: the native port deliberately uses a different RNG and noise configuration, as documented in README. The test has been replaced by `native_terrain_field_invariants_test.gd`, which checks finite and bounded heights, repeatable samples, agreement between height and surface APIs, and bounded rock weights. Exact cross-implementation parity is out of scope until a dedicated RNG/noise-porting milestone is approved.
 
 
-## Benchmark harness v2 — pending CI verification (12 November 2026)
+## Benchmark harness v2 — first CI attempt and migration fix (12 November 2026)
 
-The harness now performs 25 measured builds per LOD after one discarded warm-up build (200 measured chunk builds total). It keeps the one-time terrain sampler setup measurement separate, writes every measured duration in microseconds to the log and cached JSON, records median and nearest-rank p95, and captures runner metadata including Godot version, OS, CPU, runner/image identifiers, workflow run, commit and branch. The existing per-LOD 25% p95 regression guard is retained.
+Run [43102542013](https://github.com/Temeramor/Far-a-Way/actions/runs/43102542013) checked out commit `1c0e7da498ddda6c8e3ab6d70fdfde36e31cce35`. Debug/Release GDExtension builds, Godot import/script validation, and all seven smoke/parity tests passed. The benchmark then completed all eight LODs and emitted exactly 200 raw sample rows plus runner metadata:
 
-**Verification status:** implementation committed, but no Windows extended run has yet exercised this version. The first successful v2 run must be inspected for the 200 raw samples, metadata, cache restore/save behavior, and all existing build/import/test checks. Repeat the run before approving a numerical performance baseline. The first v2 run will replace the old five-sample JSON after passing the guard; the legacy p95_ms field remains available for comparison.
+| LOD | min (ms) | median (ms) | nearest-rank p95 (ms) |
+|---:|---:|---:|---:|
+| 0 | 20.913 | 21.107 | 22.540 |
+| 1 | 13.037 | 13.136 | 13.295 |
+| 2 | 3.757 | 3.775 | 3.828 |
+| 3 | 1.251 | 1.283 | 1.344 |
+| 4 | 0.536 | 0.552 | 0.618 |
+| 5 | 0.302 | 0.315 | 0.359 |
+| 6 | 0.199 | 0.230 | 0.253 |
+| 7 | 0.163 | 0.168 | 0.235 |
+
+One-time terrain sampler setup was 13,455.105 ms. Runner metadata reports Windows Server 2025, AMD EPYC 9V74 80-Core Processor (4 visible processors), Godot 4.7.2, image `win25-vs2026` version `20261103.298.1`, Azure region eastus.
+
+**Failure cause:** the cache restored the previous schema-v1 baseline from run 43099687501, whose LOD0 p95 was 17.015 ms based on five measurements. The new schema-v2 p95 (22.540 ms) is based on 25 measurements and nearest-rank p95. Comparing these values under the 25% guard is statistically invalid; the guard lacked a schema/method compatibility check. This is a harness migration defect, not a meshing/build/test failure. The benchmark correctly failed rather than silently overwriting the old baseline.
+
+**Fix committed:** `5930850187f426a64d2b559f377eefd5505420bb` updates the guard to compare only schema v2 baselines with the expected 25 runs per LOD and `nearest_rank` method. Legacy or otherwise incompatible baseline files are explicitly reported, skipped for that one migration run, and replaced with a v2 baseline after all benchmark samples validate. The per-LOD 25% guard remains active for subsequent compatible v2 runs.
+
+**Verification still required:** rerun Windows extended workflow on the fix. Confirm it reports the legacy baseline as incompatible, completes with the marker, saves schema v2 with 200 samples and metadata, and caches it. Then run once more to verify the guard against a compatible v2 baseline. Do not approve numerical baseline until repeatability is reviewed.
+
+Artifact: [windows-extended-diagnostics-9](https://github.com/Temeramor/Far-a-Way/actions/runs/43102542013/artifacts/13892978434).
