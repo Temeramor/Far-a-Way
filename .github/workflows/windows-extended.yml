@@ -1,6 +1,8 @@
 name: Windows extended tests and benchmark
 
 on:
+  push:
+    branches: ["0.1.0.4-new"]
   workflow_dispatch:
   schedule:
     - cron: "0 3 * * 1"
