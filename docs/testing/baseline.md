@@ -238,3 +238,14 @@ Run [43763979682](https://github.com/Temeramor/Far-a-Way/actions/runs/4376397968
 - This run includes the 8,000 m `VoxelTerrainGenerator` default and the matching assertion in `terrain_smoke_test.gd`. The previously noted CI/source-revision mismatch is resolved.
 
 The run validates build, import, automated behavior and benchmark guardrails. It does not validate visual quality of the 8 × 8 km world. Capture and review of 8–12 representative seeds remains the next gate. The benchmark's explicit 2,000 m fixture remains intentionally separate from runtime world size.
+
+
+## Runner-specific benchmark baselines — 16 November 2026
+
+Runs [43771288424](https://github.com/Temeramor/Far-a-Way/actions/runs/43771288424) and [43774332485](https://github.com/Temeramor/Far-a-Way/actions/runs/43774332485) passed Windows/Release+Debug builds, Godot project import and all eight smoke/parity tests. Both failed only at the native chunk benchmark.
+
+The saved schema-v2 baseline came from AMD EPYC 9V45 (4 visible processors). Both failing runs used AMD EPYC 9V74 (4 visible processors), with the same Windows runner image version and Godot 4.7.2. Their LOD0 medians were 20.896 ms and 21.070 ms; the baseline median was 16.646 ms. The source comparison from baseline commit `36311cb56bc8282af0505a5f50ecfdc22cd329e8` to tested commit `2e257352d1373cc2bced6814b50951d6aeca707b` shows no native C++ source changes.
+
+This exposed a benchmark validity issue: schema/method compatibility alone was insufficient. The harness now requires matching CPU model, visible processor count, OS/version, runner OS/architecture, Godot version/build and runner image OS/version before comparing timings. A mismatch is reported and causes the successful current run to establish a new runner-specific baseline. The 25% p95 guard remains active when the environment matches.
+
+**Verification pending:** the new metadata gate must pass Windows CI, establish the EPYC 9V74 baseline, and then be exercised by a subsequent run against that compatible baseline. Do not treat the new baseline as verified until both runs pass.
