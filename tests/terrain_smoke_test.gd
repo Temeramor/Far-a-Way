@@ -6,6 +6,10 @@ var _errors: Array[String] = []
 
 
 func _ready() -> void:
+    var default_world = GeneratorScript.new()
+    _check(is_equal_approx(default_world.world_size_m, 8000.0),
+        "The terrain generator default must match the 8 km game world.")
+
     var first = GeneratorScript.new(123456, 5000.0)
     # Terrain preparation is explicit now; unprepared samplers intentionally return
     # safe placeholders and are not suitable for terrain invariants.
