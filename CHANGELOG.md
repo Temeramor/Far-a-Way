@@ -1,3 +1,11 @@
+## 16 ноября 2026 — streaming planner characterization прошёл Windows CI
+
+- Успешно завершён [Windows extended run 43766858561](https://github.com/Temeramor/Far-a-Way/actions/runs/43766858561), job [132973837664](https://github.com/Temeramor/Far-a-Way/actions/runs/43766858561/job/132973837664), branch `0.1.0.4-new`, commit `af98c10cab1199da3db0edc266daf3caa558b5c5`.
+- Debug/Release GDExtension build, Godot 4.7.2 project import/script validation и все восемь smoke/parity tests прошли; новый `streaming_planner_characterization_test.gd` включён в CI.
+- Characterization покрывает повторяемость wanted requests, root fallback/split, точные размеры частичных граничных tiles, параметры mesh/collision/shadow и отсечение вне render distance.
+- Пользователь подтвердил успешную генерацию островов на десятках seed; визуальный этап считаем принятым, без обязательного пакета скриншотов.
+- После этого CI run начато выделение `StreamingPlanner` в отдельный сервис. Код extraction будет считаться подтверждённым только после нового Windows CI.
+
 ## 16 ноября 2026 — актуальная кодовая ревизия прошла Windows extended CI
 
 - Успешно завершён [Windows extended run 43763979682](https://github.com/Temeramor/Far-a-Way/actions/runs/43763979682), job [132964865089](https://github.com/Temeramor/Far-a-Way/actions/runs/43763979682/job/132964865089), на branch `0.1.0.4-new`, commit `36311cb56bc8282af0505a5f50ecfdc22cd329e8`.
