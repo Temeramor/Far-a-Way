@@ -1,7 +1,7 @@
 ## 15 ноября 2026 — статус после успешного Windows extended CI run 43357175555
 
 - Run [43357175555](https://github.com/Temeramor/Far-a-Way/actions/runs/43357175555) завершился успешно на commit `eed0a51cf91bcaf94f6986a90edcb7196fd58fe6`: Debug/Release GDExtension build, Godot 4.7.2 import/script validation, все семь smoke/parity tests, benchmark v2 (200 samples) и 25% p95 guard прошли. Подробные метрики и runner metadata внесены в `docs/testing/baseline.md`.
-- Текущий HEAD ветки `0.1.0.4-new` — `36311cb56bc8282af0505a5f50ecfdc22cd329e8`, на 13 коммитов впереди указанного CI run. После CI были добавлены документационные обновления, default `VoxelTerrainGenerator.world_size_m = 8000` и проверка default в `terrain_smoke_test.gd`. Run 43357175555 не включает эти изменения; требуется новый запуск на текущем HEAD.
+- Кодовая ревизия `36311cb56bc8282af0505a5f50ecfdc22cd329e8` находится на 13 коммитов впереди указанного CI run. После CI в ней появились документационные обновления, default `VoxelTerrainGenerator.world_size_m = 8000` и проверка default в `terrain_smoke_test.gd`. Run 43357175555 не включает эти изменения; требуется новый запуск на этой кодовой ревизии. Последующие коммиты в рамках актуализации меняют только документацию.
 - Игровая сцена остаётся 8 × 8 км, целевая площадь острова — около 4 км². Синтетический 2 × 2 км в native chunk benchmark задаётся явно и не меняет игровой мир.
 - Добавлена процедура визуального baseline для 8–12 seed: `docs/testing/visual-baseline.md`. Съёмка и визуальная приёмка ещё не выполнены.
 - Следующий этап: подтвердить текущий HEAD CI; затем провести визуальную оценку 8 × 8 км мира; после sign-off — characterization tests и extraction по ADR-018. WorldSave и SDF остаются последующими этапами.
