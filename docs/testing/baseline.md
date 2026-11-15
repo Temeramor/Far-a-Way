@@ -1,9 +1,12 @@
 # Performance and generation baseline
 
-**Status:** benchmark harness v2 migration is verified by run 43107089833. The legacy schema-v1 baseline was skipped, 200 samples (25 per LOD) and runner metadata were recorded, and a schema-v2 baseline was cached. A second v2 run is still required to verify the 25% regression guard against a compatible baseline. Numerical baseline remains provisional; visual baseline is not approved.
+**Status:** Windows extended run 43357175555 passed on commit `eed0a51cf91bcaf94f6986a90edcb7196fd58fe6`. It verified the v2 cache and 25% p95 guard. The current branch HEAD `36311cb56bc8282af0505a5f50ecfdc22cd329e8` contains later changes (8000 m generator default and its smoke assertion) that were not part of that run; rerun CI on HEAD before marking those changes verified. Numerical baseline remains runner-specific; visual baseline is pending.
 **Engine:** Godot 4.7.2, Windows x86-64, Forward+.
-**Runtime world scale:** the game scene is 8 × 8 km, with an irregular central island of approximately 4 km². `scenes/world.tscn` sets `VoxelWorld.world_size_m = 8000`, `Terrain.world_size = 8000`, and an 8000 × 8000 m sea plane.\n**Generator default:** `VoxelTerrainGenerator` now defaults to 8,000 m, matching the game. Runtime still passes the configured `VoxelWorld` size explicitly.\n**Benchmark fixture:** `tests/native_chunk_benchmark.gd` intentionally uses a synthetic 2,000 m world to isolate native chunk-build cost. It passes this size explicitly and does not configure the game world; benchmark dimensions are independent and may be changed when useful.
-**Benchmark implementation:** tests/native_chunk_benchmark.gd.
+**Runtime world scale:** the game scene is 8 × 8 km, with an irregular central island of approximately 4 km². `scenes/world.tscn` sets `VoxelWorld.world_size_m = 8000`, `Terrain.world_size = 8000`, and an 8000 × 8000 m sea plane.
+**Generator default:** `VoxelTerrainGenerator` defaults to 8,000 m, matching the game. Runtime also passes the configured `VoxelWorld` size explicitly.
+**Benchmark fixture:** `tests/native_chunk_benchmark.gd` intentionally uses a synthetic 2,000 m world to isolate native chunk-build cost. It passes this size explicitly and does not configure the game world.
+**Benchmark implementation:** `tests/native_chunk_benchmark.gd`.
+
 
 ## Deterministic seeds already exercised by tests
 
@@ -33,7 +36,7 @@ The old benchmark instantiated `VoxEnNativeBuilder` and called `build_mesh_data(
 
 The old run reported p95 values of approximately 11.2–11.7 seconds per sample. **Do not use those values as chunk-build timings or as a performance regression baseline.** They mainly include repeated terrain-sampler setup and must be treated as a diagnostic record of the flawed harness.
 
-The benchmark is being corrected to mirror the runtime lifecycle: call `configure_terrain_sampler()` once before the LOD loop, report that one-time setup duration separately, and reuse the configured sampler for every `build_mesh_data()` call. The first successful run after this correction must establish a new provisional chunk-build baseline; subsequent independent runs will be used to review measurement variance.
+The benchmark is being corrected to mirror the runtime lifecycle: call `configure_terrain_sampler()` once before the LOD loop, report that one-time setup duration separately, and reuse the configured sampler for every `build_mesh_data()` call. The first successful run after this correction established the provisional chunk-build baseline in run 43107089833; run 43357175555 subsequently verified the compatible-baseline guard. The absolute timings remain runner-specific.
 
 ## Still required for an approved baseline
 
@@ -182,7 +185,7 @@ The cache restored the legacy baseline from run 43099687501. The harness correct
 
 LOD0 and LOD1 contain notable high samples, so this run establishes the compatible v2 cache baseline but does not establish stable absolute performance. Crucially, because the restored baseline was legacy/incompatible, this run **did not exercise the 25% guard against a compatible v2 baseline**.
 
-**Next verification:** run Windows extended workflow once more. It must restore the cache entry from 43107089833, compare schema v2 with 25 samples and nearest-rank p95, and pass the 25% per-LOD guard. Keep the numerical baseline provisional until repeated measurements are reviewed.
+**Historical next verification (completed by run 43357175555):** the next Windows extended run restored a compatible schema-v2 baseline, compared 25 samples per LOD using nearest-rank p95, and passed the 25% per-LOD guard. The results are documented below.
 
 Artifact: [windows-extended-diagnostics-10](https://github.com/Temeramor/Far-a-Way/actions/runs/43107089833/artifacts/13894669724).
 
@@ -211,8 +214,15 @@ LOD3 p95 (1.685 ms) is effectively consistent with the prior compatible baseline
 
 Artifact: [windows-extended-diagnostics-13](https://github.com/Temeramor/Far-a-Way/actions/runs/43357175555/artifacts/14006394959).
 
-## Visual baseline — pending manual review\n\nRepeatable capture conditions, seed-selection rules and review checklist: [visual-baseline.md](visual-baseline.md).
+## Visual baseline — pending manual review
+
+Repeatable capture conditions, seed-selection rules and review checklist: [visual-baseline.md](visual-baseline.md).
 
 The next task is to capture and review 8–12 seeds in the actual game scene. Begin with 123456, 1337 and 424242, then select seeds spanning zero, one and multiple mountain ranges. Use fixed camera positions, viewport resolution and graphics settings. Capture coastline, lowlands/valleys, mountain silhouettes, steep slopes, underwater bathymetry, spawn area and LOD/streaming transitions. Record seed, spawn coordinates, engine/build and relevant settings with every capture.
 
 Headless CI and terrain invariant tests cannot approve visual quality or replace an in-engine screenshot review.
+
+
+## Current branch verification note
+
+The successful run 43357175555 is attached to commit `eed0a51cf91bcaf94f6986a90edcb7196fd58fe6`. Current branch HEAD `36311cb56bc8282af0505a5f50ecfdc22cd329e8` is 13 commits ahead. The intervening source changes include the generator's 8,000 m default and a smoke assertion for it. The linked run therefore does not verify that final source state; run the Windows extended workflow against current HEAD before treating it as green.
