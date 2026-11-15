@@ -1,6 +1,6 @@
 # Performance and generation baseline
 
-**Status:** Windows extended run 43357175555 passed on commit `eed0a51cf91bcaf94f6986a90edcb7196fd58fe6`. It verified the v2 cache and 25% p95 guard. The current branch HEAD `36311cb56bc8282af0505a5f50ecfdc22cd329e8` contains later changes (8000 m generator default and its smoke assertion) that were not part of that run; rerun CI on HEAD before marking those changes verified. Numerical baseline remains runner-specific; visual baseline is pending.
+**Status:** Windows extended run 43357175555 passed on commit `eed0a51cf91bcaf94f6986a90edcb7196fd58fe6`. It verified the v2 cache and 25% p95 guard. The current code revision `36311cb56bc8282af0505a5f50ecfdc22cd329e8` contains later changes (8000 m generator default and its smoke assertion) that were not part of that run; rerun CI on this code revision before marking those changes verified. Later commits in the documentation refresh do not change source code. Numerical baseline remains runner-specific; visual baseline is pending.
 **Engine:** Godot 4.7.2, Windows x86-64, Forward+.
 **Runtime world scale:** the game scene is 8 × 8 km, with an irregular central island of approximately 4 km². `scenes/world.tscn` sets `VoxelWorld.world_size_m = 8000`, `Terrain.world_size = 8000`, and an 8000 × 8000 m sea plane.
 **Generator default:** `VoxelTerrainGenerator` defaults to 8,000 m, matching the game. Runtime also passes the configured `VoxelWorld` size explicitly.
