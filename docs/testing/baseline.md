@@ -2,7 +2,7 @@
 
 **Status:** benchmark harness v2 migration is verified by run 43107089833. The legacy schema-v1 baseline was skipped, 200 samples (25 per LOD) and runner metadata were recorded, and a schema-v2 baseline was cached. A second v2 run is still required to verify the 25% regression guard against a compatible baseline. Numerical baseline remains provisional; visual baseline is not approved.
 **Engine:** Godot 4.7.2, Windows x86-64, Forward+.
-**World scale:** current project configuration and README describe an 8 × 8 km map.
+**Runtime world scale:** the game scene is 8 × 8 km, with an irregular central island of approximately 4 km². `scenes/world.tscn` sets `VoxelWorld.world_size_m = 8000`, `Terrain.world_size = 8000`, and an 8000 × 8000 m sea plane.\n**Benchmark fixture:** `tests/native_chunk_benchmark.gd` intentionally uses a synthetic 2,000 m world to isolate native chunk-build cost. This does not configure the game world; benchmark dimensions are independent and may be changed when useful.
 **Benchmark implementation:** tests/native_chunk_benchmark.gd.
 
 ## Deterministic seeds already exercised by tests
@@ -185,3 +185,34 @@ LOD0 and LOD1 contain notable high samples, so this run establishes the compatib
 **Next verification:** run Windows extended workflow once more. It must restore the cache entry from 43107089833, compare schema v2 with 25 samples and nearest-rank p95, and pass the 25% per-LOD guard. Keep the numerical baseline provisional until repeated measurements are reviewed.
 
 Artifact: [windows-extended-diagnostics-10](https://github.com/Temeramor/Far-a-Way/actions/runs/43107089833/artifacts/13894669724).
+
+## Benchmark harness v2 — compatible baseline guard verified (run 43357175555)
+
+Windows extended run [43357175555](https://github.com/Temeramor/Far-a-Way/actions/runs/43357175555) completed on branch `0.1.0.4-new`, commit `eed0a51cf91bcaf94f6986a90edcb7196fd58fe6`, using Godot 4.7.2 and a Windows Server 2025 hosted runner (AMD EPYC 9V74, 4 visible processors).
+
+- Debug and Release GDExtension builds passed; project import/script validation passed.
+- All seven smoke/parity tests passed: mesh data cache, chunk resource manager, LOD hierarchy, shadow LOD, voxel surface scatter, decoration spatial index, and terrain smoke.
+- The benchmark restored a compatible schema-v2 baseline, completed 25 measured builds per LOD after warm-up (200 raw samples), emitted runner metadata, and passed the existing 25% per-LOD p95 guard.
+- One-time terrain sampler setup: **13,344.346 ms**, measured separately from chunk builds.
+- Results (ms):
+
+| LOD | Median | nearest-rank p95 |
+|---:|---:|---:|
+| 0 | 20.909 | 26.469 |
+| 1 | 12.978 | 13.081 |
+| 2 | 3.751 | 4.918 |
+| 3 | 1.313 | 1.685 |
+| 4 | 0.848 | 0.879 |
+| 5 | 0.290 | 0.316 |
+| 6 | 0.221 | 0.275 |
+| 7 | 0.170 | 0.194 |
+
+LOD3 p95 (1.685 ms) is effectively consistent with the prior compatible baseline (1.692 ms); the earlier isolated +40.2% result did not recur. The guard is now verified end-to-end against schema v2. These measurements remain runner-specific and are not a hardware-independent performance guarantee.
+
+Artifact: [windows-extended-diagnostics-13](https://github.com/Temeramor/Far-a-Way/actions/runs/43357175555/artifacts/14006394959).
+
+## Visual baseline — pending manual review
+
+The next task is to capture and review 8–12 seeds in the actual game scene. Begin with 123456, 1337 and 424242, then select seeds spanning zero, one and multiple mountain ranges. Use fixed camera positions, viewport resolution and graphics settings. Capture coastline, lowlands/valleys, mountain silhouettes, steep slopes, underwater bathymetry, spawn area and LOD/streaming transitions. Record seed, spawn coordinates, engine/build and relevant settings with every capture.
+
+Headless CI and terrain invariant tests cannot approve visual quality or replace an in-engine screenshot review.
