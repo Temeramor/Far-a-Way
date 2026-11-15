@@ -211,7 +211,7 @@ LOD3 p95 (1.685 ms) is effectively consistent with the prior compatible baseline
 
 Artifact: [windows-extended-diagnostics-13](https://github.com/Temeramor/Far-a-Way/actions/runs/43357175555/artifacts/14006394959).
 
-## Visual baseline — pending manual review
+## Visual baseline — pending manual review\n\nRepeatable capture conditions, seed-selection rules and review checklist: [visual-baseline.md](visual-baseline.md).
 
 The next task is to capture and review 8–12 seeds in the actual game scene. Begin with 123456, 1337 and 424242, then select seeds spanning zero, one and multiple mountain ranges. Use fixed camera positions, viewport resolution and graphics settings. Capture coastline, lowlands/valleys, mountain silhouettes, steep slopes, underwater bathymetry, spawn area and LOD/streaming transitions. Record seed, spawn coordinates, engine/build and relevant settings with every capture.
 
