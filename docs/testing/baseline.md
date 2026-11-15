@@ -1,6 +1,6 @@
 # Performance and generation baseline
 
-**Status:** Windows extended run 43357175555 passed on commit `eed0a51cf91bcaf94f6986a90edcb7196fd58fe6`. It verified the v2 cache and 25% p95 guard. The current code revision `36311cb56bc8282af0505a5f50ecfdc22cd329e8` contains later changes (8000 m generator default and its smoke assertion) that were not part of that run; rerun CI on this code revision before marking those changes verified. Later commits in the documentation refresh do not change source code. Numerical baseline remains runner-specific; visual baseline is pending.
+**Status:** Windows extended run [43763979682](https://github.com/Temeramor/Far-a-Way/actions/runs/43763979682) passed on the current code revision `36311cb56bc8282af0505a5f50ecfdc22cd329e8` (job [132964865089](https://github.com/Temeramor/Far-a-Way/actions/runs/43763979682/job/132964865089)). It verifies the 8,000 m generator default and its smoke assertion, Debug/Release GDExtension builds, Godot 4.7.2 import/script validation, all seven smoke/parity tests, benchmark execution and the 25% p95 guard. Later commits only update documentation. Numerical timings remain runner-specific; visual baseline is pending.
 **Engine:** Godot 4.7.2, Windows x86-64, Forward+.
 **Runtime world scale:** the game scene is 8 × 8 km, with an irregular central island of approximately 4 km². `scenes/world.tscn` sets `VoxelWorld.world_size_m = 8000`, `Terrain.world_size = 8000`, and an 8000 × 8000 m sea plane.
 **Generator default:** `VoxelTerrainGenerator` defaults to 8,000 m, matching the game. Runtime also passes the configured `VoxelWorld` size explicitly.
@@ -226,3 +226,16 @@ Headless CI and terrain invariant tests cannot approve visual quality or replace
 ## Current branch verification note
 
 The successful run 43357175555 is attached to commit `eed0a51cf91bcaf94f6986a90edcb7196fd58fe6`. Current branch HEAD `36311cb56bc8282af0505a5f50ecfdc22cd329e8` is 13 commits ahead. The intervening source changes include the generator's 8,000 m default and a smoke assertion for it. The linked run therefore does not verify that final source state; run the Windows extended workflow against current HEAD before treating it as green.
+
+
+## Current source revision verified — Windows extended run 43763979682
+
+Run [43763979682](https://github.com/Temeramor/Far-a-Way/actions/runs/43763979682), job [132964865089](https://github.com/Temeramor/Far-a-Way/actions/runs/43763979682/job/132964865089), completed successfully on 2026-11-15. It checked out branch `0.1.0.4-new` at commit `36311cb56bc8282af0505a5f50ecfdc22cd329e8`.
+
+- Debug and Release Windows x86-64 GDExtension builds passed.
+- Godot 4.7.2 project import and script/resource validation passed.
+- All seven smoke/parity tests passed: mesh data cache, chunk resource manager, LOD hierarchy, shadow LOD, voxel surface scatter, decoration spatial index and terrain smoke test.
+- The compatible benchmark baseline was restored; the native chunk benchmark completed and the 25% per-LOD p95 regression guard passed.
+- This run includes the 8,000 m `VoxelTerrainGenerator` default and the matching assertion in `terrain_smoke_test.gd`. The previously noted CI/source-revision mismatch is resolved.
+
+The run validates build, import, automated behavior and benchmark guardrails. It does not validate visual quality of the 8 × 8 km world. Capture and review of 8–12 representative seeds remains the next gate. The benchmark's explicit 2,000 m fixture remains intentionally separate from runtime world size.
