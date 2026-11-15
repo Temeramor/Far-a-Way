@@ -1,3 +1,10 @@
+## 16 ноября 2026 — исправлена совместимость benchmark baseline между runner hardware
+
+- Разобраны Windows extended runs [43771288424](https://github.com/Temeramor/Far-a-Way/actions/runs/43771288424) и [43774332485](https://github.com/Temeramor/Far-a-Way/actions/runs/43774332485): сборка, импорт и все восемь smoke/parity tests прошли; оба запуска остановились только на native chunk benchmark.
+- Оба новых запуска выполнялись на AMD EPYC 9V74 (4 видимых процессора), тогда как сохранённый schema-v2 baseline был создан на AMD EPYC 9V45. Нативные исходники между baseline-коммитом и проверяемой ревизией не менялись.
+- В `tests/native_chunk_benchmark.gd` добавлена проверка совместимости runner metadata: сравниваются модель CPU, число видимых процессоров, ОС, архитектура, версия Godot/build и версия runner image. Baseline с отличающимся окружением не используется для regression comparison; успешный прогон на новом окружении создаст отдельный baseline. 25% p95 guard сохраняется для совпадающего окружения.
+- Изменение записано в `0.1.0.4-new`; требуется новый Windows CI для проверки GDScript, миграции baseline на EPYC 9V74 и последующего сравнения с совместимым baseline.
+
 ## 16 ноября 2026 — streaming planner characterization прошёл Windows CI
 
 - Успешно завершён [Windows extended run 43766858561](https://github.com/Temeramor/Far-a-Way/actions/runs/43766858561), job [132973837664](https://github.com/Temeramor/Far-a-Way/actions/runs/43766858561/job/132973837664), branch `0.1.0.4-new`, commit `af98c10cab1199da3db0edc266daf3caa558b5c5`.
