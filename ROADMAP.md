@@ -10,76 +10,52 @@
 
 ---
 
-## Текущий статус реализации (12 ноября 2026)
+## Текущий статус реализации (15 ноября 2026)
 
-Этот раздел имеет приоритет над историческими формулировками аудита ниже. Разделы 2 и далее описывают исходную архитектурную проблему и целевое направление; они не означают, что все перечисленные задачи остаются нетронутыми.
+Этот раздел отражает состояние ветки `0.1.0.4-new` после Windows extended CI run [43357175555](https://github.com/Temeramor/Far-a-Way/actions/runs/43357175555), commit `eed0a51cf91bcaf94f6986a90edcb7196fd58fe6`. Исторические подробности предыдущих запусков и исправлений находятся в `CHANGELOG.md`.
 
-### Extended CI — три успешных исправленных benchmark run (11 ноября 2026)
+### Подтверждено последним CI
 
-- Windows x86-64 job завершилась с success в трёх независимых запусках ветки 0.1.0.4-new: [43074187166](https://github.com/Temeramor/Far-a-Way/actions/runs/43074187166), [43080357758](https://github.com/Temeramor/Far-a-Way/actions/runs/43080357758) и [43099687501](https://github.com/Temeramor/Far-a-Way/actions/runs/43099687501). Третий запуск выполнен на commit f99817296f05c544f44f8bf600e45341a448b603.
-- Во всех трёх запусках Debug и Release GDExtension собраны; Godot 4.7.2 импортировала проект и проверила скрипты; все семь smoke/parity tests завершились с exit code 0 и PASS markers.
-- Исправленная методика benchmark подтверждена: native terrain sampler подготавливается один раз до LOD loop; setup измеряется отдельно; затем выполняется пять измерений chunk build на каждом LOD0–LOD7. Все три запуска завершились с Native chunk benchmark completed.
-- Run 43074187166: setup 16,499.580 ms; p95 LOD0–LOD7: 27.304 / 16.667 / 4.670 / 1.771 / 0.818 / 0.470 / 0.402 / 0.289 ms.
-- Run 43080357758: setup 13,339.506 ms; p95: 27.251 / 13.145 / 3.751 / 1.330 / 0.605 / 0.281 / 0.202 / 0.164 ms.
-- Run 43099687501: setup 10,170.707 ms; p95: 17.015 / 13.723 / 3.028 / 1.065 / 0.495 / 0.254 / 0.186 / 0.136 ms. Относительно второго run p95 изменился на −37.6% / +4.4% / −19.3% / −19.9% / −18.2% / −9.6% / −7.9% / −17.1%. Median третьего run также ниже median второго примерно на 5–21% в зависимости от LOD. Для LOD1 p95 (13.723 ms) заметно выше median (10.473 ms), что показывает влияние выбросов при пяти измерениях.
-- Третий run восстановил cache baseline именно из 43080357758, успешно прошёл 25% per-LOD regression guard и сохранил новую cache entry. Runner: Azure westus3, Windows Server 2025, image windows-2025-vs2026 (version 20261103.298.1), Godot 4.7.2. Второй run выполнялся в centralus; аппаратная конфигурация hosted runner в артефактах не зафиксирована.
-- Три запуска подтверждают корректность harness и работу cache guard, но не дают стабильной оценки абсолютной производительности: sampler setup снизился с 16.50 до 10.17 s, а medians третьего run существенно ниже второго. Пять измерений на LOD слишком мало для надёжного p95 (фактически максимум выборки). Не интерпретировать разницу как доказанное ускорение кода.
-- **Численный baseline остаётся предварительным.** Следующий шаг — увеличить число измерений на LOD (ориентир 20–30 после warm-up), сохранять сырые samples и runner metadata, затем повторить серию и сравнивать median и устойчивый percentile. Визуальный baseline также не утверждён.
-- Artifacts: [run 43074187166](https://github.com/Temeramor/Far-a-Way/actions/runs/43074187166/artifacts/13879834870), [run 43080357758](https://github.com/Temeramor/Far-a-Way/actions/runs/43080357758/artifacts/13883689322), [run 43099687501](https://github.com/Temeramor/Far-a-Way/actions/runs/43099687501/artifacts/13892581387).
+- Windows x86-64 workflow завершился успешно на Godot 4.7.2; GDExtension собрана в Debug и Release, проект импортирован в headless-режиме, проверены script/resource imports.
+- Все семь smoke/parity tests завершились успешно: `mesh_data_cache_test`, `chunk_resource_manager_test`, `lod_hierarchy_smoke_test`, `shadow_lod_smoke_test`, `voxel_surface_scatter_smoke_test`, `decoration_spatial_index_test`, `terrain_smoke_test`.
+- Benchmark harness v2 выполнил 25 измерений на каждом LOD0–LOD7 после warm-up, сохранил 200 raw samples и runner metadata. Совместимый schema-v2 baseline восстановлен; 25% per-LOD p95 regression guard прошёл.
+- Результаты run 43357175555 (AMD EPYC 9V74, 4 доступных CPU, Windows Server 2025, Godot 4.7.2), ms:
 
-### Benchmark harness v2 — расширенная выборка реализована (12 ноября 2026)
+| LOD | Median | p95 |
+|---:|---:|---:|
+| 0 | 20.909 | 26.469 |
+| 1 | 12.978 | 13.081 |
+| 2 | 3.751 | 4.918 |
+| 3 | 1.313 | 1.685 |
+| 4 | 0.848 | 0.879 |
+| 5 | 0.290 | 0.316 |
+| 6 | 0.221 | 0.275 |
+| 7 | 0.170 | 0.194 |
 
-- В `tests/native_chunk_benchmark.gd` увеличено число измерений с 5 до 25 на каждый LOD0–LOD7; на каждом LOD остаётся отдельный один warm-up build, который не входит в статистику.
-- Сохраняются все 200 сырых измерений в микросекундах, а также median, nearest-rank p95, число измерений и метаданные среды: версия Godot, ОС, CPU/число потоков, runner/image, run ID, commit и branch.
-- Разовая настройка native terrain sampler по-прежнему измеряется отдельно и не включается во время chunk build. Существующий 25% per-LOD p95 guard сохранён; JSON baseline получил schema_version 2 и содержит raw samples/metadata.
-- Лог CI теперь включает metadata JSON и строки `raw_sample`; diagnostics artifact должен сохранять их вместе с baseline JSON.
-- **Первый v2 run 43102542013:** сборка Debug/Release, импорт и все семь smoke/parity tests прошли. Benchmark выполнил все 25 измерений на каждом LOD (200 raw samples), записал metadata, но завершился на regression guard: новый LOD0 p95 22.540 ms сравнивался со старым p95 17.015 ms из пяти sample run. Это несовместимые статистические схемы; ошибка — отсутствие version-aware migration в guard, а не ошибка meshing. Старый schema v1 baseline теперь распознаётся как несовместимый и пропускается; первый успешный v2 run создаст новый baseline schema v2. Исправление записано в commit `5930850187f426a64d2b559f377eefd5505420bb`; повторный Windows extended run ещё требуется.
+- One-time terrain sampler setup: 13,344.346 ms; эта величина не входит в chunk-build timings.
+- Run 43357175555 подтвердил совместимость v2 cache и работоспособность guard после миграции. Числа остаются CI-характеристикой конкретного hosted runner, а не универсальным performance target; абсолютную производительность не сравнивать между разными CPU/regions без оговорок.
 
-### Benchmark harness v2 — миграция baseline успешно завершена, v2 baseline создан (12 ноября 2026)
+### Размер игрового мира и benchmark fixture
 
-- Windows extended run [43107089833](https://github.com/Temeramor/Far-a-Way/actions/runs/43107089833) выполнен на commit `05148e477531690b72262fb4e9a945629d4ca0ed`, branch `0.1.0.4-new`. Job `windows-x86_64` завершилась success; Debug/Release GDExtension, Godot 4.7.2 import/script validation и все семь smoke/parity tests прошли.
-- Cache восстановил legacy baseline из run 43099687501. Harness явно сообщил `schema=1, runs_per_lod=0, p95_method=legacy`, пропустил несовместимое сравнение, завершил 200 измерений (25 на каждый LOD), сохранил schema v2 и metadata, а затем записал новую cache entry для run 43107089833.
-- One-time terrain sampler setup: 16,473.884 ms. Runner: Windows Server 2025, AMD EPYC 7763 64-Core Processor (4 видимых процессора), Godot 4.7.2, image `windows-2025-vs2026` version `20261103.298.1`, Azure eastus2.
-- p95 nearest-rank LOD0–LOD7 (ms): 34.265 / 22.212 / 4.697 / 1.692 / 1.158 / 0.530 / 0.411 / 0.291. Median (ms): 26.338 / 16.015 / 4.602 / 1.646 / 0.825 / 0.458 / 0.354 / 0.224.
-- В выборке есть заметные выбросы, особенно LOD0 и LOD1; это подчёркивает необходимость сохранять raw samples и не принимать один запуск за окончательный performance baseline. Успешный run подтвердил миграцию и создание v2 baseline, **но не проверил 25% regression guard на совместимом v2 baseline**.
-- Следующий обязательный шаг — ещё один Windows extended run: он должен восстановить cache entry от 43107089833, выполнить сравнение schema v2 (25 runs, nearest-rank) и пройти 25% per-LOD guard. Численный baseline остаётся предварительным; визуальный baseline не утверждён.
-- Artifact: [windows-extended-diagnostics-10](https://github.com/Temeramor/Far-a-Way/actions/runs/43107089833/artifacts/13894669724).
+- Игровая сцена `scenes/world.tscn` задаёт карту **8 × 8 км**: `VoxelWorld.world_size_m = 8000`, `Terrain.world_size = 8000`, sea plane — 8000 × 8000 м. Это runtime-конфигурация игры.
+- Целевая суша — нерегулярный центральный остров ориентировочной площадью **около 4 км²**; это площадь острова, а не размер карты.
+- `tests/native_chunk_benchmark.gd` намеренно использует синтетический мир 2 × 2 км для изолированного измерения стоимости native chunk build. Это тестовый fixture, не конфигурация игры и не источник runtime world size. Размеры benchmark допустимо менять независимо, если методика сравнения остаётся неизменной.
+- `VoxelTerrainGenerator` получает размер мира от `VoxelWorld` при runtime-инициализации; значения benchmark передаются явно. Не выводить размер игровой карты из default-параметра тестового harness.
 
-### История диагностики CI
+### Что ещё не завершено
 
-Следующие записи — история поиска причин предыдущих падений. Их временные статусы были актуальны на дату соответствующего run; исправления впоследствии подтверждены успешным run 43068959543.
-
-### Выполнено в версии 0.1.0.4
-
-- Сохранены публичные пути и `class_name` трёх точек входа: `VoxelWorld`, `VoxelSurfaceScatter`, `WorldController`; их реализация распределена по state-файлам и слоям наследования.
-- Вынесены самостоятельные сервисы `MeshDataCache` и `ChunkResourceManager`.
-- Нативный builder структурно разделён на sampler, heightfield mesher и collision builder; публичная GDExtension-точка входа сохранена.
-- Добавлены архитектурные документы и все 17 ADR в `docs/decisions/`.
-- Добавлены smoke/unit-тесты для entrypoints, cache и resource manager; существующий тест LOD обновлён под новый интерфейс.
-- Добавлен и проверен Windows CI workflow: успешные runs 43032114782 (исходная ветка перед переносом), 43039732310 (первичная проверка целевой ветки) и 43045268776 (актуализация документации, commit `fa94139b4ea1729dbafb7cdcd119aab26f072512`) собрали Debug/Release GDExtension, установил Godot, выполнил полный import/валидацию скриптов и прошёл smoke-тесты вместе с проверками инвариантов native terrain field.
-- Версия синхронизирована как 0.1.0.4; изменённые файлы перечислены в CHANGELOG.
-
-### Частично выполнено
-
-- **Этап 0:** ADR перенесены, тесты расширены, debug/release native DLL собираются. CI run 42880678262 подтвердил сборку и запуск Godot, но smoke-тест выявил, что предыдущая команда `--editor --quit` не дожидалась завершения импорта: не был создан `.godot/global_script_class_cache.cfg` и импортированная sky texture, из-за чего entrypoint preload не мог разрешить цепочки наследования. В workflow заменено на `--import` с проверкой cache, texture и ошибок в логе. CI run 42944120796 выявил ошибочную проверку `fastnoise_parity_test.gd`: она сравнивала текущий нативный PG-Island field с устаревшей GDScript-моделью, хотя README прямо фиксирует различие RNG и конфигурации шума. Проверка заменена на `native_terrain_field_invariants_test.gd`; успешный run 43032114782 подтвердил, что новая проверка, сборка и импорт проходят на чистом Windows runner. Exact parity не является критерием текущего этапа. Benchmark вынесен в отдельный extended workflow и получает предыдущий успешный baseline через GitHub Actions cache. `docs/testing/baseline.md` фиксирует известные тестовые seed; визуальный baseline (8–12 утверждённых seed, скриншоты и diagnostic maps) ещё требует запуска сцены и визуального просмотра, поэтому этап 0 нельзя считать полностью закрытым до этой проверки. Локальный запуск проекта пользователем подтверждён вручную.
-- **Этап 1:** выполнена декомпозиция крупных скриптов и выделены cache/resource/collision helpers. `StreamingPlanner` и `MeshJobScheduler` остаются частями слоёв `VoxelWorld`, а не независимыми сервисами. Не реализованы TerrainProfile, GenerationContext, TerrainField и HeightfieldTerrainFieldAdapter; также не закрыта задача единого авторитетного источника горного профиля.
-- Разделение нативного builder — структурный шаг, но оно ещё не означает готовность отдельного объёмного SDF meshing pipeline.
-
-### Пока не выполнено
-
-- Базовый WorldSave и утверждённая политика совместимости сохранений (Этап 1.5).
-- TerrainPipeline и независимые pass contracts (Этап 2).
-- Изолированный SDF-прототип и сравнение meshing/storage подходов (Этапы 3–4).
-- Объёмные чанки, LOD-переходы, collision и navigation prototype (Этап 5 и далее).
-- Геология, RiverGraph, климатические поля и биомы как самостоятельные системы.
+- **Визуальный baseline не утверждён.** Нужна серия из 8–12 seed в настоящей игровой сцене, фиксированные камеры/разрешение/графические настройки, screenshots и diagnostic maps. Headless CI подтверждает корректность кода и инвариантов, но не заменяет визуальную оценку берегов, силуэтов гор, долин, подводного рельефа, LOD-переходов и streaming gaps.
+- Численный benchmark harness и его cache guard проверены; performance baseline всё ещё предварительный из-за hosted-runner variance.
+- Этап 1 по ADR-018 не начат: сначала characterization tests текущего streaming behavior, затем отдельный `StreamingPlanner`, затем `MeshJobScheduler`. Не совмещать extraction с изменением LOD, генератора, ownership seed/`generation_epoch` или worker budget.
+- WorldSave compatibility foundation, TerrainPipeline, отдельный SDF-прототип и объёмный meshing остаются будущими этапами.
 
 ### Следующий рабочий фокус
 
-1. **Повысить статистическую надёжность численного benchmark.** Три исправленных Windows extended runs (43074187166, 43080357758, 43099687501) прошли на одном и том же коде harness; третий восстановил cache baseline второго и прошёл 25% guard. Однако setup sampler менялся от 16.50 до 10.17 s, а median третьего run ниже второго примерно на 5–21%; при пяти измерениях p95 практически равен максимуму и чувствителен к выбросам. В harness реализованы 25 измерений на LOD после одного warm-up, сохранение 200 raw samples и runner metadata, nearest-rank p95 и median; run 43102542013 подтвердил 200 samples и metadata, но выявил несовместимость старого schema v1 baseline. В guard добавлена проверка schema_version/runs_per_lod/p95_method; несовместимый baseline пропускается и заменяется новым schema v2. Run 43107089833 успешно пропустил legacy baseline и создал schema v2; теперь требуется второй v2 run, чтобы проверить guard на совместимом baseline. Численный baseline остаётся предварительным до этой проверки.
-2. **Завершить визуальный baseline.** Выбрать 8–12 представительных seed; запустить каждый в настоящей игровой сцене; проверить spawn, берег, силуэты гор и streaming; снять скриншоты с фиксированными камерами/разрешением/настройками; экспортировать height, slope и shoreline maps. Записать hardware/runner image, версию Godot, build mode и параметры измерений. Численный и визуальный baseline пока не утверждены.
-3. **После принятия baseline продолжить Этап 1 по ADR-018:** сначала characterization tests текущего streaming planner, затем выделение чистого `StreamingPlanner`; после parity/regression проверки — отдельное выделение `MeshJobScheduler`. Не менять алгоритмы и ownership seed/generation_epoch одновременно с extraction.
-4. Реализовать базовый WorldSave и политику совместимости до любых редактируемых объёмных данных.
-5. Только после стабилизации основы перейти к отдельной тестовой сцене SDF 32×32×32 м.
+1. **Подготовить и выполнить визуальную оценку текущего 8 × 8 км мира** на 8–12 seed. В первую очередь проверить существующие тестовые seed 123456, 1337 и 424242, затем добавить seed, покрывающие нулевые/малые/несколько горных цепей. Использовать одну и ту же игровую сцену и фиксированные camera bookmarks; записывать seed, spawn, высоты/уклоны и screenshots. Отдельно проверить край карты, берег, мелководье, крутые склоны, горные массивы, valleys/drainage и LOD seams.
+2. После визуального sign-off — выполнить characterization tests текущего streaming planner по ADR-018 и зафиксировать deterministic outputs до extraction.
+3. Выделить чистый `StreamingPlanner`, сравнить его с текущей реализацией на тех же inputs; затем выделить `MeshJobScheduler` с сохранением epoch/seed validation, shared worker budget, cache/retry и stale-result semantics.
+4. До редактируемого объёмного мира определить WorldSave format/version и migration policy.
+5. Только после стабилизации этих контрактов создать отдельную SDF test scene 32 × 32 × 32 м и сравнить storage, meshing, collision, LOD, seams, CPU и memory.
 
 ---
 
