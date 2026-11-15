@@ -51,7 +51,7 @@
 
 ### Следующий рабочий фокус
 
-1. **Подготовить и выполнить визуальную оценку текущего 8 × 8 км мира** на 8–12 seed. В первую очередь проверить существующие тестовые seed 123456, 1337 и 424242, затем добавить seed, покрывающие нулевые/малые/несколько горных цепей. Использовать одну и ту же игровую сцену и фиксированные camera bookmarks; записывать seed, spawn, высоты/уклоны и screenshots. Отдельно проверить край карты, берег, мелководье, крутые склоны, горные массивы, valleys/drainage и LOD seams.
+1. **Подготовить и выполнить визуальную оценку текущего 8 × 8 км мира** на 8–12 seed по [процедуре visual baseline](docs/testing/visual-baseline.md). В первую очередь проверить существующие тестовые seed 123456, 1337 и 424242, затем добавить seed, покрывающие нулевые/малые/несколько горных цепей. Использовать одну и ту же игровую сцену и фиксированные camera bookmarks; записывать seed, spawn, высоты/уклоны и screenshots. Отдельно проверить край карты, берег, мелководье, крутые склоны, горные массивы, valleys/drainage и LOD seams.
 2. После визуального sign-off — выполнить characterization tests текущего streaming planner по ADR-018 и зафиксировать deterministic outputs до extraction.
 3. Выделить чистый `StreamingPlanner`, сравнить его с текущей реализацией на тех же inputs; затем выделить `MeshJobScheduler` с сохранением epoch/seed validation, shared worker budget, cache/retry и stale-result semantics.
 4. До редактируемого объёмного мира определить WorldSave format/version и migration policy.
