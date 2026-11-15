@@ -8,6 +8,18 @@ const CHUNK_SIZE_VOXELS := 160
 const WORLD_SIZE_M := 2000.0
 const WORLD_SIZE_VOXELS := 10000
 const SEED_VALUE := 1337
+const RUNNER_COMPATIBILITY_FIELDS := [
+    "godot_version",
+    "godot_build",
+    "os",
+    "os_version",
+    "processor",
+    "processor_count",
+    "runner_os",
+    "runner_arch",
+    "image_os",
+    "image_version"
+]
 
 func _initialize() -> void:
     call_deferred("_run_benchmark")
@@ -199,19 +211,7 @@ func _runner_metadata_is_compatible(baseline_metadata: Variant, current_metadata
     # Hosted runners can expose different CPU models and performance envelopes even
     # when the OS image and visible processor count are identical. Never compare
     # timings across different hardware/build environments.
-    const COMPATIBILITY_FIELDS := [
-        "godot_version",
-        "godot_build",
-        "os",
-        "os_version",
-        "processor",
-        "processor_count",
-        "runner_os",
-        "runner_arch",
-        "image_os",
-        "image_version"
-    ]
-    for field in COMPATIBILITY_FIELDS:
+    for field in RUNNER_COMPATIBILITY_FIELDS:
         if not baseline_metadata.has(field) or not current_metadata.has(field):
             return false
         if str(baseline_metadata[field]) != str(current_metadata[field]):
