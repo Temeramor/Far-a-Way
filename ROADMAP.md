@@ -1,9 +1,9 @@
 # Far a Way — ROADMAP (редакция)
 
 > **Статус:** проектная спецификация и план будущих работ. Ничего из описанного ниже пока не реализовано этим документом.
-> **Рабочая ветка:** `0.1.0.4-new` (fast-forward-синхронизирована с `0.1.0.4` на commit `94ed92961a8f187f2f305482ea53c9b04d92416e`)
+> **Рабочая ветка:** `0.1.0.4-new` · текущий HEAD `36311cb56bc8282af0505a5f50ecfdc22cd329e8`
 > **Дата исходного документа:** 9 ноября 2026 г.
-> **Дата редакции:** 12 ноября 2026 г.
+> **Дата редакции:** 15 ноября 2026 г.
 > **Текущая база:** Far a Way 0.1.0.4, Godot 4.7.2, Forward+
 > **Текущая целевая платформа:** Windows x86-64. Поддержка Linux/macOS/консолей не входит в текущий baseline и требует отдельного ADR с учётом сборки GDExtension, тестирования и поддержки.
 > **Главная цель:** сохранить сильные стороны существующего макрогенератора, но подготовить архитектуру к настоящему объёмному ландшафту с пещерами, карнизами, нависаниями, сложной геологией, гидрологией и климатическими биомами.
@@ -12,13 +12,13 @@
 
 ## Текущий статус реализации (15 ноября 2026)
 
-Этот раздел отражает состояние ветки `0.1.0.4-new` после Windows extended CI run [43357175555](https://github.com/Temeramor/Far-a-Way/actions/runs/43357175555), commit `eed0a51cf91bcaf94f6986a90edcb7196fd58fe6`. Исторические подробности предыдущих запусков и исправлений находятся в `CHANGELOG.md`.
+Этот статус относится к рабочей ветке `0.1.0.4-new`. Последний подтверждённый Windows extended CI run — [43357175555](https://github.com/Temeramor/Far-a-Way/actions/runs/43357175555), commit `eed0a51cf91bcaf94f6986a90edcb7196fd58fe6`. Текущий HEAD ветки — `36311cb56bc8282af0505a5f50ecfdc22cd329e8`, то есть на 13 коммитов впереди CI commit. Эти последующие коммиты включают документационные изменения, default world size генератора 8000 м и соответствующую smoke-проверку. Указанный run не тестировал эти последние изменения; требуется следующий запуск Windows extended workflow на текущем HEAD. История и подробности — в `CHANGELOG.md`.
 
-### Подтверждено последним CI
+### Подтверждено Windows extended CI run 43357175555
 
-- Windows x86-64 workflow завершился успешно на Godot 4.7.2; GDExtension собрана в Debug и Release, проект импортирован в headless-режиме, проверены script/resource imports.
-- Все семь smoke/parity tests завершились успешно: `mesh_data_cache_test`, `chunk_resource_manager_test`, `lod_hierarchy_smoke_test`, `shadow_lod_smoke_test`, `voxel_surface_scatter_smoke_test`, `decoration_spatial_index_test`, `terrain_smoke_test`.
-- Benchmark harness v2 выполнил 25 измерений на каждом LOD0–LOD7 после warm-up, сохранил 200 raw samples и runner metadata. Совместимый schema-v2 baseline восстановлен; 25% per-LOD p95 regression guard прошёл.
+- Windows x86-64 workflow завершился успешно на Godot 4.7.2; GDExtension собрана в Debug и Release, проект импортирован в headless-режиме, script/resource imports проверены.
+- Все семь smoke/parity tests прошли: `mesh_data_cache_test`, `chunk_resource_manager_test`, `lod_hierarchy_smoke_test`, `shadow_lod_smoke_test`, `voxel_surface_scatter_smoke_test`, `decoration_spatial_index_test`, `terrain_smoke_test`.
+- Benchmark harness v2 выполнил 25 измерений на каждом LOD0–LOD7 после warm-up (200 raw samples), сохранил runner metadata, восстановил совместимый schema-v2 baseline и прошёл 25% per-LOD p95 regression guard.
 - Результаты run 43357175555 (AMD EPYC 9V74, 4 доступных CPU, Windows Server 2025, Godot 4.7.2), ms:
 
 | LOD | Median | p95 |
@@ -33,29 +33,29 @@
 | 7 | 0.170 | 0.194 |
 
 - One-time terrain sampler setup: 13,344.346 ms; эта величина не входит в chunk-build timings.
-- Run 43357175555 подтвердил совместимость v2 cache и работоспособность guard после миграции. Числа остаются CI-характеристикой конкретного hosted runner, а не универсальным performance target; абсолютную производительность не сравнивать между разными CPU/regions без оговорок.
+- LOD3 p95 составил 1.685 ms против 1.692 ms в предыдущем совместимом baseline: прежний одиночный выброс не повторился. Результаты относятся к конкретному hosted runner и не являются универсальным performance target.
 
 ### Размер игрового мира и benchmark fixture
 
-- Игровая сцена `scenes/world.tscn` задаёт карту **8 × 8 км**: `VoxelWorld.world_size_m = 8000`, `Terrain.world_size = 8000`, sea plane — 8000 × 8000 м. Это runtime-конфигурация игры.
-- Целевая суша — нерегулярный центральный остров ориентировочной площадью **около 4 км²**; это площадь острова, а не размер карты.
-- `tests/native_chunk_benchmark.gd` намеренно использует синтетический мир 2 × 2 км для изолированного измерения стоимости native chunk build. Это тестовый fixture, не конфигурация игры и не источник runtime world size. Размеры benchmark допустимо менять независимо, если методика сравнения остаётся неизменной.
-- `VoxelTerrainGenerator` также использует 8000 м как default world size; runtime передаёт размер из `VoxelWorld` явно. Тестовые размеры задаются явно и не меняют игровую конфигурацию.
+- Игровая сцена `scenes/world.tscn` задаёт карту **8 × 8 км**: `VoxelWorld.world_size_m = 8000`, `Terrain.world_size = 8000`, sea plane — 8000 × 8000 м.
+- Целевая суша — нерегулярный центральный остров ориентировочной площадью **около 4 км²**. Это площадь острова, а не размер всей карты.
+- `tests/native_chunk_benchmark.gd` намеренно использует синтетический мир 2 × 2 км для изолированного измерения стоимости native chunk build. Это тестовый fixture, а не runtime-конфигурация игры; размер передаётся явно.
+- Default `VoxelTerrainGenerator` и default аргумент конструктора теперь равны 8000 м. Runtime также передаёт размер из `VoxelWorld` явно. Добавлена smoke-проверка default значения. Эти последние изменения входят в текущий HEAD, но пока не входят в подтверждённый CI run 43357175555.
 
 ### Что ещё не завершено
 
-- **Визуальный baseline не утверждён.** Нужна серия из 8–12 seed в настоящей игровой сцене, фиксированные камеры/разрешение/графические настройки, screenshots и diagnostic maps. Headless CI подтверждает корректность кода и инвариантов, но не заменяет визуальную оценку берегов, силуэтов гор, долин, подводного рельефа, LOD-переходов и streaming gaps.
-- Численный benchmark harness и его cache guard проверены; performance baseline всё ещё предварительный из-за hosted-runner variance.
+- **Визуальный baseline не утверждён.** Требуется серия из 8–12 seed в настоящей игровой сцене с фиксированными камерами, разрешением и настройками. Headless CI не заменяет визуальную оценку берегов, силуэтов гор, долин, подводного рельефа, LOD-переходов и streaming gaps.
+- Benchmark harness v2 и совместимый cache guard подтверждены; абсолютные времена остаются предварительными из-за вариативности hosted runners.
 - Этап 1 по ADR-018 не начат: сначала characterization tests текущего streaming behavior, затем отдельный `StreamingPlanner`, затем `MeshJobScheduler`. Не совмещать extraction с изменением LOD, генератора, ownership seed/`generation_epoch` или worker budget.
 - WorldSave compatibility foundation, TerrainPipeline, отдельный SDF-прототип и объёмный meshing остаются будущими этапами.
 
 ### Следующий рабочий фокус
 
-1. **Подготовить и выполнить визуальную оценку текущего 8 × 8 км мира** на 8–12 seed по [процедуре visual baseline](docs/testing/visual-baseline.md). В первую очередь проверить существующие тестовые seed 123456, 1337 и 424242, затем добавить seed, покрывающие нулевые/малые/несколько горных цепей. Использовать одну и ту же игровую сцену и фиксированные camera bookmarks; записывать seed, spawn, высоты/уклоны и screenshots. Отдельно проверить край карты, берег, мелководье, крутые склоны, горные массивы, valleys/drainage и LOD seams.
-2. После визуального sign-off — выполнить characterization tests текущего streaming planner по ADR-018 и зафиксировать deterministic outputs до extraction.
-3. Выделить чистый `StreamingPlanner`, сравнить его с текущей реализацией на тех же inputs; затем выделить `MeshJobScheduler` с сохранением epoch/seed validation, shared worker budget, cache/retry и stale-result semantics.
-4. До редактируемого объёмного мира определить WorldSave format/version и migration policy.
-5. Только после стабилизации этих контрактов создать отдельную SDF test scene 32 × 32 × 32 м и сравнить storage, meshing, collision, LOD, seams, CPU и memory.
+1. **Подтвердить текущий HEAD CI-запуском.** Убедиться, что новый default генератора 8000 м и assertion в `terrain_smoke_test.gd` проходят на Windows/Godot 4.7.2. Не менять benchmark fixture 2 км только ради совпадения с runtime: он задаётся явно и тестирует отдельную нагрузку.
+2. **Выполнить визуальную оценку мира 8 × 8 км** на 8–12 seed по [процедуре visual baseline](docs/testing/visual-baseline.md). Начать с 123456, 1337 и 424242, затем подобрать seed без гор, с одной и с несколькими горными цепями. Сохранять screenshots и metadata; отдельно проверить берег, мелководье, крутые склоны, предгорья, долины, спавн и LOD seams.
+3. После визуального sign-off — добавить characterization tests текущего streaming planner и зафиксировать deterministic outputs до extraction.
+4. Выделить чистый `StreamingPlanner`, сравнить его с текущей реализацией на тех же inputs; затем выделить `MeshJobScheduler`, сохранив epoch/seed validation, shared worker budget, cache/retry и stale-result semantics.
+5. После стабилизации streaming-контрактов определить WorldSave format/version и migration policy. Затем создать отдельную SDF test scene 32 × 32 × 32 м и сравнить storage, meshing, collision, LOD, seams, CPU и memory.
 
 ---
 
@@ -1348,22 +1348,20 @@ RiverGraph, watershed, озёра. Климатические поля. Biome cl
 
 Far a Way не нужно начинать заново.
 
-Текущая работа уже содержит сильный макрогенератор, эрозию, глобальную детерминированность, chunk streaming, LOD, асинхронный native meshing, generation_epoch, буферизованную замену геометрии и инфраструктуру тестирования. Это исключительная техническая зрелость для v0.1.0.3.
+Текущий макрогенератор, эрозия, детерминированность, chunk streaming, LOD, асинхронный native meshing и базовая CI-инфраструктура уже существуют. Windows extended CI и benchmark harness v2 прошли проверку на commit `eed0a51`; актуальный HEAD должен получить отдельный повторный CI run.
 
-Но существующая математическая модель поверхности ограничивает развитие. Настоящие пещеры, крыши, тоннели и нависающие скалы требуют объёмного представления.
+Следующая последовательность работ:
 
-Поэтому рекомендуемое направление:
+1. Подтвердить CI на текущем HEAD.
+2. Выполнить визуальный baseline на 8–12 seed для реальной карты 8 × 8 км с островом около 4 км².
+3. Добавить characterization tests для существующего streaming поведения.
+4. Выделить `StreamingPlanner`, затем `MeshJobScheduler`, не меняя алгоритмы и runtime semantics.
+5. Определить WorldSave format/version и migration policy.
+6. Создать изолированный SDF prototype и сравнить storage, meshing, LOD, collision, seams, CPU и memory.
+7. Только после результатов прототипа принимать решение о TerrainField, volume storage, Marching Cubes/Transvoxel и миграции основного мира.
+8. Развивать геологию, гидрологию, прибрежные процессы и биомы отдельными этапами с измеримыми критериями.
 
-1. Настроить CI и зафиксировать baseline.
-2. Сохранить макрогенератор.
-3. Разделить архитектуру и ввести Terrain Generation Pipeline.
-4. Создать единый TerrainField.
-5. Реализовать базовое сохранение с явной политикой версионирования.
-6. Добавить SDF как объёмное представление сложных участков.
-7. Исследовать Marching Cubes и Transvoxel.
-8. Параллельно прототипировать навигацию для dynamic terrain.
-9. Постепенно адаптировать чанки, LOD и коллизии.
-10. Развивать геологию (через веса, а не enum), гидрологию, прибрежные процессы и биомы.
+CI, документация и визуальная оценка — разные виды проверки: успешная сборка не является визуальным sign-off, а визуальный sign-off не заменяет regression tests.
 
 **Главное архитектурное правило:** каждая природная система должна отвечать за собственные данные и процессы, а не за создание мешей или управление сценой. Мешер должен отображать результат генерации, а не определять, каким будет мир.
 
