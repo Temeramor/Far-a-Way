@@ -2,7 +2,7 @@
 
 **Status:** benchmark harness v2 migration is verified by run 43107089833. The legacy schema-v1 baseline was skipped, 200 samples (25 per LOD) and runner metadata were recorded, and a schema-v2 baseline was cached. A second v2 run is still required to verify the 25% regression guard against a compatible baseline. Numerical baseline remains provisional; visual baseline is not approved.
 **Engine:** Godot 4.7.2, Windows x86-64, Forward+.
-**Runtime world scale:** the game scene is 8 × 8 km, with an irregular central island of approximately 4 km². `scenes/world.tscn` sets `VoxelWorld.world_size_m = 8000`, `Terrain.world_size = 8000`, and an 8000 × 8000 m sea plane.\n**Benchmark fixture:** `tests/native_chunk_benchmark.gd` intentionally uses a synthetic 2,000 m world to isolate native chunk-build cost. This does not configure the game world; benchmark dimensions are independent and may be changed when useful.
+**Runtime world scale:** the game scene is 8 × 8 km, with an irregular central island of approximately 4 km². `scenes/world.tscn` sets `VoxelWorld.world_size_m = 8000`, `Terrain.world_size = 8000`, and an 8000 × 8000 m sea plane.\n**Generator default:** `VoxelTerrainGenerator` now defaults to 8,000 m, matching the game. Runtime still passes the configured `VoxelWorld` size explicitly.\n**Benchmark fixture:** `tests/native_chunk_benchmark.gd` intentionally uses a synthetic 2,000 m world to isolate native chunk-build cost. It passes this size explicitly and does not configure the game world; benchmark dimensions are independent and may be changed when useful.
 **Benchmark implementation:** tests/native_chunk_benchmark.gd.
 
 ## Deterministic seeds already exercised by tests
