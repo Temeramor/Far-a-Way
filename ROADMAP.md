@@ -10,52 +10,39 @@
 
 ---
 
-## Текущий статус реализации (15 ноября 2026)
+## Текущий статус реализации (16 ноября 2026)
 
-Этот статус относится к рабочей ветке `0.1.0.4-new`. Последний подтверждённый Windows extended CI run — [43357175555](https://github.com/Temeramor/Far-a-Way/actions/runs/43357175555), commit `eed0a51cf91bcaf94f6986a90edcb7196fd58fe6`. Кодовая ревизия `36311cb56bc8282af0505a5f50ecfdc22cd329e8` находится на 13 коммитов впереди CI commit. В этом диапазоне есть документационные изменения, default world size генератора 8000 м и соответствующая smoke-проверка. После этой кодовой ревизии в рамках текущей актуализации добавлены только документационные коммиты. Указанный run не тестировал эти последние изменения; требуется следующий запуск Windows extended workflow на текущем HEAD. История и подробности — в `CHANGELOG.md`.
+Этот статус относится к рабочей ветке `0.1.0.4-new`. Последний подтверждённый Windows extended CI run — [43763979682](https://github.com/Temeramor/Far-a-Way/actions/runs/43763979682), job [132964865089](https://github.com/Temeramor/Far-a-Way/actions/runs/43763979682/job/132964865089), commit `36311cb56bc8282af0505a5f50ecfdc22cd329e8`. Run проверил актуальную кодовую ревизию, включая default world size генератора 8000 м и smoke assertion. Последующие коммиты в рамках документационной актуализации не меняли исходный код.
 
-### Подтверждено Windows extended CI run 43357175555
+### Подтверждено Windows extended CI run 43763979682
 
-- Windows x86-64 workflow завершился успешно на Godot 4.7.2; GDExtension собрана в Debug и Release, проект импортирован в headless-режиме, script/resource imports проверены.
+- Windows x86-64 workflow, Godot 4.7.2, branch `0.1.0.4-new`; Debug и Release GDExtension build прошли.
+- Godot project import и script/resource validation прошли.
 - Все семь smoke/parity tests прошли: `mesh_data_cache_test`, `chunk_resource_manager_test`, `lod_hierarchy_smoke_test`, `shadow_lod_smoke_test`, `voxel_surface_scatter_smoke_test`, `decoration_spatial_index_test`, `terrain_smoke_test`.
-- Benchmark harness v2 выполнил 25 измерений на каждом LOD0–LOD7 после warm-up (200 raw samples), сохранил runner metadata, восстановил совместимый schema-v2 baseline и прошёл 25% per-LOD p95 regression guard.
-- Результаты run 43357175555 (AMD EPYC 9V74, 4 доступных CPU, Windows Server 2025, Godot 4.7.2), ms:
-
-| LOD | Median | p95 |
-|---:|---:|---:|
-| 0 | 20.909 | 26.469 |
-| 1 | 12.978 | 13.081 |
-| 2 | 3.751 | 4.918 |
-| 3 | 1.313 | 1.685 |
-| 4 | 0.848 | 0.879 |
-| 5 | 0.290 | 0.316 |
-| 6 | 0.221 | 0.275 |
-| 7 | 0.170 | 0.194 |
-
-- One-time terrain sampler setup: 13,344.346 ms; эта величина не входит в chunk-build timings.
-- LOD3 p95 составил 1.685 ms против 1.692 ms в предыдущем совместимом baseline: прежний одиночный выброс не повторился. Результаты относятся к конкретному hosted runner и не являются универсальным performance target.
+- Benchmark baseline восстановлен, native chunk benchmark завершился, diagnostic artifacts загружены, 25% per-LOD p95 regression guard прошёл.
+- Подтверждены default `VoxelTerrainGenerator.world_size_m = 8000` и соответствующая smoke-проверка. Прежний разрыв между CI-tested commit и текущей кодовой ревизией закрыт.
+- CI подтверждает сборку и автоматические тесты, но не заменяет визуальную приёмку рельефа в запущенной игре.
 
 ### Размер игрового мира и benchmark fixture
 
 - Игровая сцена `scenes/world.tscn` задаёт карту **8 × 8 км**: `VoxelWorld.world_size_m = 8000`, `Terrain.world_size = 8000`, sea plane — 8000 × 8000 м.
-- Целевая суша — нерегулярный центральный остров ориентировочной площадью **около 4 км²**. Это площадь острова, а не размер всей карты.
-- `tests/native_chunk_benchmark.gd` намеренно использует синтетический мир 2 × 2 км для изолированного измерения стоимости native chunk build. Это тестовый fixture, а не runtime-конфигурация игры; размер передаётся явно.
-- Default `VoxelTerrainGenerator` и default аргумент конструктора теперь равны 8000 м. Runtime также передаёт размер из `VoxelWorld` явно. Добавлена smoke-проверка default значения. Эти последние изменения входят в текущий HEAD, но пока не входят в подтверждённый CI run 43357175555.
+- Целевая суша — нерегулярный центральный остров ориентировочной площадью **около 4 км²**.
+- `tests/native_chunk_benchmark.gd` намеренно использует синтетический мир 2 × 2 км для изолированного измерения native chunk build. Это тестовый fixture, а не runtime-конфигурация игры.
+- Последние подробные численные измерения остаются в таблице ниже и относятся к run 43357175555. Новый run 43763979682 подтвердил успешное прохождение benchmark guard на кодовой ревизии с default 8000 м; абсолютные времена по-прежнему зависят от hosted runner.
 
 ### Что ещё не завершено
 
-- **Визуальный baseline не утверждён.** Требуется серия из 8–12 seed в настоящей игровой сцене с фиксированными камерами, разрешением и настройками. Headless CI не заменяет визуальную оценку берегов, силуэтов гор, долин, подводного рельефа, LOD-переходов и streaming gaps.
-- Benchmark harness v2 и совместимый cache guard подтверждены; абсолютные времена остаются предварительными из-за вариативности hosted runners.
-- Этап 1 по ADR-018 не начат: сначала characterization tests текущего streaming behavior, затем отдельный `StreamingPlanner`, затем `MeshJobScheduler`. Не совмещать extraction с изменением LOD, генератора, ownership seed/`generation_epoch` или worker budget.
+- **Визуальный baseline не утверждён.** Требуется серия из 8–12 seed в настоящей игровой сцене с фиксированными камерами, разрешением и настройками.
+- Benchmark harness v2 и совместимый cache guard подтверждены; абсолютные времена не являются универсальным performance target.
+- Этап 1 по ADR-018 не начат: сначала characterization tests текущего streaming behavior, затем отдельный `StreamingPlanner`, затем `MeshJobScheduler`.
 - WorldSave compatibility foundation, TerrainPipeline, отдельный SDF-прототип и объёмный meshing остаются будущими этапами.
 
 ### Следующий рабочий фокус
 
-1. **Подтвердить текущий HEAD CI-запуском.** Убедиться, что новый default генератора 8000 м и assertion в `terrain_smoke_test.gd` проходят на Windows/Godot 4.7.2. Не менять benchmark fixture 2 км только ради совпадения с runtime: он задаётся явно и тестирует отдельную нагрузку.
-2. **Выполнить визуальную оценку мира 8 × 8 км** на 8–12 seed по [процедуре visual baseline](docs/testing/visual-baseline.md). Начать с 123456, 1337 и 424242, затем подобрать seed без гор, с одной и с несколькими горными цепями. Сохранять screenshots и metadata; отдельно проверить берег, мелководье, крутые склоны, предгорья, долины, спавн и LOD seams.
-3. После визуального sign-off — добавить characterization tests текущего streaming planner и зафиксировать deterministic outputs до extraction.
-4. Выделить чистый `StreamingPlanner`, сравнить его с текущей реализацией на тех же inputs; затем выделить `MeshJobScheduler`, сохранив epoch/seed validation, shared worker budget, cache/retry и stale-result semantics.
-5. После стабилизации streaming-контрактов определить WorldSave format/version и migration policy. Затем создать отдельную SDF test scene 32 × 32 × 32 м и сравнить storage, meshing, collision, LOD, seams, CPU и memory.
+1. **Выполнить визуальную оценку мира 8 × 8 км** на 8–12 seed по [процедуре visual baseline](docs/testing/visual-baseline.md). Начать с 123456, 1337 и 424242, затем подобрать seed без гор, с одной и с несколькими горными цепями.
+2. После визуального sign-off — добавить characterization tests текущего streaming planner и зафиксировать deterministic outputs до extraction.
+3. Выделить чистый `StreamingPlanner`, сравнить его с текущей реализацией на тех же inputs; затем выделить `MeshJobScheduler`, сохранив epoch/seed validation, shared worker budget, cache/retry и stale-result semantics.
+4. После стабилизации streaming-контрактов определить WorldSave format/version и migration policy. Затем создать отдельную SDF test scene 32 × 32 × 32 м и сравнить storage, meshing, collision, LOD, seams, CPU и memory.
 
 ---
 
