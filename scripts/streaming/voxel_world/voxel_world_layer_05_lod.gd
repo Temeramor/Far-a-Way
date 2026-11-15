@@ -35,62 +35,21 @@ func _find_visible_lod_key_at_point(point: Vector2) -> Vector2i:
     return _find_target_lod_key_at_point(point)
 
 func _collect_lod_tiles(lod_index: int, tile_x: int, tile_z: int, player_xz: Vector2, heading: Vector2, wanted: Dictionary, player_y: float = 0.0) -> void:
-    # Hot streaming path: calculate tile bounds arithmetically instead of allocating the
-    # eleven-key Dictionary returned by _chunk_bounds() for every visited node.
-    var key := _make_lod_key(lod_index, tile_x, tile_z)
-    var tile_voxels: int = _chunk_size_voxels * (1 << lod_index)
-    var tiles_axis: int = ceili(float(_world_size_voxels) / float(tile_voxels))
-    if tile_x < 0 or tile_z < 0 or tile_x >= tiles_axis or tile_z >= tiles_axis:
-        return
-    var start_x: int = tile_x * tile_voxels
-    var start_z: int = tile_z * tile_voxels
-    var size_x: int = maxi(0, mini(tile_voxels, _world_size_voxels - start_x))
-    var size_z: int = maxi(0, mini(tile_voxels, _world_size_voxels - start_z))
-    if size_x <= 0 or size_z <= 0:
-        return
-    var origin_x: float = _world_min_x + float(start_x) * VOXEL_SIZE
-    var origin_z: float = _world_min_z + float(start_z) * VOXEL_SIZE
-    var width: float = float(size_x) * VOXEL_SIZE
-    var depth: float = float(size_z) * VOXEL_SIZE
-    var center := Vector2(origin_x + width * 0.5, origin_z + depth * 0.5)
-    var nearest_x: float = clampf(player_xz.x, origin_x, origin_x + width)
-    var nearest_z: float = clampf(player_xz.y, origin_z, origin_z + depth)
-    var dx: float = player_xz.x - nearest_x
-    var dz: float = player_xz.y - nearest_z
-    # Euclidean distance from the player to the local terrain surface (X, Y, Z), not an XZ-only radius.
-    # Use the guarded world accessor: LOD planning is also exercised before terrain startup,
-    # when _generator is intentionally null (for example, pure streaming/LOD tests).
-    var terrain_y: float = get_surface_height(nearest_x, nearest_z)
-    var vertical_delta: float = player_y - terrain_y
-    var nearest: float = sqrt(dx * dx + dz * dz + vertical_delta * vertical_delta)
-    if nearest > render_distance_m:
-        return
-    var boundary: float = _lod_boundary_for(lod_index - 1) if lod_index > 0 else -1.0
-    if lod_index == 7:
-        boundary = get_lod_boundary_m(6)
-    var previous: Dictionary = _wanted.get(key, {})
-    var was_split: bool = bool(previous.get("fallback", false))
-    var split: bool = false
-    if lod_index > 0:
-        var scaled_hysteresis: float = boundary * lod_hysteresis_ratio
-        var threshold: float = boundary + scaled_hysteresis if was_split else maxf(0.0, boundary - scaled_hysteresis)
-        split = nearest < threshold
-    var horizontal_center_distance: float = center.distance_to(player_xz)
-    var req := {
-        "lod": lod_index, "fallback": split, "distance": nearest,
-        "nearest_distance": nearest, "priority": horizontal_center_distance - maxf(0.0, (center - player_xz).dot(heading) * 0.30),
-        "collision": lod_index == 0 and nearest <= collision_distance_m,
-        "start_x": start_x, "start_z": start_z,
-        "size_x": size_x, "size_z": size_z,
-        "tile_x": tile_x, "tile_z": tile_z, "tile_size_m": chunk_size_m * float(1 << lod_index),
-        "step_voxels": get_mesh_step_voxels(lod_index),
-        "shadow_proxy": nearest <= TERRAIN_SHADOW_DISTANCE_M
+    var config := {
+        "world_size_voxels": _world_size_voxels,
+        "chunk_size_voxels": _chunk_size_voxels,
+        "world_min_x": _world_min_x,
+        "world_min_z": _world_min_z,
+        "render_distance_m": render_distance_m,
+        "lod_boundaries": _lod_boundaries_m,
+        "lod_hysteresis_ratio": lod_hysteresis_ratio,
+        "collision_distance_m": collision_distance_m,
+        "chunk_size_m": chunk_size_m
     }
-    wanted[key] = req
-    if split:
-        for dz_offset in range(2):
-            for dx_offset in range(2):
-                _collect_lod_tiles(lod_index - 1, tile_x * 2 + dx_offset, tile_z * 2 + dz_offset, player_xz, heading, wanted, player_y)
+    _streaming_planner.collect_tile(
+        lod_index, tile_x, tile_z, player_xz, heading, player_y,
+        _wanted, wanted, config, Callable(self, "get_surface_height")
+    )
 
 func _deadline_priority(center: Vector2, request: Dictionary, player_xz: Vector2, heading: Vector2, velocity: Vector2) -> float:
     var offset: Vector2 = center - player_xz
