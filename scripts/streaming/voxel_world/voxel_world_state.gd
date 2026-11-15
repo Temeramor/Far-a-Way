@@ -12,6 +12,7 @@ const MeshDataCacheScript = preload("res://scripts/streaming/mesh_data_cache.gd"
 const ChunkResourceManagerScript = preload("res://scripts/streaming/chunk_resource_manager.gd")
 const GeneratorScript = preload("res://scripts/world/voxel_generator.gd")
 const ChunkScript = preload("res://scripts/streaming/voxel_chunk.gd")
+const StreamingPlannerScript = preload("res://scripts/streaming/streaming_planner.gd")
 
 @export_category("Voxel world")
 @export_range(256.0, 20000.0, 1.0) var world_size_m: float = 8000.0
@@ -47,6 +48,7 @@ var _completed_jobs: Dictionary = {}
 var lod_target_pixels: float = 3.0
 var _mesh_data_cache = MeshDataCacheScript.new()
 var _chunk_resource_manager = ChunkResourceManagerScript.new()
+var _streaming_planner = StreamingPlannerScript.new()
 var _refresh_timer: float = 0.0
 var _debug_lod_colors: bool = false
 var _last_player_position := Vector2(INF, INF)
