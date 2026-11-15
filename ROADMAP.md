@@ -1,7 +1,7 @@
 # Far a Way — ROADMAP (редакция)
 
 > **Статус:** проектная спецификация и план будущих работ. Ничего из описанного ниже пока не реализовано этим документом.
-> **Рабочая ветка:** `0.1.0.4-new` · кодовая ревизия `36311cb56bc8282af0505a5f50ecfdc22cd329e8` (последующие коммиты этой актуализации меняют только документацию)
+> **Рабочая ветка:** `0.1.0.4-new` · кодовая ревизия включает extraction `StreamingPlanner`; последний подтверждённый CI commit: `af98c10cab1199da3db0edc266daf3caa558b5c5`
 > **Дата исходного документа:** 9 ноября 2026 г.
 > **Дата редакции:** 16 ноября 2026 г.
 > **Текущая база:** Far a Way 0.1.0.4, Godot 4.7.2, Forward+
@@ -12,13 +12,13 @@
 
 ## Текущий статус реализации (16 ноября 2026)
 
-Этот статус относится к рабочей ветке `0.1.0.4-new`. Последний подтверждённый Windows extended CI run — [43763979682](https://github.com/Temeramor/Far-a-Way/actions/runs/43763979682), job [132964865089](https://github.com/Temeramor/Far-a-Way/actions/runs/43763979682/job/132964865089), commit `36311cb56bc8282af0505a5f50ecfdc22cd329e8`. Run проверил актуальную кодовую ревизию, включая default world size генератора 8000 м и smoke assertion. Последующие коммиты в рамках документационной актуализации не меняли исходный код.
+Этот статус относится к рабочей ветке `0.1.0.4-new`. Последний подтверждённый Windows extended CI run — [43766858561](https://github.com/Temeramor/Far-a-Way/actions/runs/43766858561), job [132973837664](https://github.com/Temeramor/Far-a-Way/actions/runs/43766858561/job/132973837664), commit `af98c10cab1199da3db0edc266daf3caa558b5c5`. Run подтвердил Debug/Release GDExtension build, Godot 4.7.2 import/script validation и восемь smoke/parity tests, включая `streaming_planner_characterization_test`. После этого run начато выделение `StreamingPlanner`; эти новые изменения требуют отдельного CI.
 
-### Подтверждено Windows extended CI run 43763979682
+### Подтверждено Windows extended CI run 43766858561
 
 - Windows x86-64 workflow, Godot 4.7.2, branch `0.1.0.4-new`; Debug и Release GDExtension build прошли.
 - Godot project import и script/resource validation прошли.
-- Все семь smoke/parity tests прошли: `mesh_data_cache_test`, `chunk_resource_manager_test`, `lod_hierarchy_smoke_test`, `shadow_lod_smoke_test`, `voxel_surface_scatter_smoke_test`, `decoration_spatial_index_test`, `terrain_smoke_test`.
+- Все восемь smoke/parity tests прошли: `mesh_data_cache_test`, `chunk_resource_manager_test`, `lod_hierarchy_smoke_test`, `shadow_lod_smoke_test`, `voxel_surface_scatter_smoke_test`, `decoration_spatial_index_test`, `terrain_smoke_test`, `streaming_planner_characterization_test`.
 - Benchmark baseline восстановлен, native chunk benchmark завершился, diagnostic artifacts загружены, 25% per-LOD p95 regression guard прошёл.
 - Подтверждены default `VoxelTerrainGenerator.world_size_m = 8000` и соответствующая smoke-проверка. Прежний разрыв между CI-tested commit и текущей кодовой ревизией закрыт.
 - CI подтверждает сборку и автоматические тесты, но не заменяет визуальную приёмку рельефа в запущенной игре.
@@ -32,16 +32,17 @@
 
 ### Что ещё не завершено
 
-- **Визуальный baseline не утверждён.** Требуется серия из 8–12 seed в настоящей игровой сцене с фиксированными камерами, разрешением и настройками.
-- Benchmark harness v2 и совместимый cache guard подтверждены; абсолютные времена не являются универсальным performance target.
-- Этап 1 по ADR-018 не начат: сначала characterization tests текущего streaming behavior, затем отдельный `StreamingPlanner`, затем `MeshJobScheduler`.
+- Визуальный baseline принят по пользовательскому тестированию: десятки seed успешно сгенерировали качественные острова. Формальный пакет скриншотов не требуется.
+- Characterization test текущего planner прошёл в CI run 43766858561.
+- `StreamingPlanner` выделен в `scripts/streaming/streaming_planner.gd` и подключён к `VoxelWorld`; extraction пока не подтверждён CI после последних изменений.
+- Следующий подпроект — `MeshJobScheduler`; начинать его после успешной проверки нового planner.
 - WorldSave compatibility foundation, TerrainPipeline, отдельный SDF-прототип и объёмный meshing остаются будущими этапами.
 
 ### Следующий рабочий фокус
 
-1. **Выполнить визуальную оценку мира 8 × 8 км** на 8–12 seed по [процедуре visual baseline](docs/testing/visual-baseline.md). Начать с 123456, 1337 и 424242, затем подобрать seed без гор, с одной и с несколькими горными цепями.
-2. После визуального sign-off — добавить characterization tests текущего streaming planner и зафиксировать deterministic outputs до extraction.
-3. Выделить чистый `StreamingPlanner`, сравнить его с текущей реализацией на тех же inputs; затем выделить `MeshJobScheduler`, сохранив epoch/seed validation, shared worker budget, cache/retry и stale-result semantics.
+1. Проверить extraction `StreamingPlanner` в Windows extended CI и при необходимости устранить регрессии без изменения streaming policy.
+2. Добавить недостающие characterization cases для hysteresis и LOD fallback/readiness, если текущие тесты выявят пробелы.
+3. Выделить `MeshJobScheduler`, сохранив epoch/seed validation, shared worker budget, cache/retry и stale-result semantics.
 4. После стабилизации streaming-контрактов определить WorldSave format/version и migration policy. Затем создать отдельную SDF test scene 32 × 32 × 32 м и сравнить storage, meshing, collision, LOD, seams, CPU и memory.
 
 ---
