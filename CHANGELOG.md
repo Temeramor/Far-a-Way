@@ -1,3 +1,12 @@
+## 16 ноября 2026 — актуальная кодовая ревизия прошла Windows extended CI
+
+- Успешно завершён [Windows extended run 43763979682](https://github.com/Temeramor/Far-a-Way/actions/runs/43763979682), job [132964865089](https://github.com/Temeramor/Far-a-Way/actions/runs/43763979682/job/132964865089), на branch `0.1.0.4-new`, commit `36311cb56bc8282af0505a5f50ecfdc22cd329e8`.
+- Это именно та кодовая ревизия, в которой default `VoxelTerrainGenerator.world_size_m` и аргумент конструктора установлены в 8000 м, а `terrain_smoke_test.gd` проверяет это значение. Прежний пробел между tested commit и source revision закрыт.
+- Windows x86-64 / Godot 4.7.2: Debug/Release GDExtension build, project import/script validation, все семь smoke/parity tests, restore benchmark baseline, native chunk benchmark и 25% per-LOD p95 guard завершились успешно. Diagnostic artifacts загружены.
+- Игровая карта — 8 × 8 км, целевой остров — около 4 км². Synthetic 2 × 2 км в `native_chunk_benchmark.gd` остаётся отдельным явно заданным benchmark fixture.
+- Headless CI не является визуальной приёмкой. Следующий этап — визуальный baseline на 8–12 seed в реальной игровой сцене; только после sign-off начинаем characterization tests и extraction по ADR-018.
+- README не менялся: описание runtime-размера 8 × 8 км и острова около 4 км² уже корректно.
+
 ## 15 ноября 2026 — статус после успешного Windows extended CI run 43357175555
 
 - Run [43357175555](https://github.com/Temeramor/Far-a-Way/actions/runs/43357175555) завершился успешно на commit `eed0a51cf91bcaf94f6986a90edcb7196fd58fe6`: Debug/Release GDExtension build, Godot 4.7.2 import/script validation, все семь smoke/parity tests, benchmark v2 (200 samples) и 25% p95 guard прошли. Подробные метрики и runner metadata внесены в `docs/testing/baseline.md`.
