@@ -148,6 +148,11 @@ func _check_regression_baseline(
                 if baseline_schema == 2 and baseline_runs == RUNS_PER_LOD and baseline_p95_method == "nearest_rank":
                     baseline_values = parsed.get("p95_ms", [])
                     baseline_is_compatible = baseline_values.size() == p95_values.size()
+                    if baseline_is_compatible:
+                        var baseline_metadata = parsed.get("runner_metadata", {})
+                        baseline_is_compatible = _runner_metadata_is_compatible(baseline_metadata, runner_metadata)
+                        if not baseline_is_compatible:
+                            print("Benchmark baseline runner metadata differs (including CPU model, visible processor count, OS, Godot build and runner image); skipping cross-runner comparison and establishing a new baseline.")
                 else:
                     print("Existing benchmark baseline is incompatible (schema=%d, runs_per_lod=%d, p95_method=%s); skipping comparison and establishing a v2 baseline." % [
                         baseline_schema, baseline_runs, baseline_p95_method
@@ -186,6 +191,33 @@ func _check_regression_baseline(
     }, "\t"))
     print("Saved compatible benchmark baseline schema v2 with %d samples per LOD." % RUNS_PER_LOD)
     return true
+
+func _runner_metadata_is_compatible(baseline_metadata: Variant, current_metadata: Dictionary) -> bool:
+    if not baseline_metadata is Dictionary:
+        return false
+
+    # Hosted runners can expose different CPU models and performance envelopes even
+    # when the OS image and visible processor count are identical. Never compare
+    # timings across different hardware/build environments.
+    const COMPATIBILITY_FIELDS := [
+        "godot_version",
+        "godot_build",
+        "os",
+        "os_version",
+        "processor",
+        "processor_count",
+        "runner_os",
+        "runner_arch",
+        "image_os",
+        "image_version"
+    ]
+    for field in COMPATIBILITY_FIELDS:
+        if not baseline_metadata.has(field) or not current_metadata.has(field):
+            return false
+        if str(baseline_metadata[field]) != str(current_metadata[field]):
+            return false
+    return true
+
 
 func _make_job(lod: int, generator) -> Dictionary:
     return {
