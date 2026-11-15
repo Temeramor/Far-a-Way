@@ -17,7 +17,7 @@ const HEIGHT_SAMPLE_STEP_M: float = 0.5
 const REFERENCE_WORLD_SIZE_M: float = 10000.0
 
 var seed_value: int = 1337
-var world_size_m: float = 2000.0
+var world_size_m: float = 8000.0
 var _native_sampler: Object
 var _terrain_prepared: bool = false
 var _prepared_spawn_position: Vector2 = Vector2(INF, INF)
@@ -30,7 +30,7 @@ var _mountain_phases: Array[float] = []
 
 
 func _init(
-        p_seed: int = 1337, p_world_size_m: float = 2000.0,
+        p_seed: int = 1337, p_world_size_m: float = 8000.0,
         p_native_sampler: Object = null) -> void:
     seed_value = p_seed
     world_size_m = maxf(256.0, p_world_size_m)
