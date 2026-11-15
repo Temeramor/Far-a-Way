@@ -1,7 +1,7 @@
 # Far a Way — ROADMAP (редакция)
 
-> **Статус:** проектная спецификация и план будущих работ. Ничего из описанного ниже пока не реализовано этим документом.
-> **Рабочая ветка:** `0.1.0.4-new` · кодовая ревизия включает extraction `StreamingPlanner`; последний подтверждённый CI commit: `af98c10cab1199da3db0edc266daf3caa558b5c5`
+> **Статус:** проектная спецификация и план будущих работ. Выполненные этапы отмечаются отдельно; сам документ не означает реализацию будущих функций.
+> **Рабочая ветка:** `0.1.0.4-new` · последний подтверждённый Windows extended CI commit: `f9a07de4036ce113b4dae6115e844f40927032fa`
 > **Дата исходного документа:** 9 ноября 2026 г.
 > **Дата редакции:** 16 ноября 2026 г.
 > **Текущая база:** Far a Way 0.1.0.4, Godot 4.7.2, Forward+
@@ -12,37 +12,38 @@
 
 ## Текущий статус реализации (16 ноября 2026)
 
-Этот статус относится к рабочей ветке `0.1.0.4-new`. Последний подтверждённый Windows extended CI run — [43766858561](https://github.com/Temeramor/Far-a-Way/actions/runs/43766858561), job [132973837664](https://github.com/Temeramor/Far-a-Way/actions/runs/43766858561/job/132973837664), commit `af98c10cab1199da3db0edc266daf3caa558b5c5`. Run подтвердил Debug/Release GDExtension build, Godot 4.7.2 import/script validation и восемь smoke/parity tests, включая `streaming_planner_characterization_test`. После этого run начато выделение `StreamingPlanner`; эти новые изменения требуют отдельного CI.
+Этот статус относится к рабочей ветке `0.1.0.4-new`. Последний подтверждённый Windows extended CI run — [43775754326](https://github.com/Temeramor/Far-a-Way/actions/runs/43775754326), job [133001556345](https://github.com/Temeramor/Far-a-Way/actions/runs/43775754326/job/133001556345), commit `f9a07de4036ce113b4dae6115e844f40927032fa`. Он подтвердил extraction `StreamingPlanner`, сборку Debug/Release GDExtension, Godot 4.7.2 import/script validation, восемь smoke/parity tests и корректную миграцию benchmark baseline на отличающееся runner hardware.
 
-### Подтверждено Windows extended CI run 43766858561
+### Подтверждено Windows extended CI run 43775754326
 
-- Windows x86-64 workflow, Godot 4.7.2, branch `0.1.0.4-new`; Debug и Release GDExtension build прошли.
-- Godot project import и script/resource validation прошли.
+- Windows x86-64 workflow завершился успешно на branch `0.1.0.4-new`, commit `f9a07de4036ce113b4dae6115e844f40927032fa`.
+- Debug и Release GDExtension build, Godot 4.7.2 project import и script/resource validation прошли.
 - Все восемь smoke/parity tests прошли: `mesh_data_cache_test`, `chunk_resource_manager_test`, `lod_hierarchy_smoke_test`, `shadow_lod_smoke_test`, `voxel_surface_scatter_smoke_test`, `decoration_spatial_index_test`, `terrain_smoke_test`, `streaming_planner_characterization_test`.
-- Benchmark baseline восстановлен, native chunk benchmark завершился, diagnostic artifacts загружены, 25% per-LOD p95 regression guard прошёл.
-- Подтверждены default `VoxelTerrainGenerator.world_size_m = 8000` и соответствующая smoke-проверка. Прежний разрыв между CI-tested commit и текущей кодовой ревизией закрыт.
-- CI подтверждает сборку и автоматические тесты, но не заменяет визуальную приёмку рельефа в запущенной игре.
+- Benchmark распознал несовместимость сохранённого baseline с текущим runner (AMD EPYC 9V74 против Intel Xeon Platinum 8370C), не сравнивал несопоставимые времена и успешно создал schema-v2 baseline с 25 samples на каждый LOD. Артефакт диагностики загружен.
+- **Важно:** run подтвердил ветку миграции baseline, но не проверил 25% p95 guard на совпадающем hardware. Следующий запуск на совместимом runner должен восстановить этот baseline и пройти обычное сравнение.
+- CI подтверждает сборку и автоматические тесты, но не заменяет ручное тестирование игрового мира.
 
 ### Размер игрового мира и benchmark fixture
 
 - Игровая сцена `scenes/world.tscn` задаёт карту **8 × 8 км**: `VoxelWorld.world_size_m = 8000`, `Terrain.world_size = 8000`, sea plane — 8000 × 8000 м.
 - Целевая суша — нерегулярный центральный остров ориентировочной площадью **около 4 км²**.
 - `tests/native_chunk_benchmark.gd` намеренно использует синтетический мир 2 × 2 км для изолированного измерения native chunk build. Это тестовый fixture, а не runtime-конфигурация игры.
-- Последние подробные численные измерения остаются в таблице ниже и относятся к run 43357175555. Новый run 43763979682 подтвердил успешное прохождение benchmark guard на кодовой ревизии с default 8000 м; абсолютные времена по-прежнему зависят от hosted runner.
+- Численные результаты benchmark и история смены runner baseline находятся в [docs/testing/baseline.md](docs/testing/baseline.md).
 
-### Что ещё не завершено
+### Что завершено и что ещё не завершено
 
 - Визуальный baseline принят по пользовательскому тестированию: десятки seed успешно сгенерировали качественные острова. Формальный пакет скриншотов не требуется.
-- Characterization test текущего planner прошёл в CI run 43766858561.
-- `StreamingPlanner` выделен в `scripts/streaming/streaming_planner.gd` и подключён к `VoxelWorld`; extraction пока не подтверждён CI после последних изменений.
-- Следующий подпроект — `MeshJobScheduler`; начинать его после успешной проверки нового planner.
+- Characterization test и extraction `StreamingPlanner` прошли Windows extended CI. Подтверждены детерминированные wanted requests, root fallback/split, частичные граничные tiles, mesh/collision/shadow flags и render-distance culling.
+- Runner metadata compatibility gate прошёл первую миграцию на Intel Xeon Platinum 8370C; повторная проверка 25% guard на совпадающем runner ещё нужна.
+- Точный parity-аудит `StreamingPlanner` относительно прежней реализации (ключи LOD, расстояния, приоритеты, hysteresis, fallback/readiness и request fields) остаётся обязательным перед следующим extraction.
+- Следующий подпроект после аудита planner — `MeshJobScheduler`.
 - WorldSave compatibility foundation, TerrainPipeline, отдельный SDF-прототип и объёмный meshing остаются будущими этапами.
 
 ### Следующий рабочий фокус
 
-1. Проверить extraction `StreamingPlanner` в Windows extended CI и при необходимости устранить регрессии без изменения streaming policy.
-2. Добавить недостающие characterization cases для hysteresis и LOD fallback/readiness, если текущие тесты выявят пробелы.
-3. Выделить `MeshJobScheduler`, сохранив epoch/seed validation, shared worker budget, cache/retry и stale-result semantics.
+1. Повторить Windows extended CI на том же runner environment, чтобы проверить 25% per-LOD p95 guard против только что созданного совместимого baseline.
+2. Провести точный parity-аудит `StreamingPlanner` относительно исходной логики; закрыть обнаруженные пробелы characterization-тестами, не меняя streaming policy.
+3. После подтверждения parity выделить `MeshJobScheduler`, сохранив epoch/seed validation, shared worker budget, cache/retry и stale-result semantics.
 4. После стабилизации streaming-контрактов определить WorldSave format/version и migration policy. Затем создать отдельную SDF test scene 32 × 32 × 32 м и сравнить storage, meshing, collision, LOD, seams, CPU и memory.
 
 ---
@@ -1310,44 +1311,27 @@ RiverGraph, watershed, озёра. Климатические поля. Biome cl
 
 # 28. Ближайший практический план
 
-**Шаг 1. Baseline + CI.** Зафиксировать контрольные seed, скриншоты, производительность. Настроить CI с автоматической сборкой и тестами.
+Порядок обновлён по фактическому состоянию ветки `0.1.0.4-new` и последнему успешному CI.
 
-**Шаг 2. Перенос ADR.** Создать `docs/decisions/`, перенести ADR из этого файла в отдельные markdown-файлы.
+**Шаг 1. Проверить runner-specific benchmark guard.** Повторить Windows extended run на совместимом окружении и убедиться, что schema-v2 baseline восстанавливается и 25% p95 guard действительно сравнивает результаты, а не создаёт новый baseline.
 
-**Шаг 3. TerrainProfile.** Перенести параметры в плоскую структуру; не менять алгоритмы.
+**Шаг 2. Завершить parity-аудит StreamingPlanner.** Сверить извлечённую реализацию с прежней логикой: LOD keys/stride, voxel scale и world origin, границы LOD и hysteresis, render/shadow distance, mesh step, priority/distance, partial edge tiles, root fallback/readiness и полный состав request Dictionary. Добавить тесты только для реально непокрытых контрактов. Не менять поведение ради упрощения extraction.
 
-**Шаг 4. TerrainField.** Ввести новый интерфейс с HeightfieldTerrainFieldAdapter.
+**Шаг 3. Выделить MeshJobScheduler.** Только после parity sign-off. Сохранить seed и `generation_epoch`, общий WorkerThreadPool budget, дедупликацию задач, cache/retry, проверку актуальности результата и текущую семантику apply.
 
-**Шаг 5. WorldSave.** Реализовать базовое сохранение. Принять решение по политике версионирования (ADR-007).
+**Шаг 4. Подготовить WorldSave foundation.** Определить формат, `generation_version`, профиль/seed hash и политику миграций до начала изменений объёмной модели.
 
-**Шаг 6. Единственный горный профиль.** Задокументировать, обозначить GDScript-сторону как устаревшую.
+**Шаг 5. Перейти к TerrainProfile и TerrainField.** Выделять интерфейсы небольшими шагами, не меняя текущий генератор и визуальный результат.
 
-**Шаг 7. Отдельный SDF test scene.** Создать тестовую сцену, не затрагивающую основной мир.
-
-**Шаг 8. Сравнение реализаций.** Сопоставить собственный Marching Cubes с Voxel Tools и GDVoxelTerrain.
-
-**Шаг 9. Навигационный прототип.** Оценить подход для dynamic procedural terrain параллельно с объёмным мешингом.
-
-**Шаг 10. Архитектурное решение по объёмному storage и LOD.** Выбрать только после результатов Этапов 3–4.
-
----
+**Шаг 6. Создать изолированный SDF prototype.** Отдельная сцена 32 × 32 × 32 м; измерить storage, meshing, LOD, collision, seams, CPU и memory. Не затрагивать основной мир до принятия результатов.
 
 # 29. Итоговая рекомендация
 
-Far a Way не нужно начинать заново.
+Far a Way не нужно начинать заново. Текущий макрогенератор, эрозия, детерминированность, chunk streaming, LOD, асинхронный native meshing и базовая CI-инфраструктура остаются основой проекта.
 
-Текущий макрогенератор, эрозия, детерминированность, chunk streaming, LOD, асинхронный native meshing и базовая CI-инфраструктура уже существуют. Windows extended CI и benchmark harness v2 прошли проверку на commit `eed0a51`; актуальный HEAD должен получить отдельный повторный CI run.
+Последний Windows extended CI run [43775754326](https://github.com/Temeramor/Far-a-Way/actions/runs/43775754326) подтвердил extraction `StreamingPlanner`, все восемь smoke/parity tests и создание нового benchmark baseline для Intel Xeon Platinum 8370C. При этом совместимый 25% p95 guard должен быть проверен следующим запуском на том же окружении.
 
-Следующая последовательность работ:
-
-1. Подтвердить CI на текущем HEAD.
-2. Выполнить визуальный baseline на 8–12 seed для реальной карты 8 × 8 км с островом около 4 км².
-3. Добавить characterization tests для существующего streaming поведения.
-4. Выделить `StreamingPlanner`, затем `MeshJobScheduler`, не меняя алгоритмы и runtime semantics.
-5. Определить WorldSave format/version и migration policy.
-6. Создать изолированный SDF prototype и сравнить storage, meshing, LOD, collision, seams, CPU и memory.
-7. Только после результатов прототипа принимать решение о TerrainField, volume storage, Marching Cubes/Transvoxel и миграции основного мира.
-8. Развивать геологию, гидрологию, прибрежные процессы и биомы отдельными этапами с измеримыми критериями.
+Следующая последовательность: проверить совместимый benchmark guard → завершить parity-аудит `StreamingPlanner` → выделить `MeshJobScheduler` → определить WorldSave format/version → перейти к TerrainProfile/TerrainField → создать изолированный SDF prototype. Не начинать SDF/volume-grid миграцию основного мира до результатов прототипа.
 
 CI, документация и визуальная оценка — разные виды проверки: успешная сборка не является визуальным sign-off, а визуальный sign-off не заменяет regression tests.
 
