@@ -1,6 +1,6 @@
 # Visual terrain baseline procedure
 
-**Status:** prepared; captures and visual sign-off are still pending.  
+**Status:** accepted by user validation (16 November 2026). The user reports that dozens of different seeds generated successful, visually pleasing islands. Screenshot capture is not required for this acceptance; the checklist below remains available for future regression investigations.  
 **Runtime target:** Windows x86-64, Godot 4.7.2, Forward+.  
 **World:** 8,000 × 8,000 m; central irregular island approximately 4 km².
 
@@ -69,6 +69,6 @@ Record in a sidecar text/CSV row:
 
 ## Exit criteria
 
-The visual baseline is accepted only after all 8–12 seed folders have the required captures and metadata, the review checklist has been completed, and representative defects have been logged. Headless smoke tests and numeric chunk benchmarks do not constitute visual sign-off.
+For the initial baseline, the user accepted the generated terrain after testing dozens of seeds; screenshot folders and metadata were explicitly waived. The capture/review procedure remains a reproducible diagnostic tool if a visual regression appears later. Headless CI alone does not constitute visual sign-off.
 
 Do not modify terrain algorithms, LOD policy or streaming architecture during this capture pass. Fix only a defect that blocks capture or makes the current scene invalid; document any such change and restart affected captures.
