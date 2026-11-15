@@ -1,3 +1,12 @@
+## 16 ноября 2026 — Windows extended CI подтвердил StreamingPlanner и миграцию benchmark baseline
+
+- Успешно завершён [Windows extended run 43775754326](https://github.com/Temeramor/Far-a-Way/actions/runs/43775754326), job [133001556345](https://github.com/Temeramor/Far-a-Way/actions/runs/43775754326/job/133001556345), branch `0.1.0.4-new`, commit `f9a07de4036ce113b4dae6115e844f40927032fa`.
+- Debug/Release Windows GDExtension build, Godot 4.7.2 project import/script validation и все восемь smoke/parity tests прошли, включая `streaming_planner_characterization_test`.
+- Benchmark metadata gate обнаружил несовпадение сохранённого runner baseline (AMD EPYC 9V74) с текущим runner (Intel Xeon Platinum 8370C, 4 видимых процессора; Windows image `win25-vs2026`, version `20261103.298.1`). Несопоставимые времена не сравнивались.
+- Benchmark успешно сохранил schema-v2 baseline с 25 samples на каждый LOD; diagnostic artifact [windows-extended-diagnostics-22](https://github.com/Temeramor/Far-a-Way/actions/runs/43775754326/artifacts/14187195038) загружен.
+- Это подтверждает корректную миграцию baseline и успешное выполнение benchmark, но ещё не проверяет 25% p95 guard против совместимого baseline. Следующий запуск на том же runner environment должен проверить именно эту ветку.
+- `StreamingPlanner` extraction теперь подтверждён Windows CI. Следующая задача — parity-аудит его формул и request semantics относительно прежней реализации; `MeshJobScheduler` не начинать до завершения этого аудита.
+
 ## 16 ноября 2026 — исправлена совместимость benchmark baseline между runner hardware
 
 - Разобраны Windows extended runs [43771288424](https://github.com/Temeramor/Far-a-Way/actions/runs/43771288424) и [43774332485](https://github.com/Temeramor/Far-a-Way/actions/runs/43774332485): сборка, импорт и все восемь smoke/parity tests прошли; оба запуска остановились только на native chunk benchmark.
