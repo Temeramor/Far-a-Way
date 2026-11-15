@@ -249,3 +249,17 @@ The saved schema-v2 baseline came from AMD EPYC 9V45 (4 visible processors). Bot
 This exposed a benchmark validity issue: schema/method compatibility alone was insufficient. The harness now requires matching CPU model, visible processor count, OS/version, runner OS/architecture, Godot version/build and runner image OS/version before comparing timings. A mismatch is reported and causes the successful current run to establish a new runner-specific baseline. The 25% p95 guard remains active when the environment matches.
 
 **Verification pending:** the new metadata gate must pass Windows CI, establish the EPYC 9V74 baseline, and then be exercised by a subsequent run against that compatible baseline. Do not treat the new baseline as verified until both runs pass.
+
+## Runner-specific benchmark baseline migration — successful (run 43775754326)
+
+Windows extended run [43775754326](https://github.com/Temeramor/Far-a-Way/actions/runs/43775754326), job [133001556345](https://github.com/Temeramor/Far-a-Way/actions/runs/43775754326/job/133001556345), completed successfully on branch `0.1.0.4-new`, commit `f9a07de4036ce113b4dae6115e844f40927032fa`.
+
+- Debug and Release Windows x86-64 GDExtension builds passed.
+- Godot 4.7.2 project import and script/resource validation passed.
+- All eight smoke/parity tests passed, including `streaming_planner_characterization_test`.
+- The restored schema-v2 benchmark baseline was rejected for comparison because its runner metadata did not match the current runner.
+- Previous baseline environment: AMD EPYC 9V74, 4 visible processors. Current runner: Intel Xeon Platinum 8370C, 4 visible processors; Windows 10.0.26100; runner image `win25-vs2026` version `20261103.298.1`; Godot 4.7.2 official.
+- The benchmark completed and saved a new schema-v2 baseline with 25 samples per LOD. Diagnostic artifact: [windows-extended-diagnostics-22](https://github.com/Temeramor/Far-a-Way/actions/runs/43775754326/artifacts/14187195038).
+
+**Interpretation:** the metadata compatibility gate and baseline migration are verified. This run intentionally did not compare timings across different CPU models. The next run must restore this Intel Xeon baseline on a matching runner and exercise the 25% per-LOD nearest-rank p95 regression guard. Until then, do not claim the compatible-runner guard has been re-verified.
+
