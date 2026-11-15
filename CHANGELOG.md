@@ -1,12 +1,12 @@
-## 15 ноября 2026 — подтверждён benchmark harness v2 и актуализирован статус проекта
+## 15 ноября 2026 — статус после успешного Windows extended CI run 43357175555
 
-- Успешно завершён Windows extended workflow [43357175555](https://github.com/Temeramor/Far-a-Way/actions/runs/43357175555) на branch `0.1.0.4-new`, commit `eed0a51cf91bcaf94f6986a90edcb7196fd58fe6`. Debug/Release GDExtension build, Godot 4.7.2 import/script validation и все семь smoke/parity tests прошли.
-- Benchmark v2 выполнил 25 измерений для каждого LOD0–LOD7 (200 raw samples), записал runner metadata, восстановил совместимый schema-v2 baseline и прошёл 25% per-LOD p95 guard.
-- Median/p95 (ms): LOD0 20.909/26.469; LOD1 12.978/13.081; LOD2 3.751/4.918; LOD3 1.313/1.685; LOD4 0.848/0.879; LOD5 0.290/0.316; LOD6 0.221/0.275; LOD7 0.170/0.194. One-time terrain sampler setup — 13,344.346 ms, отдельно от chunk timings.
-- Предыдущий выброс LOD3 p95 (run 431136874) не воспроизвёлся: 1.685 ms против baseline 1.692 ms. Guard подтвердил отсутствие устойчивой регрессии на этом LOD.
-- Уточнена размерность: игровая сцена использует мир 8 × 8 км и остров около 4 км². Benchmark harness намеренно использует отдельный синтетический мир 2 × 2 км; это не runtime-конфигурация игры и не требует изменения ради совпадения размеров.
-- ROADMAP и testing baseline синхронизированы с run 43357175555. Следующий этап — визуальный baseline на 8–12 seed; он не считается выполненным headless smoke tests. После визуального sign-off — characterization tests и extraction по ADR-018.
-- Default `VoxelTerrainGenerator` и default аргумент конструктора выровнены с игровым размером 8000 м; runtime и прежде передавал размер из `VoxelWorld` явно, поэтому фактическая карта не менялась. В `terrain_smoke_test.gd` добавлена проверка этого default. Benchmark продолжает задавать синтетические 2000 м явно.\n- Добавлен `docs/testing/visual-baseline.md` с воспроизводимой процедурой отбора 8–12 seed, условиями съёмки, перечнем кадров, метаданными и критериями визуальной приёмки.\n- README уже корректно указывает 8 × 8 км и остров около 4 км²; изменений README не потребовалось.
+- Run [43357175555](https://github.com/Temeramor/Far-a-Way/actions/runs/43357175555) завершился успешно на commit `eed0a51cf91bcaf94f6986a90edcb7196fd58fe6`: Debug/Release GDExtension build, Godot 4.7.2 import/script validation, все семь smoke/parity tests, benchmark v2 (200 samples) и 25% p95 guard прошли. Подробные метрики и runner metadata внесены в `docs/testing/baseline.md`.
+- Текущий HEAD ветки `0.1.0.4-new` — `36311cb56bc8282af0505a5f50ecfdc22cd329e8`, на 13 коммитов впереди указанного CI run. После CI были добавлены документационные обновления, default `VoxelTerrainGenerator.world_size_m = 8000` и проверка default в `terrain_smoke_test.gd`. Run 43357175555 не включает эти изменения; требуется новый запуск на текущем HEAD.
+- Игровая сцена остаётся 8 × 8 км, целевая площадь острова — около 4 км². Синтетический 2 × 2 км в native chunk benchmark задаётся явно и не меняет игровой мир.
+- Добавлена процедура визуального baseline для 8–12 seed: `docs/testing/visual-baseline.md`. Съёмка и визуальная приёмка ещё не выполнены.
+- Следующий этап: подтвердить текущий HEAD CI; затем провести визуальную оценку 8 × 8 км мира; после sign-off — characterization tests и extraction по ADR-018. WorldSave и SDF остаются последующими этапами.
+- README уже корректно описывает 8 × 8 км и остров около 4 км²; изменения README не требуются.
+
 
 ## 12 ноября 2026 — успешная миграция benchmark baseline v2
 
