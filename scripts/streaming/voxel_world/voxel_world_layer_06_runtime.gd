@@ -97,7 +97,7 @@ func _process_chunk_jobs() -> void:
             active_decor_jobs = child._running_decor_tasks.size()
             break
     # Terrain owns scheduling priority; decor may use only the remaining shared worker slots.
-    var available_jobs: int = worker_limit - _running_tasks.size() - active_decor_jobs
+    var available_jobs: int = _mesh_job_scheduler.available_worker_slots(worker_limit, active_decor_jobs)
     if available_jobs <= 0 or _queued.is_empty():
         return
     var started_jobs: int = 0
@@ -105,25 +105,15 @@ func _process_chunk_jobs() -> void:
     var heading: Vector2 = _get_streaming_heading()
     var planar_velocity := Vector2(_player.velocity.x, _player.velocity.z) if _player != null else Vector2.ZERO
     while started_jobs < available_jobs and not _queued.is_empty():
-        var best_coord := Vector2i(-1, -1)
-        var best_priority: float = INF
-        var best_center := Vector2.ZERO
-        for queued_key in _queued.keys():
-            var candidate: Vector2i = queued_key
-            if _running_by_coord.has(candidate):
-                continue
-            var candidate_center: Vector2 = _chunk_center(candidate)
-            var candidate_request: Dictionary = _queued[candidate]
-            var priority: float = _deadline_priority(candidate_center, candidate_request, player_xz, heading, planar_velocity)
-            if priority < best_priority:
-                best_priority = priority
-                best_coord = candidate
-                best_center = candidate_center
-        if best_coord.x < 0:
+        var selected: Dictionary = _mesh_job_scheduler.select_next_queued(
+            player_xz, heading, planar_velocity,
+            Callable(self, "_chunk_center"), Callable(self, "_deadline_priority")
+        )
+        if selected.is_empty():
             break
-        var coord: Vector2i = best_coord
+        var coord: Vector2i = selected["coord"]
         var request: Dictionary = _queued[coord]
-        request["priority"] = best_priority
+        request["priority"] = float(selected["priority"])
         if not request.has("queued_usec"):
             request["queued_usec"] = Time.get_ticks_usec()
         _queued.erase(coord)
@@ -139,12 +129,12 @@ func _process_chunk_jobs() -> void:
         var cache_key: String = _make_mesh_cache_key(coord, request, neighbors, build_collision)
         var cached_data: Dictionary = _get_cached_mesh(cache_key)
         if not cached_data.is_empty():
-            _completed_jobs[coord] = {
+            _mesh_job_scheduler.publish_completed(coord, {
                 "coord": coord, "request": request.duplicate(), "neighbors": neighbors.duplicate(),
                 "builder": null, "epoch": _generation_epoch, "seed": seed_value,
                 "queued_usec": int(request["queued_usec"]), "cache_key": cache_key,
                 "data": cached_data, "completed_usec": Time.get_ticks_usec()
-            }
+            })
             started_jobs += 1
             continue
 
@@ -161,8 +151,11 @@ func _process_chunk_jobs() -> void:
             "seed": seed_value, "queued_usec": int(request["queued_usec"]),
             "cache_key": cache_key
         }
-        _running_tasks[task_id] = task_record
-        _running_by_coord[coord] = task_id
+        if not _mesh_job_scheduler.register_running(task_id, task_record):
+            WorkerThreadPool.wait_for_task_completion(task_id)
+            builder = null
+            _queued[coord] = request
+            continue
         started_jobs += 1
 
 func _fallback_children_ready(coord: Vector2i) -> bool:
@@ -305,18 +298,17 @@ func _poll_worker_tasks() -> void:
         if not WorkerThreadPool.is_task_completed(task_id):
             continue
         WorkerThreadPool.wait_for_task_completion(task_id)
-        var record: Dictionary = _running_tasks[task_id]
-        _running_tasks.erase(task_id)
+        var record: Dictionary = _mesh_job_scheduler.take_running(task_id)
+        if record.is_empty():
+            continue
         var coord: Vector2i = record["coord"]
-        if int(_running_by_coord.get(coord, -1)) == task_id:
-            _running_by_coord.erase(coord)
         var builder = record["builder"]
         var data: Dictionary = builder.result
         if data.is_empty():
             if _wanted.has(coord) and not _fallback_children_ready(coord):
                 var retry_empty: Dictionary = _wanted[coord].duplicate(true)
                 retry_empty["queued_usec"] = Time.get_ticks_usec()
-                _queued[coord] = retry_empty
+                _mesh_job_scheduler.queue_retry(coord, _wanted, Time.get_ticks_usec())
             continue
         # Treat the request as authoritative even if an older compiled native extension
         # does not return this metadata field yet. Both mesh builders receive the same stride.
@@ -329,11 +321,11 @@ func _poll_worker_tasks() -> void:
         if _job_record_matches_current(record, coord) and not _fallback_children_ready(coord):
             record["data"] = data
             record["completed_usec"] = Time.get_ticks_usec()
-            _completed_jobs[coord] = record
+            _mesh_job_scheduler.publish_completed(coord, record)
             _store_cached_mesh(str(record.get("cache_key", "")), data)
         else:
             _stale_result_count += 1
             if _wanted.has(coord) and not _running_by_coord.has(coord) and not _fallback_children_ready(coord):
                 var retry: Dictionary = _wanted[coord].duplicate(true)
                 retry["queued_usec"] = Time.get_ticks_usec()
-                _queued[coord] = retry
+                _mesh_job_scheduler.queue_retry(coord, _wanted, Time.get_ticks_usec())
