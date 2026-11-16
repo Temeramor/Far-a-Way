@@ -44,26 +44,20 @@ func _create_mesh_builder() -> Object:
     return native_builder
 
 func _job_record_matches_current(record: Dictionary, coord: Vector2i) -> bool:
-    # The skirts make neighbour target LOD irrelevant to this mesh's validity.
-    if int(record["epoch"]) != _generation_epoch or int(record["seed"]) != seed_value:
-        return false
     if not _wanted.has(coord):
         return false
-    var current: Dictionary = _wanted[coord]
-    var previous: Dictionary = record["request"]
-    return int(current["lod"]) == int(previous["lod"]) and int(current.get("step_voxels", -1)) == int(previous.get("step_voxels", -1)) and bool(current["collision"]) == bool(previous["collision"]) and bool(current.get("shadow_proxy", false)) == bool(previous.get("shadow_proxy", false))
+    return _mesh_job_scheduler.is_record_current(record, _wanted[coord], _generation_epoch, seed_value)
 
 func _running_job_matches(coord: Vector2i, request: Dictionary) -> bool:
     if not _running_by_coord.has(coord):
         return false
     var record: Dictionary = _running_tasks.get(int(_running_by_coord[coord]), {})
-    return not record.is_empty() and int(record["epoch"]) == _generation_epoch and int(record["seed"]) == seed_value and int(record["request"]["lod"]) == int(request["lod"]) and int(record["request"].get("step_voxels", -1)) == int(request.get("step_voxels", -1)) and bool(record["request"]["collision"]) == bool(request["collision"]) and bool(record["request"].get("shadow_proxy", false)) == bool(request.get("shadow_proxy", false))
+    return _mesh_job_scheduler.is_record_current(record, request, _generation_epoch, seed_value)
 
 func _completed_job_matches(coord: Vector2i, request: Dictionary) -> bool:
     if not _completed_jobs.has(coord):
         return false
-    var record: Dictionary = _completed_jobs[coord]
-    return int(record["epoch"]) == _generation_epoch and int(record["seed"]) == seed_value and int(record["request"]["lod"]) == int(request["lod"]) and int(record["request"].get("step_voxels", -1)) == int(request.get("step_voxels", -1)) and bool(record["request"]["collision"]) == bool(request["collision"]) and bool(record["request"].get("shadow_proxy", false)) == bool(request.get("shadow_proxy", false))
+    return _mesh_job_scheduler.is_record_current(_completed_jobs[coord], request, _generation_epoch, seed_value)
 
 func _chunk_center(coord: Vector2i) -> Vector2:
     # Hot path for queue prioritisation: calculate the centre without allocating a Dictionary.
