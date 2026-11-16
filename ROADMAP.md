@@ -1,7 +1,7 @@
 # Far a Way — ROADMAP (редакция)
 
 > **Статус:** проектная спецификация и план будущих работ. Выполненные этапы отмечаются отдельно; сам документ не означает реализацию будущих функций.
-> **Рабочая ветка:** `0.1.0.4-new` · последний подтверждённый Windows extended CI commit: `3404427733adc98b2ca10a26b3dc6f7f83839b6e`
+> **Рабочая ветка:** `0.1.0.4-new` · последний подтверждённый Windows extended CI commit: `79f8ac7f89b94dbdf2cb2fc492a87a9687a9be96`
 > **Дата исходного документа:** 9 ноября 2026 г.
 > **Дата редакции:** 16 ноября 2026 г.
 > **Текущая база:** Far a Way 0.1.0.4, Godot 4.7.2, Forward+
@@ -12,7 +12,7 @@
 
 ## Текущий статус реализации (16 ноября 2026)
 
-Этот статус относится к рабочей ветке `0.1.0.4-new`. Последний подтверждённый Windows extended CI run — [43777441849](https://github.com/Temeramor/Far-a-Way/actions/runs/43777441849), job [133006839090](https://github.com/Temeramor/Far-a-Way/actions/runs/43777441849/job/133006839090), commit `3404427733adc98b2ca10a26b3dc6f7f83839b6e`; связанный core run — [43777441848](https://github.com/Temeramor/Far-a-Way/actions/runs/43777441848), job [133006838125](https://github.com/Temeramor/Far-a-Way/actions/runs/43777441848/job/133006838125). Оба завершились успешно. Extended run подтвердил Debug/Release GDExtension build, Godot 4.7.2 import/script validation, восемь smoke/parity tests и создание нового runner-specific schema-v2 benchmark baseline.
+Этот статус относится к рабочей ветке `0.1.0.4-new`. Последние Windows CI runs — core [43781021064](https://github.com/Temeramor/Far-a-Way/actions/runs/43781021064), job [133017983125](https://github.com/Temeramor/Far-a-Way/actions/runs/43781021064/job/133017983125), и extended [43781021056](https://github.com/Temeramor/Far-a-Way/actions/runs/43781021056), job [133017983376](https://github.com/Temeramor/Far-a-Way/actions/runs/43781021056/job/133017983376), оба на commit `79f8ac7f89b94dbdf2cb2fc492a87a9687a9be96`. Оба завершились успешно. Extended run подтвердил Debug/Release GDExtension build, Godot 4.7.2 import/script validation, восемь smoke/parity tests, включая differential `StreamingPlanner` oracle, и создание нового runner-specific schema-v2 benchmark baseline.
 
 ### Подтверждено Windows extended CI run 43775754326
 
@@ -45,15 +45,15 @@
 - Characterization test и extraction `StreamingPlanner` прошли Windows extended CI. Подтверждены детерминированные wanted requests, root fallback/split, частичные граничные tiles, mesh/collision/shadow flags и render-distance culling.
 - Runner metadata compatibility gate прошёл первую миграцию на Intel Xeon Platinum 8370C; повторная проверка 25% guard на совпадающем runner ещё нужна.
 - Проведён source-level parity review `StreamingPlanner` относительно прежнего `_collect_lod_tiles`: совпадают LOD key/stride, world origin и voxel scale, partial edge bounds, surface-based 3D distance, render/shadow thresholds, hysteresis, recursive split, priority, collision flag, mesh step и все request fields.
-- В `streaming_planner_characterization_test.gd` добавлен differential oracle прежней реализации с несколькими сценариями позиции/высоты/heading и последовательным переносом `previous_wanted`. **Тест пока ожидает CI на новом коммите; parity sign-off до его прохождения не объявляется.**
-- Следующий подпроект после успешного differential test — `MeshJobScheduler`.
+- В `streaming_planner_characterization_test.gd` добавлен differential oracle прежней реализации с несколькими сценариями позиции/высоты/heading и последовательным переносом `previous_wanted`. **Differential test прошёл Windows extended CI run 43781021056; parity sign-off подтверждён.**
+- `MeshJobScheduler` выделен в текущем изменении; focused lifecycle tests ожидают Windows CI.
 - WorldSave compatibility foundation, TerrainPipeline, отдельный SDF-прототип и объёмный meshing остаются будущими этапами.
 
 ### Следующий рабочий фокус
 
-1. Прогнать новый differential parity test на Windows CI. При расхождении исправлять extraction или oracle только после установления точной причины; не менять streaming policy.
-2. После зелёного differential test зафиксировать parity sign-off и выделить `MeshJobScheduler`, сохранив epoch/seed validation, общий WorkerThreadPool budget, deduplication, cache/retry и stale-result semantics.
-3. Добавить focused scheduler tests для epoch/seed invalidation, duplicate requests, cache hit, empty-result retry, stale completion и shared worker budget; проверить cache-hit и worker completion apply path.
+1. **Выполнено:** differential parity test прошёл Windows extended CI run 43781021056; `StreamingPlanner` parity sign-off зафиксирован.
+2. **Реализовано, ожидает CI:** выделен `MeshJobScheduler` как владелец queue/running/completed registries и job lifecycle; сохранены epoch/seed/request validation, deduplication по координате, общий worker budget, cache-hit completion path, empty-result retry и stale-result rejection.
+3. **Реализовано, ожидает CI:** добавлен `mesh_job_scheduler_test.gd` для epoch/seed invalidation, duplicate coordinate, request mismatch, cache hit, empty-result retry, stale completion, priority selection и shared worker budget.
 4. Отдельно повторить extended benchmark на runner с metadata, совпадающей с baseline EPYC 7763, чтобы проверить 25% per-LOD p95 guard. Runner mismatch не считать performance regression.
 5. После стабилизации streaming-контрактов определить WorldSave format/version и migration policy. Затем создать отдельную SDF test scene 32 × 32 × 32 м и сравнить storage, meshing, collision, LOD, seams, CPU и memory.
 
