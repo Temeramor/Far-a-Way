@@ -1,7 +1,7 @@
-extends SceneTree
+extends Node
 
-func _initialize() -> void:
-	call_deferred("_run")
+func _ready() -> void:
+	_run()
 
 func _run() -> void:
 	var scheduler := MeshJobScheduler.new()
@@ -70,10 +70,10 @@ func _run() -> void:
 	if not errors.is_empty():
 		for message in errors:
 			push_error(message)
-		quit(1)
+		get_tree().quit(1)
 		return
 	print("PASS: mesh_job_scheduler_test")
-	quit(0)
+	get_tree().quit(0)
 
 func _center_for(coord: Vector2i) -> Vector2:
 	return Vector2(float(coord.x), float(coord.y))
