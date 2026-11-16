@@ -286,3 +286,14 @@ Run [43777441849](https://github.com/Temeramor/Far-a-Way/actions/runs/4377744184
 | 7 | 25 | 0.193 | 0.251 | 0.319 | 16 | 24 |
 
 **Interpretation:** this is a valid baseline for the EPYC 7763 runner metadata, not a comparison against the previous Intel baseline. The 25% p95 guard has not yet been exercised against this newly created baseline. LOD0 and LOD1 p95 values include visible outliers; retain raw samples in the artifact and avoid treating these hosted-runner timings as hardware-independent performance claims.
+
+
+## StreamingPlanner parity — Windows CI, 16 November 2026
+
+Windows core run [43781021064](https://github.com/Temeramor/Far-a-Way/actions/runs/43781021064), job [133017983125](https://github.com/Temeramor/Far-a-Way/actions/runs/43781021064/job/133017983125), and extended run [43781021056](https://github.com/Temeramor/Far-a-Way/actions/runs/43781021056), job [133017983376](https://github.com/Temeramor/Far-a-Way/actions/runs/43781021056/job/133017983376), both checked out branch `0.1.0.4-new` at commit `79f8ac7f89b94dbdf2cb2fc492a87a9687a9be96` and completed successfully.
+
+- Core: Debug/Release GDExtension builds, Godot 4.7.2 import/script validation and core smoke/native field tests passed.
+- Extended: all eight smoke/parity tests passed, including the differential `streaming_planner_characterization_test` legacy-oracle comparison.
+- The extended benchmark completed 25 samples per LOD. Runner metadata: AMD EPYC 7763, 4 visible processors, Windows Server 2025 10.0.26100, Godot 4.7.2 official, image `win25-vs2026` version `20261103.298.1`.
+- The restored cache belonged to a different runner environment; the metadata gate correctly skipped cross-runner comparison and saved a new schema-v2 baseline. The 25% per-LOD p95 guard was not exercised in this run.
+- These runs confirm the planner differential test and the source state at the recorded commit; they do not validate the subsequent MeshJobScheduler extraction.
