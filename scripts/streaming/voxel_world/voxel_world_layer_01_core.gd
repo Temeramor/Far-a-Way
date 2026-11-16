@@ -14,9 +14,8 @@ func regenerate_with_seed(new_seed: int) -> void:
         _player.velocity = Vector3.ZERO
     _generation_epoch += 1
     seed_value = new_seed
-    _queued.clear()
+    _mesh_job_scheduler.clear_pending()
     _wanted.clear()
-    _completed_jobs.clear()
     _mesh_data_cache.clear()
 
     # Hide the old world immediately; release mesh buffers gradually over later frames.
