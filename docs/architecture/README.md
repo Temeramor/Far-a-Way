@@ -11,6 +11,7 @@
 
 ### VoxelWorld
 
+- `scripts/streaming/mesh_job_scheduler.gd` — владелец queue/running/completed registries и mesh-job lifecycle. Вызовы Node/scene/physics остаются у `VoxelWorld`.
 - `scripts/streaming/mesh_data_cache.gd` — самостоятельный LRU-кэш с бюджетом 48 MiB / 32 записи.
 - `scripts/streaming/chunk_resource_manager.gd` — очередь retirement, detached resources и пул оболочек чанков.
 
