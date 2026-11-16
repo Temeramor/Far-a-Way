@@ -13,6 +13,7 @@ const ChunkResourceManagerScript = preload("res://scripts/streaming/chunk_resour
 const GeneratorScript = preload("res://scripts/world/voxel_generator.gd")
 const ChunkScript = preload("res://scripts/streaming/voxel_chunk.gd")
 const StreamingPlannerScript = preload("res://scripts/streaming/streaming_planner.gd")
+const MeshJobSchedulerScript = preload("res://scripts/streaming/mesh_job_scheduler.gd")
 
 @export_category("Voxel world")
 @export_range(256.0, 20000.0, 1.0) var world_size_m: float = 8000.0
@@ -40,11 +41,12 @@ var _mountain_profile_cache: Array[Dictionary] = []
 var _voxel_material: ShaderMaterial
 var _player: CharacterBody3D
 var _chunks: Dictionary = {}
-var _queued: Dictionary = {}
+var _mesh_job_scheduler = MeshJobSchedulerScript.new()
+var _queued: Dictionary = _mesh_job_scheduler.queued
 var _wanted: Dictionary = {}
-var _running_tasks: Dictionary = {}
-var _running_by_coord: Dictionary = {}
-var _completed_jobs: Dictionary = {}
+var _running_tasks: Dictionary = _mesh_job_scheduler.running_tasks
+var _running_by_coord: Dictionary = _mesh_job_scheduler.running_by_coord
+var _completed_jobs: Dictionary = _mesh_job_scheduler.completed_jobs
 var lod_target_pixels: float = 3.0
 var _mesh_data_cache = MeshDataCacheScript.new()
 var _chunk_resource_manager = ChunkResourceManagerScript.new()
