@@ -110,6 +110,7 @@ jobs:
             "chunk_resource_manager_test.gd",
             "lod_hierarchy_smoke_test.gd",
             "streaming_planner_characterization_test.gd",
+            "mesh_job_scheduler_test.gd"
             "shadow_lod_smoke_test.gd",
             "voxel_surface_scatter_smoke_test.gd",
             "decoration_spatial_index_test.gd",
