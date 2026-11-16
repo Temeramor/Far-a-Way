@@ -1,3 +1,14 @@
+## 16 ноября 2026 — Windows CI подтвердил текущую ревизию; добавлен differential parity test для StreamingPlanner
+
+- Успешно завершён [Windows native/core run 43777441848](https://github.com/Temeramor/Far-a-Way/actions/runs/43777441848), job [133006838125](https://github.com/Temeramor/Far-a-Way/actions/runs/43777441848/job/133006838125), и [Windows extended run 43777441849](https://github.com/Temeramor/Far-a-Way/actions/runs/43777441849), job [133006839090](https://github.com/Temeramor/Far-a-Way/actions/runs/43777441849/job/133006839090), на commit `3404427733adc98b2ca10a26b3dc6f7f83839b6e`, branch `0.1.0.4-new`.
+- Debug/Release GDExtension build, Godot 4.7.2 project import/script validation и все восемь extended smoke/parity tests прошли.
+- Benchmark завершился с 25 samples на каждый LOD и создал schema-v2 baseline. Runner: AMD EPYC 7763, 4 видимых процессора, Windows 10.0.26100, image `win25-vs2026` version `20261103.298.1`. Сводка результатов: LOD0 p95 34.908 ms; LOD1 21.339 ms; LOD2 4.691 ms; LOD3 1.687 ms; LOD4 0.811 ms; LOD5 0.475 ms; LOD6 0.386 ms; LOD7 0.319 ms.
+- Сохранённый baseline был на Intel Xeon Platinum 8370C; metadata gate правильно пропустил сравнение и создал baseline на EPYC 7763. **25% p95 guard в этом запуске не выполнялся**. Diagnostic artifact: [windows-extended-diagnostics-26](https://github.com/Temeramor/Far-a-Way/actions/runs/43777441849/artifacts/14187288560).
+- Source-level parity review сравнил `StreamingPlanner` с исходным `_collect_lod_tiles`: совпадают формулы границ, 3D distance, hysteresis, recursive split, приоритеты, collision/shadow flags, tile geometry, mesh step и request fields.
+- В `streaming_planner_characterization_test.gd` добавлен независимый legacy collector и differential cases для центра, перемещения с hysteresis, высоты, частичного края мира и render-distance culling. Результат этого нового теста **ожидает CI**; `MeshJobScheduler` не начинать до его прохождения.
+
+`0.1.0.4-new` остаётся единственной изменяемой веткой; `main` не затрагивалась.
+
 ## 16 ноября 2026 — Windows extended CI подтвердил StreamingPlanner и миграцию benchmark baseline
 
 - Успешно завершён [Windows extended run 43775754326](https://github.com/Temeramor/Far-a-Way/actions/runs/43775754326), job [133001556345](https://github.com/Temeramor/Far-a-Way/actions/runs/43775754326/job/133001556345), branch `0.1.0.4-new`, commit `f9a07de4036ce113b4dae6115e844f40927032fa`.

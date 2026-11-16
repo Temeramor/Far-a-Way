@@ -263,3 +263,26 @@ Windows extended run [43775754326](https://github.com/Temeramor/Far-a-Way/action
 
 **Interpretation:** the metadata compatibility gate and baseline migration are verified. This run intentionally did not compare timings across different CPU models. The next run must restore this Intel Xeon baseline on a matching runner and exercise the 25% per-LOD nearest-rank p95 regression guard. Until then, do not claim the compatible-runner guard has been re-verified.
 
+
+## Runner-specific baseline migration — Windows extended run 43777441849
+
+Run [43777441849](https://github.com/Temeramor/Far-a-Way/actions/runs/43777441849), job [133006839090](https://github.com/Temeramor/Far-a-Way/actions/runs/43777441849/job/133006839090), completed successfully on 2026-11-16 for branch `0.1.0.4-new`, commit `3404427733adc98b2ca10a26b3dc6f7f83839b6e`.
+
+- Debug/Release Windows GDExtension builds, Godot 4.7.2 project import/script validation and all eight smoke/parity tests passed.
+- One-time terrain sampler setup: **16,775.462 ms**.
+- Runner metadata: Windows 10.0.26100, AMD EPYC 7763 64-Core Processor (4 visible processors), Godot 4.7.2 official, runner image `win25-vs2026` version `20261103.298.1`, X64.
+- The previous cached baseline belonged to Intel Xeon Platinum 8370C. The metadata gate correctly rejected cross-CPU comparison, reported no compatible v2 baseline, and saved a new schema-v2 baseline with 25 samples per LOD.
+- Diagnostic artifact: [windows-extended-diagnostics-26](https://github.com/Temeramor/Far-a-Way/actions/runs/43777441849/artifacts/14187288560).
+
+| LOD | Runs | Min (ms) | Median (ms) | nearest-rank p95 (ms) | Vertices | Indices |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 25 | 25.928 | 26.260 | 34.908 | 68,160 | 102,240 |
+| 1 | 25 | 15.916 | 16.033 | 21.339 | 16,168 | 24,252 |
+| 2 | 25 | 4.580 | 4.613 | 4.691 | 3,724 | 5,586 |
+| 3 | 25 | 1.614 | 1.654 | 1.687 | 824 | 1,236 |
+| 4 | 25 | 0.739 | 0.771 | 0.811 | 272 | 408 |
+| 5 | 25 | 0.414 | 0.443 | 0.475 | 72 | 108 |
+| 6 | 25 | 0.285 | 0.317 | 0.386 | 8 | 12 |
+| 7 | 25 | 0.193 | 0.251 | 0.319 | 16 | 24 |
+
+**Interpretation:** this is a valid baseline for the EPYC 7763 runner metadata, not a comparison against the previous Intel baseline. The 25% p95 guard has not yet been exercised against this newly created baseline. LOD0 and LOD1 p95 values include visible outliers; retain raw samples in the artifact and avoid treating these hosted-runner timings as hardware-independent performance claims.
