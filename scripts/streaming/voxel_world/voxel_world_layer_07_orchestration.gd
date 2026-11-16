@@ -27,20 +27,19 @@ func _apply_completed_jobs() -> void:
             break
         if not _completed_jobs.has(coord):
             continue
-        var record: Dictionary = _completed_jobs[coord]
+        var record: Dictionary = _mesh_job_scheduler.take_completed(coord)
         if _fallback_children_ready(coord):
-            _completed_jobs.erase(coord)
+            _mesh_job_scheduler.take_completed(coord)
             continue
         if not _job_record_matches_current(record, coord):
-            _completed_jobs.erase(coord)
+            _mesh_job_scheduler.take_completed(coord)
             _stale_result_count += 1
             if _wanted.has(coord):
                 var retry: Dictionary = _wanted[coord].duplicate(true)
                 retry["queued_usec"] = Time.get_ticks_usec()
-                _queued[coord] = retry
+                _mesh_job_scheduler.queue_retry(coord, _wanted, Time.get_ticks_usec())
             continue
 
-        _completed_jobs.erase(coord)
         var chunk: VoxelTerrainChunk = _chunks.get(coord) as VoxelTerrainChunk
         if chunk == null:
             chunk = _chunk_resource_manager.take_pooled_chunk()
