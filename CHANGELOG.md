@@ -4,7 +4,9 @@
 - `StreamingPlanner` differential parity test прошёл Windows extended CI run 43781021056 на commit `79f8ac7f89b94dbdf2cb2fc492a87a9687a9be96`; подтверждено совпадение полного wanted request set с legacy collector для пяти сценариев.
 - Добавлен `MeshJobScheduler` для владения очередью mesh jobs, регистрами running/completed, дедупликацией по координате, выбором следующей задачи и общим worker budget с декором.
 - Сохранены generation epoch / seed / request validation, cache-hit completion path, empty-result retry и отклонение устаревших результатов. Применение Node/Mesh/Physics ресурсов остаётся в `VoxelWorld` на главном потоке.
-- Добавлен `mesh_job_scheduler_test.gd` для проверки epoch/seed invalidation, duplicate requests, request mismatch, cache-hit completion, retry, stale completion, priority selection и shared worker budget. Результат Windows CI для нового scheduler ещё ожидается.
+- Добавлен `mesh_job_scheduler_test.gd` для проверки epoch/seed invalidation, duplicate requests, request mismatch, cache-hit completion, retry, stale completion, priority selection и shared worker budget.
+- Windows core run [43785734045](https://github.com/Temeramor/Far-a-Way/actions/runs/43785734045) и extended run [43785734040](https://github.com/Temeramor/Far-a-Way/actions/runs/43785734040) прошли на commit `4cde72da9537a5525c3395ca2b4e7a6780ee5ff0`; scheduler lifecycle test и остальные smoke/parity tests прошли.
+- Extended benchmark собрал 25 samples на каждый LOD и сохранил schema-v2 baseline. Runner AMD EPYC 9V45 не совпал с предыдущим EPYC 7763 baseline, поэтому cross-runner comparison был корректно пропущен; следующий запуск должен проверить guard на совпадающей metadata.
 
 ## 16 ноября 2026 — Windows CI подтвердил текущую ревизию; добавлен differential parity test для StreamingPlanner
 
