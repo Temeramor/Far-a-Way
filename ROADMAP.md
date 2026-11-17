@@ -1,18 +1,18 @@
 # Far a Way — ROADMAP (редакция)
 
 > **Статус:** проектная спецификация и план будущих работ. Выполненные этапы отмечаются отдельно; сам документ не означает реализацию будущих функций.
-> **Рабочая ветка:** `0.1.0.4-new` · последний подтверждённый Windows extended CI commit: `79f8ac7f89b94dbdf2cb2fc492a87a9687a9be96`
+> **Рабочая ветка:** `0.1.0.4-new` · последний подтверждённый Windows core/extended CI commit: `4cde72da9537a5525c3395ca2b4e7a6780ee5ff0`
 > **Дата исходного документа:** 9 ноября 2026 г.
-> **Дата редакции:** 16 ноября 2026 г.
+> **Дата редакции:** 18 ноября 2026 г.
 > **Текущая база:** Far a Way 0.1.0.4, Godot 4.7.2, Forward+
 > **Текущая целевая платформа:** Windows x86-64. Поддержка Linux/macOS/консолей не входит в текущий baseline и требует отдельного ADR с учётом сборки GDExtension, тестирования и поддержки.
 > **Главная цель:** сохранить сильные стороны существующего макрогенератора, но подготовить архитектуру к настоящему объёмному ландшафту с пещерами, карнизами, нависаниями, сложной геологией, гидрологией и климатическими биомами.
 
 ---
 
-## Текущий статус реализации (16 ноября 2026)
+## Текущий статус реализации (18 ноября 2026)
 
-Этот статус относится к рабочей ветке `0.1.0.4-new`. Последние Windows CI runs — core [43781021064](https://github.com/Temeramor/Far-a-Way/actions/runs/43781021064), job [133017983125](https://github.com/Temeramor/Far-a-Way/actions/runs/43781021064/job/133017983125), и extended [43781021056](https://github.com/Temeramor/Far-a-Way/actions/runs/43781021056), job [133017983376](https://github.com/Temeramor/Far-a-Way/actions/runs/43781021056/job/133017983376), оба на commit `79f8ac7f89b94dbdf2cb2fc492a87a9687a9be96`. Оба завершились успешно. Extended run подтвердил Debug/Release GDExtension build, Godot 4.7.2 import/script validation, восемь smoke/parity tests, включая differential `StreamingPlanner` oracle, и создание нового runner-specific schema-v2 benchmark baseline.
+Этот статус относится к рабочей ветке `0.1.0.4-new`. Последние Windows CI runs — core [43785734045](https://github.com/Temeramor/Far-a-Way/actions/runs/43785734045), job [133032874775](https://github.com/Temeramor/Far-a-Way/actions/runs/43785734045/job/133032874775), и extended [43785734040](https://github.com/Temeramor/Far-a-Way/actions/runs/43785734040), оба на commit `4cde72da9537a5525c3395ca2b4e7a6780ee5ff0`. Оба завершились успешно. Core подтвердил Debug/Release GDExtension build, Godot 4.7.2 import/script validation и core tests. Extended подтвердил те же сборки и импорт, все девять smoke/parity tests (включая `streaming_planner_characterization_test` и `mesh_job_scheduler_test`) и benchmark 25 samples/LOD. Benchmark runner сменился на AMD EPYC 9V45; metadata gate корректно пропустил сравнение с предыдущим baseline на EPYC 7763 и создал новый schema-v2 baseline. Поэтому 25% per-LOD p95 guard в этом запуске не выполнялся; нужен следующий запуск с совместимой metadata.
 
 ### Подтверждено Windows extended CI run 43775754326
 
@@ -43,19 +43,19 @@
 
 - Визуальный baseline принят по пользовательскому тестированию: десятки seed успешно сгенерировали качественные острова. Формальный пакет скриншотов не требуется.
 - Characterization test и extraction `StreamingPlanner` прошли Windows extended CI. Подтверждены детерминированные wanted requests, root fallback/split, частичные граничные tiles, mesh/collision/shadow flags и render-distance culling.
-- Runner metadata compatibility gate прошёл первую миграцию на Intel Xeon Platinum 8370C; повторная проверка 25% guard на совпадающем runner ещё нужна.
+- Runner metadata compatibility gate корректно пропускает несопоставимые CPU: после EPYC 7763 текущий run установил новый baseline на EPYC 9V45. Повторная проверка 25% guard на совместимом EPYC 9V45 runner ещё нужна.
 - Проведён source-level parity review `StreamingPlanner` относительно прежнего `_collect_lod_tiles`: совпадают LOD key/stride, world origin и voxel scale, partial edge bounds, surface-based 3D distance, render/shadow thresholds, hysteresis, recursive split, priority, collision flag, mesh step и все request fields.
 - В `streaming_planner_characterization_test.gd` добавлен differential oracle прежней реализации с несколькими сценариями позиции/высоты/heading и последовательным переносом `previous_wanted`. **Differential test прошёл Windows extended CI run 43781021056; parity sign-off подтверждён.**
-- `MeshJobScheduler` выделен в текущем изменении; focused lifecycle tests ожидают Windows CI.
+- `MeshJobScheduler` extraction и focused lifecycle tests подтверждены Windows core/extended CI run 43785734045/43785734040 на commit `4cde72da9537a5525c3395ca2b4e7a6780ee5ff0`.
 - WorldSave compatibility foundation, TerrainPipeline, отдельный SDF-прототип и объёмный meshing остаются будущими этапами.
 
 ### Следующий рабочий фокус
 
 1. **Выполнено:** differential parity test прошёл Windows extended CI run 43781021056; `StreamingPlanner` parity sign-off зафиксирован.
-2. **Реализовано, ожидает CI:** выделен `MeshJobScheduler` как владелец queue/running/completed registries и job lifecycle; сохранены epoch/seed/request validation, deduplication по координате, общий worker budget, cache-hit completion path, empty-result retry и stale-result rejection.
-3. **Реализовано, ожидает CI:** добавлен `mesh_job_scheduler_test.gd` для epoch/seed invalidation, duplicate coordinate, request mismatch, cache hit, empty-result retry, stale completion, priority selection и shared worker budget.
-4. Отдельно повторить extended benchmark на runner с metadata, совпадающей с baseline EPYC 7763, чтобы проверить 25% per-LOD p95 guard. Runner mismatch не считать performance regression.
-5. После стабилизации streaming-контрактов определить WorldSave format/version и migration policy. Затем создать отдельную SDF test scene 32 × 32 × 32 м и сравнить storage, meshing, collision, LOD, seams, CPU и memory.
+2. **Выполнено:** `MeshJobScheduler` extraction и focused lifecycle tests прошли Windows core/extended CI run 43785734045/43785734040 на commit `4cde72da9537a5525c3395ca2b4e7a6780ee5ff0`.
+3. **Выполнено:** все девять extended smoke/parity tests прошли; `mesh_job_scheduler_test` подтверждён в CI.
+4. Benchmark run 43785734040 завершил 25 samples/LOD и сохранил schema-v2 baseline, но runner сменился с AMD EPYC 7763 на AMD EPYC 9V45; metadata gate правильно пропустил сравнение. Следующий extended run должен восстановить EPYC 9V45 baseline и проверить 25% per-LOD nearest-rank p95 guard. Runner mismatch не считать regression.
+5. После подтверждения совместимого benchmark guard перейти к WorldSave format/version и migration policy. Сначала определить текущие persistence точки и требования к сохранению seed, генераторных параметров и будущих изменяемых данных; затем отдельным этапом создать SDF test scene 32 × 32 × 32 м и сравнить storage, meshing, collision, LOD, seams, CPU и memory.
 
 ---
 
