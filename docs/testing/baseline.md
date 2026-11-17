@@ -297,3 +297,28 @@ Windows core run [43781021064](https://github.com/Temeramor/Far-a-Way/actions/ru
 - The extended benchmark completed 25 samples per LOD. Runner metadata: AMD EPYC 7763, 4 visible processors, Windows Server 2025 10.0.26100, Godot 4.7.2 official, image `win25-vs2026` version `20261103.298.1`.
 - The restored cache belonged to a different runner environment; the metadata gate correctly skipped cross-runner comparison and saved a new schema-v2 baseline. The 25% per-LOD p95 guard was not exercised in this run.
 - These runs confirm the planner differential test and the source state at the recorded commit; they do not validate the subsequent MeshJobScheduler extraction.
+
+
+## MeshJobScheduler extraction — Windows CI и benchmark baseline migration (run 43785734040)
+
+Windows core run [43785734045](https://github.com/Temeramor/Far-a-Way/actions/runs/43785734045), job [133032874775](https://github.com/Temeramor/Far-a-Way/actions/runs/43785734045/job/133032874775), и extended run [43785734040](https://github.com/Temeramor/Far-a-Way/actions/runs/43785734040), job [133032846018](https://github.com/Temeramor/Far-a-Way/actions/runs/43785734040/job/133032846018), завершились успешно на branch `0.1.0.4-new`, commit `4cde72da9537a5525c3395ca2b4e7a6780ee5ff0`.
+
+- Core: Debug/Release GDExtension builds, Godot 4.7.2 import/script validation и core tests прошли.
+- Extended: все девять smoke/parity tests прошли, включая differential `streaming_planner_characterization_test` и новый `mesh_job_scheduler_test`.
+- One-time terrain sampler setup: **9,974.542 ms**, измерено отдельно от chunk builds.
+- Runner metadata: Windows 10.0.26100, AMD EPYC 9V45 96-Core Processor (4 visible processors), Godot 4.7.2 official, image `win25-vs2026` version `20261103.298.1`, X64.
+- Восстановленный baseline принадлежал другому runner environment (предыдущий baseline был на AMD EPYC 7763). Metadata gate правильно пропустил cross-runner comparison и сохранил новый schema-v2 baseline с 25 samples на каждый LOD. **25% p95 guard в этом запуске не выполнялся.** Следующий extended run должен восстановить этот EPYC 9V45 baseline и проверить guard при совпадающей metadata.
+- Diagnostic artifact: [windows-extended-diagnostics-41](https://github.com/Temeramor/Far-a-Way/actions/runs/43785734040/artifacts/14190507775).
+
+| LOD | Runs | Min (ms) | Median (ms) | nearest-rank p95 (ms) | Vertices | Indices |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 25 | 16.181 | 16.633 | 24.529 | 68,160 | 102,240 |
+| 1 | 25 | 9.906 | 10.190 | 10.364 | 16,168 | 24,252 |
+| 2 | 25 | 2.828 | 2.863 | 3.062 | 3,724 | 5,586 |
+| 3 | 25 | 0.974 | 0.982 | 1.097 | 824 | 1,236 |
+| 4 | 25 | 0.418 | 0.435 | 0.474 | 272 | 408 |
+| 5 | 25 | 0.219 | 0.225 | 0.256 | 72 | 108 |
+| 6 | 25 | 0.149 | 0.167 | 0.182 | 8 | 12 |
+| 7 | 25 | 0.120 | 0.124 | 0.144 | 16 | 24 |
+
+These values establish the runner-specific EPYC 9V45 baseline only. Do not compare them with EPYC 7763 values or interpret the differences as a code regression/improvement. Raw samples and runner metadata are included in the artifact.
